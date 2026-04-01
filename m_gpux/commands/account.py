@@ -4,7 +4,11 @@ from rich.table import Table
 import os
 import tomlkit
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(
+    help="Manage Multi-Profile Modal Accounts.\n\nEasily switch between different Modal organizational, personal, or test environment identities.",
+    short_help="Identity Management",
+    no_args_is_help=True
+)
 console = Console()
 
 MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
@@ -19,9 +23,9 @@ def save_config(doc):
     with open(MODAL_CONFIG_PATH, "w", encoding="utf-8") as f:
         tomlkit.dump(doc, f)
 
-@app.command("list")
+@app.command("list", help="Display all configured Modal profiles and current active status.")
 def list_accounts():
-    """List all available Modal profiles."""
+    """List all available Modal profiles. Shows a table highlighting the currently active workspace."""
     doc = load_config()
     profiles = list(doc.keys())
     
@@ -40,9 +44,9 @@ def list_accounts():
         
     console.print(table)
     
-@app.command("switch")
-def switch_account(name: str):
-    """Switch the active Modal profile."""
+@app.command("switch", help="Switch the active global profile for Modal deployments.")
+def switch_account(name: str = typer.Argument(..., help="Target profile name to activate")):
+    """Switch the active Modal profile. Subsequent `m-gpux hub` runs will deploy to this account's infrastructure."""
     doc = load_config()
     if name not in doc:
         console.print(f"[red]Error: Profile '{name}' not found.[/red]")
@@ -56,11 +60,13 @@ def switch_account(name: str):
     save_config(doc)
     console.print(f"[green]Successfully switched to profile '{name}'[/green]")
 
-@app.command("add")
-def add_account(name: str = typer.Option(..., prompt="Profile Name"),
-                token_id: str = typer.Option(..., prompt="Modal Token ID"),
-                token_secret: str = typer.Option(..., prompt="Modal Token Secret")):
-    """Add a new Modal profile."""
+@app.command("add", help="Add a new profile using Token ID and Secret.")
+def add_account(
+    name: str = typer.Option(..., prompt="Profile Name", help="A friendly name for this profile (e.g. 'personal' or 'work')"),
+    token_id: str = typer.Option(..., prompt="Modal Token ID", help="The Token ID from your Modal dashboard"),
+    token_secret: str = typer.Option(..., prompt="Modal Token Secret", help="The Token Secret from your Modal dashboard")
+):
+    """Add a new Modal profile by providing credentials securely to local storage."""
     doc = load_config()
     name = name.strip()
         
