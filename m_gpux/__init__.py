@@ -1,1 +1,3 @@
-# m_gpux package
+"""m_gpux package."""
+
+__version__ = "1.0.1"
