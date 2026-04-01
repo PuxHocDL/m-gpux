@@ -8,15 +8,17 @@ from m_gpux.commands import hub
 
 app = typer.Typer(
     name="m-gpux", 
-    help="A powerful hub and CLI for managing Modal GPUs, Accounts, and Workspaces",
+    help="A powerful, interactive hub and CLI framework for scaling AI workloads on Modal GPUs.\n\nEffortlessly manage multiple Modal profiles, track cross-workspace cloud spend, and spin up A100 notebook servers completely hands-free.",
+    short_help="Modal GPU Orchestrator",
+    epilog="Made with ♥ for VNU-HCM UIT.",
     no_args_is_help=False
 )
 
 console = Console()
 
-app.add_typer(account.app, name="account", help="Manage multi-profile Modal accounts")
-app.add_typer(billing.app, name="billing", help="View usage and billing details")
-app.command(name="hub", help="Interactive GPU hub to start terminals or notebooks")(hub.hub_main)
+app.add_typer(account.app, name="account", help="Configure identities and add multiple Modal profiles.", rich_help_panel="Identity & Finance")
+app.add_typer(billing.app, name="billing", help="Track infrastructure costs across workspaces.", rich_help_panel="Identity & Finance")
+app.command(name="hub", help="Launch interactive UI to provision Python scripts, Terminals, or Jupyter on GPUs.", rich_help_panel="Compute Engine")(hub.hub_main)
 
 UIT_LOGO = """
 [bold blue]  _   _  _____  _______ [/bold blue]
@@ -41,10 +43,10 @@ def main_callback(ctx: typer.Context):
         console.print(Panel(DOCS.strip(), title="⚡ Welcome to M-GPUX CLI", expand=False, border_style="cyan"))
         console.print("\n[dim]Run `m-gpux --help` for the full command list.[/dim]\n")
         
-@app.command()
+@app.command(rich_help_panel="Utility")
 def info():
-    """Print information about m-gpux."""
-    console.print(Panel("[bold green]m-gpux[/bold green]\nYour ultimate utility for Modal platform GPU resources.", expand=False))
+    """Print framework metadata and system capabilities."""
+    console.print(Panel("[bold green]M-GPUX Orchestrator[/bold green]\nYour ultimate utility for interacting with Modal Serverless GPU resources.", expand=False))
 
 if __name__ == "__main__":
     app()

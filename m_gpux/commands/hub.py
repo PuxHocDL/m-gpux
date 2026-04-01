@@ -131,8 +131,20 @@ def execute_modal_temp_script(content: str, description: str):
             pass
 
 
+@app.command()
 def hub_main():
-    """Launch the interactive GPU Hub to start a Notebook or Shell."""
+    """
+    Launch the M-GPUX Interactive Provisioning Hub.
+    
+    This command initiates a wizard-like CLI interface that allows you to easily 
+    select an Nvidia GPU accelerator (e.g. T4, L4, A100) and deploy your workloads
+    entirely serverless.
+    
+    Features:
+    - Jupyter Notebook instances with auto-tunneling
+    - Automatic Workspace File Mounting for Python scripts
+    - Web-based Bash Shells
+    """
         
     console.print(Panel.fit("[bold magenta]m-gpux GPU Hub[/bold magenta]\n"
                             "Allocate a powerful GPU in seconds.", border_style="cyan"))
