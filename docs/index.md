@@ -2,6 +2,8 @@
 
 Welcome to the official docs for `m-gpux`, a production-focused CLI for Modal GPU operations.
 
+> Fast GPU workflows, multi-account profile control, and clear billing visibility in one terminal interface.
+
 ## What is m-gpux?
 
 `m-gpux` helps you run high-performance compute workflows from terminal-first commands:
@@ -16,6 +18,14 @@ Welcome to the official docs for `m-gpux`, a production-focused CLI for Modal GP
 - Full command list: [Command Reference](commands.md)
 - Common issues: [FAQ and Troubleshooting](faq.md)
 
+## Documentation Structure
+
+- Guide
+	- Setup, installation, and first run
+	- Full command reference with flags and examples
+- Support
+	- Troubleshooting and frequent issues
+
 ## Common Workflows
 
 ### Launch Jupyter on a GPU
@@ -27,6 +37,10 @@ Welcome to the official docs for `m-gpux`, a production-focused CLI for Modal GP
 ### Check weekly cost across all accounts
 
 `m-gpux billing usage --days 7 --all`
+
+!!! tip "Pro workflow"
+	Keep one profile for personal experiments and one for team workloads,
+	then run `m-gpux billing usage --all` weekly to track total burn across both.
 
 ## Links
 
