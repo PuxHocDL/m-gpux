@@ -1,0 +1,24 @@
+site_name: m-gpux
+site_description: Professional CLI toolkit for Modal GPU workflows
+site_url: https://puxhocdl.github.io/m-gpux/
+repo_url: https://github.com/PuxHocDL/m-gpux
+repo_name: PuxHocDL/m-gpux
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Command Reference: commands.md
+  - FAQ: faq.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true

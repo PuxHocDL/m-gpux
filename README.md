@@ -1,27 +1,35 @@
 # m-gpux
 
-A modern command-line toolkit for Modal workflows:
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![CLI](https://img.shields.io/badge/interface-Typer%20%2B%20Rich-0ea5e9)](https://typer.tiangolo.com/)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-22c55e)](https://puxhocdl.github.io/m-gpux/)
 
-- Manage multiple Modal profiles
-- Launch GPU workloads from an interactive hub
-- Track cost usage across accounts
+`m-gpux` is a professional CLI toolkit for Modal power users who need fast GPU access, multi-profile account control, and simple cost visibility.
 
-`m-gpux` is built with Typer + Rich for a smooth CLI UX inspired by popular tools.
+## Highlights
 
-## Why m-gpux
+- Interactive GPU hub for Jupyter, script execution, and web shell sessions
+- Multi-account profile management in one command namespace
+- Billing inspection per profile or across all configured accounts
+- Friendly terminal UX with rich tables, prompts, and guided flows
 
-- Fast setup for GPU sessions (Jupyter, script runner, web shell)
-- Multi-profile account management in one place
-- Billing visibility for one account or all configured profiles
-- Human-friendly command output with interactive prompts
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Commands](#core-commands)
+- [Documentation](#documentation)
+- [Architecture](#architecture)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
 
 ## Installation
 
 ### Requirements
 
 - Python 3.10+
-- A Modal account with `token_id` and `token_secret`
-- Modal CLI available in your shell (`modal` command)
+- Modal account credentials (`token_id`, `token_secret`)
+- Modal CLI in PATH (`modal` command)
 
 ### Install from source
 
@@ -33,31 +41,21 @@ pip install -e .
 
 ## Quick Start
 
-### 1) Add a profile
-
 ```bash
+# 1) Add your first profile
 m-gpux account add
-```
 
-### 2) Verify profiles
-
-```bash
+# 2) Check configured profiles
 m-gpux account list
-```
 
-### 3) Launch GPU hub
-
-```bash
+# 3) Launch the interactive GPU hub
 m-gpux hub
-```
 
-### 4) Check billing usage
-
-```bash
+# 4) Inspect 30-day usage across all accounts
 m-gpux billing usage --days 30 --all
 ```
 
-## Command Overview
+## Core Commands
 
 ### Global
 
@@ -66,7 +64,7 @@ m-gpux --help
 m-gpux info
 ```
 
-### Account commands
+### Profile Management
 
 ```bash
 m-gpux account list
@@ -75,77 +73,66 @@ m-gpux account switch <profile_name>
 m-gpux account remove <profile_name>
 ```
 
-### Billing commands
+### Billing
 
 ```bash
 m-gpux billing open
-m-gpux billing usage
 m-gpux billing usage --days 7
 m-gpux billing usage --account personal
 m-gpux billing usage --all
 ```
 
-### Compute hub
+### Interactive Hub
 
 ```bash
 m-gpux hub
 ```
 
-From the hub, choose:
+Hub actions:
 
-- Jupyter Lab on a selected GPU
-- Run a local Python script on a selected GPU
-- Interactive web-based Bash shell on a selected GPU
-
-## Configuration
-
-Profiles are stored locally in:
-
-- `~/.modal.toml`
-
-When multiple profiles exist, exactly one can be active. The `hub` workflow uses the active profile credentials.
-
-## Example Workflows
-
-### Run a script on A100
-
-1. Run `m-gpux hub`
-2. Select GPU `A100`
-3. Select action `Run a Python Script`
-4. Enter your script filename
-5. Confirm and execute generated `modal_runner.py`
-
-### Audit weekly cost across all profiles
-
-```bash
-m-gpux billing usage --days 7 --all
-```
+- Jupyter Lab on selected GPU
+- Run local Python script on selected GPU
+- Interactive web Bash shell on selected GPU
 
 ## Documentation
 
-Detailed docs are available in the GitHub `docs` section:
+- Website: https://puxhocdl.github.io/m-gpux/
+- Local docs index: [docs/index.md](docs/index.md)
+- Getting started: [docs/getting-started.md](docs/getting-started.md)
+- Commands: [docs/commands.md](docs/commands.md)
+- FAQ: [docs/faq.md](docs/faq.md)
 
-- [Documentation Home](docs/index.md)
-- [Getting Started](docs/getting-started.md)
-- [Command Reference](docs/commands.md)
-- [FAQ and Troubleshooting](docs/faq.md)
+## Architecture
+
+- `m_gpux/main.py`: CLI entrypoint and command registration
+- `m_gpux/commands/account.py`: profile CRUD and active profile switching
+- `m_gpux/commands/billing.py`: usage aggregation and billing dashboard links
+- `m_gpux/commands/hub.py`: guided GPU runtime launcher
+
+## Configuration
+
+Modal profiles are persisted in `~/.modal.toml`.
+
+If the active profile is removed, another existing profile is promoted automatically.
 
 ## Troubleshooting
 
 - `No configured Modal profiles found`
-	- Run `m-gpux account add` first.
+  - Run `m-gpux account add`.
 - `modal: command not found`
-	- Install Modal CLI and ensure it is available in your shell.
-- Script file not found in hub mode
-	- Check filename/path and run from the project directory containing your script.
+  - Install Modal CLI and ensure PATH is set correctly.
+- Script file does not exist in hub mode
+  - Run command from the script directory or provide the correct filename.
 
-## Development
+## Contributing
 
 ```bash
 pip install -e .
 python -m m_gpux.main --help
 ```
 
+Open PRs are welcome for UX polish, command improvements, and docs quality.
+
 ## License
 
-MIT (or project owner's preferred license).
+MIT
