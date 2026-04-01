@@ -1,7 +1,9 @@
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
+from m_gpux import __version__
 from m_gpux.commands import account
 from m_gpux.commands import billing
 from m_gpux.commands import hub
@@ -20,33 +22,42 @@ app.add_typer(account.app, name="account", help="Configure identities and add mu
 app.add_typer(billing.app, name="billing", help="Track infrastructure costs across workspaces.", rich_help_panel="Identity & Finance")
 app.command(name="hub", help="Launch interactive UI to provision Python scripts, Terminals, or Jupyter on GPUs.", rich_help_panel="Compute Engine")(hub.hub_main)
 
-UIT_LOGO = """
-[bold blue]  _   _  _____  _______ [/bold blue]
-[bold blue] | | | ||_   _||__   __|[/bold blue]
-[bold blue] | | | |  | |     | |   [/bold blue]
-[bold blue] | |_| | _| |_    | |   [/bold blue]
-[bold blue]  \___/ |_____|   |_|   [/bold blue]
-[bold cyan]    VNU-HCM | M-GPUX    [/bold cyan]
+HERO_LOGO = """
+[bold cyan] ███╗   ███╗      ██████╗ ██████╗ ██╗   ██╗██╗  ██╗[/bold cyan]
+[bold cyan] ████╗ ████║     ██╔════╝ ██╔══██╗██║   ██║╚██╗██╔╝[/bold cyan]
+[bold cyan] ██╔████╔██║     ██║  ███╗██████╔╝██║   ██║ ╚███╔╝ [/bold cyan]
+[bold cyan] ██║╚██╔╝██║     ██║   ██║██╔═══╝ ██║   ██║ ██╔██╗ [/bold cyan]
+[bold cyan] ██║ ╚═╝ ██║     ╚██████╔╝██║     ╚██████╔╝██╔╝ ██╗[/bold cyan]
+[bold cyan] ╚═╝     ╚═╝      ╚═════╝ ╚═╝      ╚═════╝ ╚═╝  ╚═╝[/bold cyan]
+[bold white] Modal GPU Orchestrator[/bold white]
 """
 
-DOCS = """
-[bold]Quick Start Guide:[/bold]
-1. [yellow]m-gpux account add[/yellow]   - Configure your Modal Token
-2. [yellow]m-gpux hub[/yellow]           - Launch Interactive GPU Hub for Jupyter/Scripts
-3. [yellow]m-gpux billing usage[/yellow] - Track your $30 monthly cloud credits
-"""
+
+def render_welcome() -> None:
+    quick_actions = Table.grid(padding=(0, 2))
+    quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
+    quick_actions.add_row("[bold yellow]m-gpux hub[/bold yellow]", "Launch Jupyter, script runner, or web shell")
+    quick_actions.add_row("[bold yellow]m-gpux billing usage --all[/bold yellow]", "See total spend across configured accounts")
+
+    console.print(Panel.fit(HERO_LOGO.strip(), border_style="bright_cyan", title="M-GPUX", subtitle=f"v{__version__}"))
+    console.print(Panel(quick_actions, title="Quick Actions", border_style="cyan"))
+    console.print("[dim]Tip: run m-gpux --help for full command reference.[/dim]\n")
 
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
-        console.print(UIT_LOGO)
-        console.print(Panel(DOCS.strip(), title="⚡ Welcome to M-GPUX CLI", expand=False, border_style="cyan"))
-        console.print("\n[dim]Run `m-gpux --help` for the full command list.[/dim]\n")
+        render_welcome()
         
 @app.command(rich_help_panel="Utility")
 def info():
     """Print framework metadata and system capabilities."""
-    console.print(Panel("[bold green]M-GPUX Orchestrator[/bold green]\nYour ultimate utility for interacting with Modal Serverless GPU resources.", expand=False))
+    console.print(
+        Panel(
+            f"[bold green]M-GPUX Orchestrator[/bold green]\nVersion: {__version__}\n"
+            "Your ultimate utility for interacting with Modal serverless GPU resources.",
+            expand=False,
+        )
+    )
 
 if __name__ == "__main__":
     app()

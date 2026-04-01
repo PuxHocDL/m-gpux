@@ -39,6 +39,12 @@ cd m-gpux
 pip install -e .
 ```
 
+### Install from PyPI
+
+```bash
+pip install m-gpux
+```
+
 ## Quick Start
 
 ```bash
@@ -132,6 +138,21 @@ python -m m_gpux.main --help
 ```
 
 Open PRs are welcome for UX polish, command improvements, and docs quality.
+
+## Release to PyPI
+
+The repository includes automated PyPI publishing via GitHub Actions.
+
+1. Add repository secret `PYPI_API_TOKEN` in GitHub settings.
+2. Bump `version` in `pyproject.toml`.
+3. Create and push a version tag:
+
+```bash
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+The workflow `Publish Python Package` will build and publish automatically.
 
 ## License
 

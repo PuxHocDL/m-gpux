@@ -4,9 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m-gpux"
-version = "0.1.0"
-description = "A powerful hub and CLI for managing Modal GPUs, Accounts, and Workspaces"
+version = "1.0.1"
+description = "Professional CLI toolkit for Modal GPU workflows, account management, and billing visibility"
 readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "PuxHocDL" }
+]
+keywords = ["modal", "gpu", "cli", "machine-learning", "orchestration"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
 dependencies = [
     "modal>=0.62.0",
     "typer>=0.12.0",
@@ -14,5 +30,22 @@ dependencies = [
     "tomlkit>=0.12.0"
 ]
 
+[project.urls]
+Homepage = "https://github.com/PuxHocDL/m-gpux"
+Documentation = "https://puxhocdl.github.io/m-gpux/"
+Repository = "https://github.com/PuxHocDL/m-gpux"
+Issues = "https://github.com/PuxHocDL/m-gpux/issues"
+
 [project.scripts]
 m-gpux = "m_gpux.main:app"
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2.2",
+    "twine>=5.1.1"
+]
+
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.6"
+]
