@@ -10,7 +10,7 @@ app = typer.Typer(
     name="m-gpux", 
     help="A powerful, interactive hub and CLI framework for scaling AI workloads on Modal GPUs.\n\nEffortlessly manage multiple Modal profiles, track cross-workspace cloud spend, and spin up A100 notebook servers completely hands-free.",
     short_help="Modal GPU Orchestrator",
-    epilog="Made with ♥ for VNU-HCM UIT.",
+    epilog="Made by Pux.",
     no_args_is_help=False
 )
 

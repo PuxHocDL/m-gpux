@@ -76,7 +76,10 @@ import subprocess
 import time
 
 app = modal.App("m-gpux-shell")
-image = modal.Image.debian_slim().apt_install("ttyd", "bash", "curl").pip_install("torch")
+image = modal.Image.debian_slim().apt_install("bash", "curl").run_commands(
+    "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
+    "chmod +x /usr/local/bin/ttyd"
+).pip_install("torch")
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_shell():
@@ -184,10 +187,10 @@ def hub_main():
         with open(script_path, "r", encoding="utf-8") as rf:
             script_content = rf.read()
             
-        console.print(f"\\n[cyan]Preview of your script to run ({script_path}):[/cyan]")
+        console.print(f"\n[cyan]Preview of your script to run ({script_path}):[/cyan]")
         console.print(Syntax(script_content, "python", theme="monokai", line_numbers=True))
         
-        local_dir_escaped = os.path.abspath(".").replace("\\\\", "/")
+        local_dir_escaped = os.path.abspath(".").replace("\\", "/")
         script = WRAPPER_SCRIPT.replace("{gpu_type}", selected_gpu).replace("{local_dir}", local_dir_escaped).replace("{script_name}", os.path.basename(script_path))
         execute_modal_temp_script(script, f"Script {script_path} on {selected_gpu}")
         
