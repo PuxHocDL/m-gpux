@@ -143,16 +143,22 @@ Open PRs are welcome for UX polish, command improvements, and docs quality.
 
 The repository includes automated PyPI publishing via GitHub Actions.
 
-1. Add repository secret `PYPI_API_TOKEN` in GitHub settings.
-2. Bump `version` in `pyproject.toml`.
-3. Create and push a version tag:
+1. Configure a Trusted Publisher on PyPI with:
+  - Project: `m-gpux`
+  - Owner: `PuxHocDL`
+  - Repository: `m-gpux`
+  - Workflow: `publish-pypi.yml`
+  - Environment: `pypi`
+2. Create GitHub environment `pypi` in repository settings.
+3. Bump `version` in `pyproject.toml`.
+4. Create and push a version tag:
 
 ```bash
 git tag v1.0.1
 git push origin v1.0.1
 ```
 
-The workflow `Publish Python Package` will build and publish automatically.
+The workflow `Publish Python Package` will build and publish automatically with OIDC.
 
 ## License
 
