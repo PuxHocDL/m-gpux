@@ -1,0 +1,47 @@
+/* Sidebar-first polish for m-gpux docs */
+:root {
+  --md-primary-fg-color: #334155;
+  --md-accent-fg-color: #06b6d4;
+}
+
+.md-sidebar--primary {
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.md-nav__title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.md-nav__link {
+  border-radius: 8px;
+  transition: background-color 140ms ease;
+}
+
+.md-nav__link:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.md-typeset h1 {
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h2 {
+  margin-top: 2rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+  padding-bottom: 0.35rem;
+}
+
+.md-typeset code {
+  border-radius: 6px;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 10px;
+}
+
+.md-main__inner {
+  max-width: 1320px;
+}

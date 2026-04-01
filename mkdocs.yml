@@ -4,21 +4,45 @@ site_url: https://puxhocdl.github.io/m-gpux/
 repo_url: https://github.com/PuxHocDL/m-gpux
 repo_name: PuxHocDL/m-gpux
 
+docs_dir: docs
+
 theme:
   name: material
   language: en
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: cyan
   features:
+    - navigation.instant
+    - navigation.expand
     - navigation.sections
+    - navigation.indexes
     - navigation.top
+    - toc.follow
+    - toc.integrate
     - content.code.copy
+  font:
+    text: IBM Plex Sans
+    code: IBM Plex Mono
+
+extra_css:
+  - stylesheets/extra.css
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
-  - Command Reference: commands.md
-  - FAQ: faq.md
+  - Guide:
+      - Getting Started: getting-started.md
+      - Command Reference: commands.md
+  - Support:
+      - FAQ and Troubleshooting: faq.md
+
+plugins:
+  - search
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - toc:
       permalink: true
