@@ -102,7 +102,9 @@ import time
 # __METRICS__
 
 app = modal.App("m-gpux-jupyter")
-image = modal.Image.debian_slim().pip_install("jupyterlab")
+image = modal.Image.debian_slim(){pip_section}.pip_install("jupyterlab").add_local_dir(
+    "{local_dir}", remote_path="/workspace", ignore={exclude_patterns}
+)
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_jupyter():
@@ -111,7 +113,8 @@ def run_jupyter():
     jupyter_port = 8888
     with modal.forward(jupyter_port) as tunnel:
         print(f"\\n=======================================================")
-        print(f"[JUPYTER READY] Connect via this URL: {tunnel.url}")
+        print(f"[JUPYTER READY] Connect via this URL: {{tunnel.url}}")
+        print(f"  Workspace files mounted at: /workspace")
         print(f"=======================================================\\n")
         
         subprocess.Popen(
@@ -128,6 +131,7 @@ def run_jupyter():
                 "--ServerApp.disable_check_xsrf=True",
                 "--ServerApp.allow_origin='*'",
                 "--ServerApp.allow_remote_access=True",
+                "--ServerApp.root_dir=/workspace",
             ]
         )
         time.sleep(86400)
@@ -382,8 +386,61 @@ def hub_main():
     action_choice = Prompt.ask("Select Action", choices=["1", "2", "3", "4"], default="1")
     
     if action_choice == "1":
-        script = JUPYTER_SCRIPT.replace("{gpu_type}", selected_gpu)
-        execute_modal_temp_script(script, f"Jupyter Lab on {selected_gpu}")
+        # --- Environment Setup ---
+        console.print("\n[bold cyan]Step 3: Environment Setup[/bold cyan]")
+        pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
+        if os.path.exists("requirements.txt"):
+            use_req = Prompt.ask(
+                "[green]Found requirements.txt.[/green] Install dependencies from it?",
+                choices=["y", "n"], default="y"
+            )
+            if use_req == "y":
+                req_escaped = os.path.abspath("requirements.txt").replace("\\", "/")
+                pip_section = f'.pip_install_from_requirements("{req_escaped}")'
+        else:
+            specify_req = Prompt.ask(
+                "No requirements.txt found. Specify a custom path?",
+                choices=["y", "n"], default="n"
+            )
+            if specify_req == "y":
+                req_input = Prompt.ask("Enter path to requirements.txt")
+                if os.path.exists(req_input):
+                    req_escaped = os.path.abspath(req_input).replace("\\", "/")
+                    pip_section = f'.pip_install_from_requirements("{req_escaped}")'
+                else:
+                    console.print(f"[bold red]File {req_input} not found. Using default packages.[/bold red]")
+
+        # --- File upload config ---
+        console.print("\n[bold cyan]Step 4: Configure File Upload[/bold cyan]")
+        console.print("[dim]Files and directories in current workspace:[/dim]")
+        entries = sorted(os.listdir("."))
+        for entry in entries:
+            if os.path.isdir(entry):
+                console.print(f"  [bold blue]{entry}/[/bold blue]")
+            else:
+                size = os.path.getsize(entry)
+                if size > 1024 * 1024:
+                    size_str = f" ({size / (1024*1024):.1f} MB)"
+                elif size > 1024:
+                    size_str = f" ({size / 1024:.1f} KB)"
+                else:
+                    size_str = ""
+                console.print(f"  {entry}{size_str}")
+
+        default_excludes = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox"
+        exclude_input = Prompt.ask(
+            "\n[bold cyan]Comma-separated patterns to exclude from upload (glob supported)[/bold cyan]",
+            default=default_excludes
+        )
+        exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
+
+        local_dir_escaped = os.path.abspath(".").replace("\\", "/")
+        script = (JUPYTER_SCRIPT
+            .replace("{gpu_type}", selected_gpu)
+            .replace("{local_dir}", local_dir_escaped)
+            .replace("{exclude_patterns}", repr(exclude_patterns))
+            .replace("{pip_section}", pip_section))
+        execute_modal_temp_script(script, f"Jupyter Lab on {selected_gpu}", detach=True)
         
     elif action_choice == "2":
         # Scan current dir for .py files
