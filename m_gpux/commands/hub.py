@@ -8,6 +8,7 @@ import os
 import sys
 import tomlkit
 from typing import Optional
+from m_gpux.commands._metrics_snippet import FUNCTIONS as _METRICS_FUNCTIONS
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -78,12 +79,19 @@ def _activate_profile(profile_name: str):
         console.print(f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]")
 
 AVAILABLE_GPUS = {
-    "1": ("T4", "Light inference/exploration"),
-    "2": ("L4", "Balance of cost/performance (24GB)"),
-    "3": ("A10G", "Good alternative for training/inference (24GB)"),
-    "4": ("A100", "High performance (40GB)"),
-    "5": ("A100-80GB", "Extreme performance (80GB)"),
-    "6": ("H100", "Top tier hopper architecture (80GB)"),
+    "1":  ("T4",            "Light inference/exploration (16GB)"),
+    "2":  ("L4",            "Balance of cost/performance (24GB)"),
+    "3":  ("A10G",          "Good alternative for training/inference (24GB)"),
+    "4":  ("L40S",          "Ada Lovelace, great for inference (48GB)"),
+    "5":  ("A100",          "High performance (40GB, default SXM)"),
+    "6":  ("A100-40GB",     "Ampere 40GB variant"),
+    "7":  ("A100-80GB",     "Extreme performance (80GB)"),
+    "8":  ("RTX-PRO-6000",   "RTX PRO 6000 — pro workstation GPU (48GB)"),
+    "9":  ("H100",          "Hopper architecture (80GB)"),
+    "10": ("H100!",         "H100 priority/reserved — guaranteed availability"),
+    "11": ("H200",          "Next-gen Hopper with HBM3e (141GB)"),
+    "12": ("B200",          "Blackwell architecture — latest gen"),
+    "13": ("B200+",         "B200 priority/reserved — guaranteed availability"),
 }
 
 JUPYTER_SCRIPT = """
@@ -91,11 +99,15 @@ import modal
 import subprocess
 import time
 
+# __METRICS__
+
 app = modal.App("m-gpux-jupyter")
 image = modal.Image.debian_slim().pip_install("jupyterlab")
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_jupyter():
+    _print_metrics()
+    _monitor_metrics()
     jupyter_port = 8888
     with modal.forward(jupyter_port) as tunnel:
         print(f"\\n=======================================================")
@@ -126,6 +138,8 @@ import modal
 import subprocess
 import sys
 
+# __METRICS__
+
 app = modal.App("m-gpux-runner")
 
 image = modal.Image.debian_slim(){pip_section}.add_local_dir(
@@ -134,6 +148,7 @@ image = modal.Image.debian_slim(){pip_section}.add_local_dir(
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_script():
+    _print_metrics()
     print("[EXECUTING] {script_name} on {gpu_type}...")
     stdin_input = {stdin_input}
     subprocess.run(
@@ -150,6 +165,8 @@ import subprocess
 import time
 import os
 
+# __METRICS__
+
 app = modal.App("m-gpux-interactive")
 image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
@@ -160,6 +177,8 @@ image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_comman
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_interactive():
+    _print_metrics()
+    _monitor_metrics()
     port = 8888
     # Start a tmux session so work survives browser disconnects
     subprocess.run(["tmux", "new-session", "-d", "-s", "main", "-c", "/workspace"])
@@ -185,6 +204,8 @@ def run_interactive():
 VLLM_SCRIPT = """
 import modal
 import subprocess
+
+# __METRICS__
 
 app = modal.App("m-gpux-vllm")
 
@@ -215,6 +236,8 @@ MINUTES = 60
 @modal.concurrent(max_inputs=50)
 @modal.web_server(port=8000, startup_timeout=10 * MINUTES)
 def serve():
+    _print_metrics()
+    _monitor_metrics()
     cmd = [
         "vllm", "serve", MODEL_NAME,
         "--served-model-name", MODEL_NAME, "llm",
@@ -232,6 +255,8 @@ import modal
 import subprocess
 import time
 
+# __METRICS__
+
 app = modal.App("m-gpux-shell")
 image = modal.Image.debian_slim().apt_install("bash", "curl").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
@@ -240,6 +265,8 @@ image = modal.Image.debian_slim().apt_install("bash", "curl").run_commands(
 
 @app.function(image=image, gpu="{gpu_type}", timeout=86400)
 def run_shell():
+    _print_metrics()
+    _monitor_metrics()
     port = 8888
     with modal.forward(port) as tunnel:
         print(f"\\n=======================================================")
@@ -251,6 +278,7 @@ def run_shell():
 
 
 def execute_modal_temp_script(content: str, description: str, detach: bool = False):
+    content = content.replace("# __METRICS__", _METRICS_FUNCTIONS)
     runner_file = "modal_runner.py"
     
     with open(runner_file, "w", encoding="utf-8") as f:
@@ -522,6 +550,7 @@ def hub_main():
         )
         
         if deploy_mode == "deploy":
+            script = script.replace("# __METRICS__", _METRICS_FUNCTIONS)
             runner_file = "modal_runner.py"
             with open(runner_file, "w", encoding="utf-8") as f:
                 f.write(script)
