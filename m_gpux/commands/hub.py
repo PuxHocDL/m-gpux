@@ -113,7 +113,7 @@ def run_jupyter():
     jupyter_port = 8888
     with modal.forward(jupyter_port) as tunnel:
         print(f"\\n=======================================================")
-        print(f"[JUPYTER READY] Connect via this URL: {{tunnel.url}}")
+        print(f"[JUPYTER READY] Connect via this URL: {tunnel.url}")
         print(f"  Workspace files mounted at: /workspace")
         print(f"=======================================================\\n")
         
