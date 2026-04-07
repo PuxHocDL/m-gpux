@@ -509,14 +509,14 @@ async function showAndExecuteScript(
   });
   terminal.show();
 
-  // Build command — activate profile, then run
+  // Build command — activate profile, then run (use ; for PowerShell compat)
   const selectedProfile = getActiveProfile();
-  const activateCmd = selectedProfile
-    ? `modal profile activate ${selectedProfile.name} && `
-    : "";
+  if (selectedProfile) {
+    terminal.sendText(`modal profile activate ${selectedProfile.name}`);
+  }
   const detachFlag = useDetach ? " --detach" : "";
   const escapedPath = runnerPath.replace(/\\/g, "/");
-  terminal.sendText(`${activateCmd}modal run${detachFlag} "${escapedPath}"`);
+  terminal.sendText(`modal run${detachFlag} "${escapedPath}"`);
 
   // Auto-cleanup when terminal closes (don't show dialog that steals focus)
   const disposable = vscode.window.onDidCloseTerminal((t) => {
