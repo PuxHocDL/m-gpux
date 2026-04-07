@@ -26,7 +26,7 @@ export class ActionsTreeProvider
     return [
       new ActionItem("GPU Hub", "Launch GPU provisioning wizard", "rocket", "mgpux.openHub"),
       new ActionItem("Probe Hardware", "Check GPU/CPU/Memory metrics", "pulse", "mgpux.loadProbe"),
-      new ActionItem("Billing Dashboard", "Open Modal usage page", "credit-card", "mgpux.openBillingDashboard"),
+      new ActionItem("Billing Dashboard", "Open Modal usage page", "globe", "mgpux.openBillingDashboard"),
       new ActionItem("Info", "Show M-GPUX info", "info", "mgpux.showInfo"),
     ];
   }
