@@ -31,6 +31,9 @@ export function activate(context: vscode.ExtensionContext) {
     statusBar.refresh();
   }
 
+  // Fetch billing on activation (async, non-blocking)
+  accountTree.refreshWithBilling();
+
   // --- Commands ---
 
   // GPU Hub
@@ -192,8 +195,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Refresh Accounts
   context.subscriptions.push(
-    vscode.commands.registerCommand("mgpux.refreshAccounts", () => {
-      refreshAll();
+    vscode.commands.registerCommand("mgpux.refreshAccounts", async () => {
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "M-GPUX: Fetching billing data..." },
+        async () => { await accountTree.refreshWithBilling(); }
+      );
+      statusBar.refresh();
     })
   );
 
