@@ -20,7 +20,10 @@
     "vllm",
     "machine-learning"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:mgpux.accountsView",
+    "onView:mgpux.actionsView"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
