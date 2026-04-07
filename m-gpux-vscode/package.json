@@ -83,6 +83,12 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "mgpux.billingUsage",
+        "title": "Show Billing Usage",
+        "category": "M-GPUX",
+        "icon": "$(graph)"
+      },
+      {
         "command": "mgpux.loadProbe",
         "title": "Probe GPU Hardware",
         "category": "M-GPUX",
