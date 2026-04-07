@@ -1,142 +1,155 @@
-# M-GPUX — VS Code Extension
+# M-GPUX — Modal GPU Orchestrator for VS Code
 
-> Modal GPU Orchestrator ngay trong VS Code. Quản lý tài khoản, chạy GPU workloads, theo dõi billing — không cần rời editor.
-
----
-
-## Yêu cầu
-
-- **VS Code** ≥ 1.85
-- **Modal CLI** đã cài (`pip install modal`) và đã login ít nhất 1 lần
-- **m-gpux CLI** (khuyến khích): `pip install m-gpux` — cần cho lệnh Load Probe
+> Provision GPU workloads, manage multi-profile Modal accounts, and track cloud billing — all without leaving your editor.
 
 ---
 
-## Cài đặt
+## Features
+
+- **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
+- **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
+- **Live Billing** — See remaining credits per account directly in the sidebar; hover for detailed breakdown
+- **Hardware Probing** — Inspect GPU/CPU/RAM metrics on any Modal container
+- **Native VS Code UI** — Output Channels for logs, progress notifications with cancel, clickable URL pop-ups when tunnels are ready
+
+---
+
+## Requirements
+
+| Requirement | Purpose |
+|-------------|---------|
+| **VS Code** ≥ 1.85 | Extension host |
+| **Python** ≥ 3.9 | Required by Modal CLI |
+| **Modal CLI** (`pip install modal`) | Core cloud runtime |
+| **m-gpux CLI** (`pip install m-gpux`) | Optional — needed for Load Probe and Billing Usage commands |
+
+---
+
+## Installation
 
 ```bash
-# Từ file VSIX
+# From VSIX file
 code --install-extension m-gpux-1.0.7.vsix
-
-# Hoặc trong VS Code: Ctrl+Shift+P → "Install from VSIX..."
 ```
 
-Sau khi cài, **Reload Window** (`Ctrl+Shift+P` → `Reload Window`).
+Or in VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**
+
+After installing, run **Reload Window** (`Ctrl+Shift+P` → `Reload Window`).
 
 ---
 
-## Giao diện
+## Getting Started
 
-Sau khi cài, bạn sẽ thấy:
+### 1. Open the Sidebar
 
-### 1. Sidebar Icon (Activity Bar)
+Click the **GPU chip icon** on the Activity Bar (left edge). Two panels appear:
 
-Nhìn thanh Activity Bar bên trái — icon hình GPU card sẽ xuất hiện. Click vào sẽ mở 2 panel:
+| Panel | Description |
+|-------|-------------|
+| **Accounts** | Lists all configured Modal profiles with active status and remaining credit |
+| **Quick Actions** | One-click access to GPU Hub, Probe, Billing, and Info |
 
-- **Accounts** — Danh sách các Modal profile đã cấu hình
-- **Quick Actions** — Các thao tác nhanh
+### 2. Add Your First Account
 
-### 2. Status Bar (thanh dưới cùng)
+Click the **+** button on the Accounts panel header, or run `Ctrl+Shift+P` → `M-GPUX: Add Account`.
 
-Góc trái dưới hiện `☁ M-GPUX: <profile-name>` — profile đang active. Click để switch.
+You can add credentials in two ways:
 
----
+- **Paste shortcut** — Paste a full `modal token set --token-id ak-... --token-secret as-... --profile=myname` command. The extension parses it automatically.
+- **Manual entry** — Leave the input empty and fill in Token ID, Token Secret, and Profile Name step by step.
 
-## Hướng dẫn sử dụng
+The first profile is automatically set as active.
 
-### Thêm tài khoản Modal
+### 3. Launch a GPU Workload
 
-1. Click **+** trên panel **Accounts**, hoặc `Ctrl+Shift+P` → `M-GPUX: Add Account`
-2. Bạn có 2 cách:
-   - **Paste nhanh**: Dán nguyên dòng `modal token set --token-id ak-xxx --token-secret as-xxx --profile=tên` → extension tự parse
-   - **Nhập thủ công**: Bỏ trống → nhập Token ID, Token Secret, Profile Name lần lượt
-3. Profile đầu tiên sẽ tự động được set Active
+Click **GPU Hub** in Quick Actions, or run `Ctrl+Shift+P` → `M-GPUX: Open GPU Hub`.
 
-### Chuyển tài khoản
+The wizard walks you through four steps:
 
-- Click vào tên profile trong sidebar → tự switch
-- Hoặc click status bar `☁ M-GPUX: ...` → chọn profile
-- Hoặc `Ctrl+Shift+P` → `M-GPUX: Switch Account`
+#### Step 1 — Select Profile
+Choose a Modal account. **AUTO** uses the currently active profile.
 
-### Xóa tài khoản
+#### Step 2 — Choose GPU
 
-- Right-click profile trong sidebar → **Remove Account**
-- Hoặc `Ctrl+Shift+P` → `M-GPUX: Remove Account`
+| GPU | VRAM | Notes |
+|-----|------|-------|
+| T4 | 16 GB | Budget inference |
+| L4 | 24 GB | Balanced cost/perf |
+| A10G | 24 GB | Training/inference |
+| L40S | 48 GB | Ada Lovelace |
+| A100 | 40 GB | High performance (SXM) |
+| A100-40GB | 40 GB | Ampere 40 GB variant |
+| A100-80GB | 80 GB | Extreme performance |
+| RTX-PRO-6000 | 48 GB | Pro workstation |
+| H100 | 80 GB | Hopper |
+| H100! | 80 GB | H100 reserved/priority |
+| H200 | 141 GB | Hopper + HBM3e |
+| B200 | — | Blackwell (latest gen) |
+| B200+ | — | B200 reserved/priority |
 
----
+#### Step 3 — Choose Application
 
-### GPU Hub — Chạy workload trên GPU
+| Application | Description |
+|-------------|-------------|
+| **Jupyter Lab** | Interactive notebook server with auto-tunneling. Your workspace files are mounted at `/workspace`. |
+| **Run Python Script** | Pick a `.py` file from your workspace and execute it remotely on the selected GPU. |
+| **Bash Shell** | Web-based terminal (ttyd + tmux). Survives browser disconnects — just reopen the URL. |
+| **vLLM Inference Server** | Deploy an OpenAI-compatible LLM API. Models: Qwen 1.5B/7B, Llama 3.1 8B, Gemma 9B, Mistral 7B. |
 
-Đây là tính năng chính. Click **GPU Hub** trong Quick Actions, hoặc `Ctrl+Shift+P` → `M-GPUX: Open GPU Hub`.
+#### Step 4 — Configure & Launch
 
-Extension sẽ dẫn bạn qua 4 bước:
-
-#### Bước 1: Chọn Profile
-- Chọn 1 profile Modal, hoặc **AUTO** (tự chọn profile đang active)
-
-#### Bước 2: Chọn GPU
-- T4, L4, A10G, A100, H100, H200, B200... đầy đủ 13 loại
-
-#### Bước 3: Chọn ứng dụng
-
-| Ứng dụng | Mô tả |
-|-----------|-------|
-| **Jupyter Lab** | Mở Jupyter trên GPU, tự mount code workspace hiện tại |
-| **Run Python Script** | Chọn file `.py` trong workspace → chạy trên GPU |
-| **Bash Shell** | Terminal web (ttyd + tmux), có thể đóng browser rồi mở lại |
-| **vLLM Inference** | Deploy LLM server (Qwen, Llama, Gemma, Mistral) với API OpenAI-compatible |
-
-#### Bước 4: Cấu hình & Chạy
-
-- Với Jupyter/Python: hỏi có dùng `requirements.txt` không, và pattern exclude file
-- Extension sẽ **tạo file `modal_runner.py`** trong workspace → mở để bạn xem/sửa
-- Chọn **Execute** → mở Terminal mới chạy `modal run modal_runner.py`
-- Sau khi chạy xong, hỏi có muốn xóa file tạm không
+- For Jupyter and Python: optionally use `requirements.txt` and set exclude patterns for file upload.
+- The extension generates a `modal_runner.py` script and opens it in the editor for review.
+- Click **Launch** → the process runs in the background with a progress notification.
+- When a tunnel URL is detected, a notification pops up with **Open in Browser** and **Copy URL** buttons.
+- The temp script is cleaned up automatically when the process exits.
 
 ---
 
-### Probe Hardware
+## Account Management
 
-Kiểm tra thông số GPU/CPU/RAM của một container Modal.
+| Action | How |
+|--------|-----|
+| **Add** | `+` button on Accounts panel, or `Ctrl+Shift+P` → `M-GPUX: Add Account` |
+| **Switch** | Click a profile name in the sidebar, or click the status bar, or `Ctrl+Shift+P` → `M-GPUX: Switch Account` |
+| **Remove** | Right-click a profile → Remove Account, or `Ctrl+Shift+P` → `M-GPUX: Remove Account` |
+| **Refresh** | Click the ⟳ button on the Accounts panel header — fetches live billing data |
 
-1. Click **Probe Hardware** trong Quick Actions, hoặc `Ctrl+Shift+P` → `M-GPUX: Probe GPU Hardware`
-2. Chọn GPU muốn probe (T4, L4, A10G, A100, H100)
-3. Mở Terminal chạy `m-gpux load probe --gpu <type>` → hiển thị metrics
+### Status Bar
 
-> ⚠️ Cần cài `m-gpux` CLI: `pip install m-gpux`
+The bottom-left of VS Code shows `☁ M-GPUX: <profile-name>`. Click it to switch profiles.
 
-### Billing Dashboard
+### Billing
 
-Click **Billing Dashboard** → mở trang https://modal.com/settings/usage trong browser.
-
-### Xem thông tin
-
-`Ctrl+Shift+P` → `M-GPUX: Show Info` — hiện version, số profile, profile đang active.
-
----
-
-## Tất cả Commands
-
-Mở Command Palette (`Ctrl+Shift+P`) và gõ `M-GPUX`:
-
-| Command | Phím tắt | Mô tả |
-|---------|----------|-------|
-| `M-GPUX: Open GPU Hub` | — | Wizard chạy workload GPU |
-| `M-GPUX: Add Account` | — | Thêm profile Modal |
-| `M-GPUX: Switch Account` | — | Chuyển profile đang active |
-| `M-GPUX: Remove Account` | — | Xóa profile |
-| `M-GPUX: Refresh Accounts` | — | Làm mới danh sách |
-| `M-GPUX: Probe GPU Hardware` | — | Kiểm tra hardware metrics |
-| `M-GPUX: Open Billing Dashboard` | — | Mở trang billing Modal |
-| `M-GPUX: Show Info` | — | Thông tin extension |
+- **Sidebar** — Each account shows remaining credit (e.g. `$27.50 left`). Hover for a used/remaining breakdown.
+- **Billing Usage** — Click in Quick Actions to run `m-gpux billing usage --all` and see a detailed cost table.
+- **Billing Dashboard** — Opens [modal.com/settings/usage](https://modal.com/settings/usage) in your browser.
 
 ---
 
-## Cấu hình được lưu ở đâu?
+## All Commands
 
-Extension đọc/ghi trực tiếp file `~/.modal.toml` — cùng file mà Modal CLI sử dụng. Không có config riêng.
+Open the Command Palette (`Ctrl+Shift+P`) and type `M-GPUX`:
 
-Ví dụ `~/.modal.toml`:
+| Command | Description |
+|---------|-------------|
+| `M-GPUX: Open GPU Hub` | Launch the GPU provisioning wizard |
+| `M-GPUX: Add Account` | Add a new Modal profile |
+| `M-GPUX: Switch Account` | Switch the active profile |
+| `M-GPUX: Remove Account` | Delete a profile |
+| `M-GPUX: Refresh Accounts` | Reload accounts and fetch billing data |
+| `M-GPUX: Probe GPU Hardware` | Spin up a container and display hardware metrics |
+| `M-GPUX: Show Billing Usage` | Aggregate billing report across accounts |
+| `M-GPUX: Open Billing Dashboard` | Open Modal usage page in browser |
+| `M-GPUX: Show Info` | Display extension version and profile count |
+
+---
+
+## Configuration
+
+The extension reads and writes `~/.modal.toml` directly — the same file used by the Modal CLI. No separate config needed.
+
+Example `~/.modal.toml`:
 
 ```toml
 [personal]
@@ -151,29 +164,27 @@ token_secret = "as-yyyy"
 
 ---
 
-## Workflow nhanh
+## Quick Workflow
 
 ```
-1. Mở VS Code với project Python của bạn
-2. Click icon M-GPUX trên sidebar
-3. Thêm account nếu chưa có (nút +)
-4. Click "GPU Hub" → chọn GPU → chọn Jupyter
-5. Extension tạo script → mở Terminal → chạy
-6. Copy URL tunnel → mở browser → code trên GPU
+1. Open VS Code with your Python project
+2. Click the M-GPUX icon on the sidebar
+3. Add an account if you haven't already (+ button)
+4. Click "GPU Hub" → pick a GPU → pick Jupyter Lab
+5. Review the generated script → click Launch
+6. Notification pops up with your Jupyter URL → Open in Browser
+7. Code on a remote GPU with your workspace files ready at /workspace
 ```
 
 ---
 
 ## Troubleshooting
 
-**Extension không hiện trên sidebar?**
-→ `Ctrl+Shift+P` → `Reload Window`
-
-**Lỗi "modal: command not found"?**
-→ Cài Modal: `pip install modal`
-
-**Probe không chạy?**
-→ Cài m-gpux CLI: `pip install m-gpux`
-
-**Profile không switch được?**
-→ Kiểm tra file `~/.modal.toml` có đúng format không
+| Problem | Solution |
+|---------|----------|
+| Extension not visible in sidebar | `Ctrl+Shift+P` → `Reload Window` |
+| `modal: command not found` | Install Modal: `pip install modal` |
+| Load Probe doesn't work | Install the CLI: `pip install m-gpux` |
+| `charmap codec can't encode` error | Update to the latest extension version (fixed: sets `PYTHONIOENCODING=utf-8`) |
+| Profile won't switch | Verify `~/.modal.toml` is valid TOML |
+| Billing shows no data | Click ⟳ Refresh — billing is fetched async via the Modal SDK |
