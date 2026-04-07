@@ -522,13 +522,15 @@ async function showAndExecuteScript(
     }
   }
 
-  // Run modal with progress
+  // Run modal with progress — use just filename with cwd to avoid space-in-path issues
   const useDetach = detach;
+  const runnerFilename = path.basename(runnerPath);
   const args = useDetach
-    ? ["run", "--detach", runnerPath]
-    : ["run", runnerPath];
+    ? ["run", "--detach", runnerFilename]
+    : ["run", runnerFilename];
 
   outputChannel.appendLine(`▸ Running: modal ${args.join(" ")}`);
+  outputChannel.appendLine(`  CWD: ${localDir}`);
   outputChannel.appendLine(`  Mode: ${useDetach ? "Detached (background)" : "Foreground"}\n`);
 
   // Show progress in notification
