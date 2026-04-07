@@ -545,7 +545,7 @@ async function showAndExecuteScript(
         const proc = spawn("modal", args, {
           cwd: localDir,
           shell: true,
-          env: { ...process.env },
+          env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
         });
 
         let foundUrl = false;
@@ -649,7 +649,7 @@ async function showAndExecuteScript(
 function runCommand(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const { spawn } = require("child_process");
   return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { cwd, shell: true });
+    const proc = spawn(cmd, args, { cwd, shell: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" } });
     let stdout = "";
     let stderr = "";
     proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
