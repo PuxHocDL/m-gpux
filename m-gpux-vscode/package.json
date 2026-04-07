@@ -1,0 +1,138 @@
+{
+  "name": "m-gpux",
+  "displayName": "M-GPUX — Modal GPU Orchestrator",
+  "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
+  "version": "1.0.7",
+  "publisher": "pux",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "modal",
+    "gpu",
+    "cloud",
+    "jupyter",
+    "vllm",
+    "machine-learning"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "m-gpux-sidebar",
+          "title": "M-GPUX",
+          "icon": "resources/gpu-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "m-gpux-sidebar": [
+        {
+          "id": "mgpux.accountsView",
+          "name": "Accounts"
+        },
+        {
+          "id": "mgpux.actionsView",
+          "name": "Quick Actions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "mgpux.openHub",
+        "title": "Open GPU Hub",
+        "category": "M-GPUX",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "mgpux.addAccount",
+        "title": "Add Account",
+        "category": "M-GPUX",
+        "icon": "$(add)"
+      },
+      {
+        "command": "mgpux.switchAccount",
+        "title": "Switch Account",
+        "category": "M-GPUX",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "mgpux.removeAccount",
+        "title": "Remove Account",
+        "category": "M-GPUX",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "mgpux.refreshAccounts",
+        "title": "Refresh Accounts",
+        "category": "M-GPUX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mgpux.openBillingDashboard",
+        "title": "Open Billing Dashboard",
+        "category": "M-GPUX",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "mgpux.loadProbe",
+        "title": "Probe GPU Hardware",
+        "category": "M-GPUX",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "mgpux.showInfo",
+        "title": "Show Info",
+        "category": "M-GPUX",
+        "icon": "$(info)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "mgpux.addAccount",
+          "when": "view == mgpux.accountsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mgpux.refreshAccounts",
+          "when": "view == mgpux.accountsView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "mgpux.switchAccount",
+          "when": "view == mgpux.accountsView && viewItem == account",
+          "group": "inline"
+        },
+        {
+          "command": "mgpux.removeAccount",
+          "when": "view == mgpux.accountsView && viewItem == account"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "smol-toml": "^1.1.0"
+  }
+}
