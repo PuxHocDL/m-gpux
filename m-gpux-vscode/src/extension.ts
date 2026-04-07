@@ -206,6 +206,24 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Billing Usage (show cost in terminal)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.billingUsage", async () => {
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: "All Accounts", description: "Aggregate across all profiles", flag: "--all" },
+          { label: "Active Account", description: "Current active profile only", flag: "" },
+        ],
+        { title: "Billing Usage — Scope" }
+      );
+      if (!pick) { return; }
+      const terminal = vscode.window.createTerminal({ name: "M-GPUX: Billing" });
+      terminal.show();
+      const flag = (pick as any).flag;
+      terminal.sendText(`m-gpux billing usage ${flag}`.trim());
+    })
+  );
+
   // Load Probe
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.loadProbe", async () => {
