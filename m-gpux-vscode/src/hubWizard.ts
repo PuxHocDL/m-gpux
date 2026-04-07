@@ -488,48 +488,47 @@ async function showAndExecuteScript(
 
   // Ask to execute
   const choice = await vscode.window.showInformationMessage(
-    `Ready to launch ${actionType} on ${gpu}. Execute now?`,
+    `Ready to launch ${actionType} on ${gpu}. Review the script, then choose an action.`,
     { modal: true },
-    "Execute",
-    "Execute (Detached)",
+    "Run (Detached)",
+    "Run (Foreground)",
     "Cancel"
   );
 
   if (choice === "Cancel" || !choice) {
-    vscode.window.showInformationMessage("Execution cancelled.");
+    vscode.window.showInformationMessage("Execution cancelled. modal_runner.py kept for manual use.");
     return;
   }
 
-  const useDetach = choice === "Execute (Detached)" || detach;
+  const useDetach = choice === "Run (Detached)";
 
-  // Activate profile via modal CLI
+  // Create terminal and activate profile first
   const terminal = vscode.window.createTerminal({
     name: `M-GPUX: ${actionType} (${gpu})`,
     cwd: localDir,
   });
   terminal.show();
 
-  // Run modal
+  // Build command — activate profile, then run
+  const selectedProfile = getActiveProfile();
+  const activateCmd = selectedProfile
+    ? `modal profile activate ${selectedProfile.name} && `
+    : "";
   const detachFlag = useDetach ? " --detach" : "";
-  terminal.sendText(`modal run${detachFlag} "${runnerPath}"`);
+  const escapedPath = runnerPath.replace(/\\/g, "/");
+  terminal.sendText(`${activateCmd}modal run${detachFlag} "${escapedPath}"`);
 
-  // Offer cleanup after a delay
-  const cleanup = await vscode.window.showInformationMessage(
-    `Script is running in terminal. Delete modal_runner.py when done?`,
-    "Delete Later",
-    "Keep File"
-  );
-  if (cleanup === "Delete Later") {
-    // Register a disposable that watches for terminal close
-    const disposable = vscode.window.onDidCloseTerminal((t) => {
-      if (t === terminal) {
-        try {
+  // Auto-cleanup when terminal closes (don't show dialog that steals focus)
+  const disposable = vscode.window.onDidCloseTerminal((t) => {
+    if (t === terminal) {
+      try {
+        if (fs.existsSync(runnerPath)) {
           fs.unlinkSync(runnerPath);
-        } catch {
-          // file may already be deleted
         }
-        disposable.dispose();
+      } catch {
+        // file may already be deleted
       }
-    });
-  }
+      disposable.dispose();
+    }
+  });
 }
