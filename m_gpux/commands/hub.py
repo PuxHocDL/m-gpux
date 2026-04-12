@@ -244,7 +244,7 @@ def serve():
     _monitor_metrics()
     cmd = [
         "vllm", "serve", MODEL_NAME,
-        "--served-model-name", MODEL_NAME, "llm",
+        "--served-model-name", MODEL_NAME,
         "--host", "0.0.0.0",
         "--port", "8000",
         "--enforce-eager",
@@ -330,7 +330,34 @@ def execute_modal_temp_script(content: str, description: str, detach: bool = Fal
             console.print(f"[dim]Reopen the tunnel URL in your browser to reconnect.[/dim]")
         else:
             console.print(f"\n[yellow]Execution of {description} interrupted.[/yellow]")
-        
+
+    # Offer to stop the app
+    stop_choice = Prompt.ask(
+        f"\n[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
+        choices=["y", "n"],
+        default="y",
+    )
+    if stop_choice.lower() == "y":
+        console.print("[cyan]Stopping app...[/cyan]")
+        # Figure out the app name from the runner file
+        app_name = None
+        try:
+            with open(runner_file, "r", encoding="utf-8") as rf:
+                for line in rf:
+                    if 'modal.App(' in line:
+                        import re
+                        m = re.search(r'modal\.App\(["\']([^"\']+)', line)
+                        if m:
+                            app_name = m.group(1)
+                        break
+        except Exception:
+            pass
+        if app_name:
+            subprocess.run(["modal", "app", "stop", app_name], capture_output=True)
+            console.print(f"[green]App '{app_name}' stopped. GPU released.[/green]")
+        else:
+            console.print("[yellow]Could not determine app name. Stop manually: modal app stop <name>[/yellow]")
+
     del_choice = Prompt.ask(f"\n[bold cyan]Do you want to delete {runner_file}?[/bold cyan]", choices=["y", "n"], default="y")
     if del_choice.lower() == "y":
         try:
@@ -622,6 +649,7 @@ def hub_main():
             console.print(f"[bold green]Deploying vLLM server with {selected_model} on {selected_gpu}...[/bold green]")
             try:
                 subprocess.run(["modal", "deploy", runner_file])
+                console.print("\n[green]vLLM deployed. When done, stop with:[/green] [bold yellow]m-gpux stop[/bold yellow]")
             except KeyboardInterrupt:
                 console.print("\n[yellow]Interrupted.[/yellow]")
         else:
