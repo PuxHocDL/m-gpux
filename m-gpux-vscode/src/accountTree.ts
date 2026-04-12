@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { loadProfiles, ModalProfile } from "./config";
+import { loadProfiles, ModalProfile, fetchAllBilling, BillingInfo } from "./config";
 
 export class AccountTreeProvider
   implements vscode.TreeDataProvider<AccountItem>
@@ -9,7 +9,22 @@ export class AccountTreeProvider
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
+  private billingCache: Map<string, BillingInfo> = new Map();
+
   refresh(): void {
+    this._onDidChangeTreeData.fire();
+  }
+
+  async refreshWithBilling(): Promise<void> {
+    try {
+      const billing = await fetchAllBilling();
+      this.billingCache.clear();
+      for (const b of billing) {
+        this.billingCache.set(b.profileName, b);
+      }
+    } catch {
+      // billing fetch failed, show accounts without billing
+    }
     this._onDidChangeTreeData.fire();
   }
 
@@ -25,12 +40,13 @@ export class AccountTreeProvider
           "No accounts configured",
           "",
           false,
-          true
+          true,
+          undefined
         ),
       ];
     }
     return profiles.map(
-      (p) => new AccountItem(p.name, p.token_id, p.active, false)
+      (p) => new AccountItem(p.name, p.token_id, p.active, false, this.billingCache.get(p.name))
     );
   }
 }
@@ -40,7 +56,8 @@ export class AccountItem extends vscode.TreeItem {
     public readonly profileName: string,
     public readonly tokenId: string,
     public readonly active: boolean,
-    public readonly isPlaceholder: boolean
+    public readonly isPlaceholder: boolean,
+    public readonly billing: BillingInfo | undefined
   ) {
     super(profileName, vscode.TreeItemCollapsibleState.None);
 
@@ -49,7 +66,13 @@ export class AccountItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon("info");
       this.contextValue = "placeholder";
     } else {
-      this.description = active ? "● Active" : "";
+      // Build description: active marker + billing
+      let desc = active ? "● Active" : "";
+      if (billing && billing.used >= 0) {
+        const balanceStr = `$${billing.remaining.toFixed(2)} left`;
+        desc = desc ? `${desc} · ${balanceStr}` : balanceStr;
+      }
+      this.description = desc;
       this.iconPath = new vscode.ThemeIcon(
         active ? "account" : "person",
         active
@@ -57,7 +80,17 @@ export class AccountItem extends vscode.TreeItem {
           : undefined
       );
       this.contextValue = "account";
-      this.tooltip = `Profile: ${profileName}\nToken ID: ${tokenId.substring(0, 8)}...${active ? "\n✓ Active" : ""}`;
+
+      // Tooltip with detailed billing
+      let tip = `Profile: ${profileName}\nToken ID: ${tokenId.substring(0, 8)}...`;
+      if (active) { tip += "\n✓ Active"; }
+      if (billing && billing.used >= 0) {
+        tip += `\n\nBilling this month:`;
+        tip += `\n  Used: $${billing.used.toFixed(2)}`;
+        tip += `\n  Remaining: $${billing.remaining.toFixed(2)} / $30.00`;
+      }
+      this.tooltip = tip;
+
       this.command = {
         command: "mgpux.switchAccount",
         title: "Switch to this account",

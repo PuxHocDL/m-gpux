@@ -31,6 +31,9 @@ export function activate(context: vscode.ExtensionContext) {
     statusBar.refresh();
   }
 
+  // Fetch billing on activation (async, non-blocking)
+  accountTree.refreshWithBilling();
+
   // --- Commands ---
 
   // GPU Hub
@@ -192,8 +195,12 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Refresh Accounts
   context.subscriptions.push(
-    vscode.commands.registerCommand("mgpux.refreshAccounts", () => {
-      refreshAll();
+    vscode.commands.registerCommand("mgpux.refreshAccounts", async () => {
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "M-GPUX: Fetching billing data..." },
+        async () => { await accountTree.refreshWithBilling(); }
+      );
+      statusBar.refresh();
     })
   );
 
@@ -203,6 +210,24 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.env.openExternal(
         vscode.Uri.parse("https://modal.com/settings/usage")
       );
+    })
+  );
+
+  // Billing Usage (show cost in terminal)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.billingUsage", async () => {
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: "All Accounts", description: "Aggregate across all profiles", flag: "--all" },
+          { label: "Active Account", description: "Current active profile only", flag: "" },
+        ],
+        { title: "Billing Usage — Scope" }
+      );
+      if (!pick) { return; }
+      const terminal = vscode.window.createTerminal({ name: "M-GPUX: Billing" });
+      terminal.show();
+      const flag = (pick as any).flag;
+      terminal.sendText(`m-gpux billing usage ${flag}`.trim());
     })
   );
 

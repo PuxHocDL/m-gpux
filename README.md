@@ -8,6 +8,7 @@
 
 ## Highlights
 
+- **LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth
 - Interactive GPU hub for Jupyter, script execution, and web shell sessions
 - Multi-account profile management in one command namespace
 - Billing inspection per profile or across all configured accounts
@@ -57,7 +58,10 @@ m-gpux account list
 # 3) Launch the interactive GPU hub
 m-gpux hub
 
-# 4) Inspect 30-day usage across all accounts
+# 4) Deploy an LLM as an OpenAI-compatible API
+m-gpux serve deploy
+
+# 5) Inspect 30-day usage across all accounts
 m-gpux billing usage --days 30 --all
 ```
 
@@ -100,6 +104,45 @@ Hub actions:
 - Run local Python script on selected GPU
 - Interactive web Bash shell on selected GPU
 
+### LLM API Server
+
+```bash
+# Create an API key
+m-gpux serve keys create
+
+# Deploy a model (interactive wizard)
+m-gpux serve deploy
+
+# Check warm status
+m-gpux serve warmup
+
+# Stop the server
+m-gpux serve stop
+```
+
+Deploy any HuggingFace model as an OpenAI-compatible API with:
+
+- Bearer token authentication (401/403)
+- Streaming & non-streaming chat completions
+- Configurable GPU, context length, and keep-warm containers
+- 11 popular model presets (Qwen, Llama, Gemma, Phi, etc.)
+
+### API Key Management
+
+```bash
+m-gpux serve keys create        # Generate a new key
+m-gpux serve keys list          # List all keys (masked)
+m-gpux serve keys show <name>   # Reveal full key value
+m-gpux serve keys revoke <name> # Revoke a key
+```
+
+### Stop Running Apps
+
+```bash
+m-gpux stop          # Stop apps on current profile
+m-gpux stop --all    # Stop apps across ALL profiles
+```
+
 ## Documentation
 
 - Website: https://puxhocdl.github.io/m-gpux/
@@ -114,6 +157,8 @@ Hub actions:
 - `m_gpux/commands/account.py`: profile CRUD and active profile switching
 - `m_gpux/commands/billing.py`: usage aggregation and billing dashboard links
 - `m_gpux/commands/hub.py`: guided GPU runtime launcher
+- `m_gpux/commands/serve.py`: LLM API deployment, auth proxy, API key management
+- `m_gpux/commands/load.py`: live GPU hardware metrics probe
 
 ## Configuration
 
@@ -154,8 +199,8 @@ The repository includes automated PyPI publishing via GitHub Actions.
 4. Create and push a version tag:
 
 ```bash
-git tag v1.0.1
-git push origin v1.0.1
+git tag v1.0.8
+git push origin v1.0.8
 ```
 
 The workflow `Publish Python Package` will build and publish automatically with OIDC.
