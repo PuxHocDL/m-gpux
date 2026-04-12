@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e1e2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#11111b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#89b4fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#74c7ec;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rect -->
+  <rect width="256" height="256" rx="48" fill="url(#bg)"/>
+
+  <!-- GPU chip body -->
+  <rect x="58" y="58" width="140" height="140" rx="10" fill="none" stroke="url(#accent)" stroke-width="3"/>
+
+  <!-- Pins - top -->
+  <line x1="90" y1="58" x2="90" y2="38" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="115" y1="58" x2="115" y2="38" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="140" y1="58" x2="140" y2="38" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="165" y1="58" x2="165" y2="38" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Pins - bottom -->
+  <line x1="90" y1="198" x2="90" y2="218" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="115" y1="198" x2="115" y2="218" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="140" y1="198" x2="140" y2="218" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="165" y1="198" x2="165" y2="218" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Pins - left -->
+  <line x1="58" y1="90" x2="38" y2="90" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="58" y1="115" x2="38" y2="115" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="58" y1="140" x2="38" y2="140" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="58" y1="165" x2="38" y2="165" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Pins - right -->
+  <line x1="198" y1="90" x2="218" y2="90" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="198" y1="115" x2="218" y2="115" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="198" y1="140" x2="218" y2="140" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+  <line x1="198" y1="165" x2="218" y2="165" stroke="#89b4fa" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Inner die area -->
+  <rect x="78" y="78" width="100" height="100" rx="4" fill="#181825" stroke="#89b4fa" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Grid dots inside die (processing cores) -->
+  <g fill="#89b4fa" opacity="0.5">
+    <circle cx="96" cy="96" r="3"/><circle cx="116" cy="96" r="3"/><circle cx="136" cy="96" r="3"/><circle cx="156" cy="96" r="3"/>
+    <circle cx="96" cy="116" r="3"/><circle cx="116" cy="116" r="3"/><circle cx="136" cy="116" r="3"/><circle cx="156" cy="116" r="3"/>
+    <circle cx="96" cy="136" r="3"/><circle cx="116" cy="136" r="3"/><circle cx="136" cy="136" r="3"/><circle cx="156" cy="136" r="3"/>
+    <circle cx="96" cy="156" r="3"/><circle cx="116" cy="156" r="3"/><circle cx="136" cy="156" r="3"/><circle cx="156" cy="156" r="3"/>
+  </g>
+
+  <!-- "M" letter centered -->
+  <text x="128" y="140" font-family="'Segoe UI', 'SF Pro Display', Arial, sans-serif" font-weight="800" font-size="48" fill="#cdd6f4" text-anchor="middle">M</text>
+</svg>

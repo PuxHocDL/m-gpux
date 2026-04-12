@@ -10,6 +10,7 @@ Welcome to the official docs for `m-gpux`, a production-focused CLI for Modal GP
 
 - Manage multiple Modal identities in one place
 - Launch GPU runtimes through a guided interactive hub
+- Deploy LLMs as OpenAI-compatible APIs with API key authentication
 - Track usage costs by account or across all profiles
 
 ## Start Here
@@ -37,6 +38,17 @@ Welcome to the official docs for `m-gpux`, a production-focused CLI for Modal GP
 ### Check weekly cost across all accounts
 
 `m-gpux billing usage --days 7 --all`
+
+### Deploy an LLM as an OpenAI-compatible API
+
+1. `m-gpux serve keys create`
+2. `m-gpux serve deploy`
+3. Select model, GPU, context length, keep-warm, and API key
+4. Use the endpoint with any OpenAI-compatible client
+
+### Stop running apps
+
+`m-gpux stop --all`
 
 !!! tip "Pro workflow"
 	Keep one profile for personal experiments and one for team workloads,

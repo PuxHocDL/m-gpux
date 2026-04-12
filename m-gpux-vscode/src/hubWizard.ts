@@ -478,6 +478,8 @@ async function showAndExecuteScript(
   detach: boolean,
   localDir: string
 ): Promise<void> {
+  const { spawn } = require("child_process");
+
   // Write temporary script
   const runnerPath = path.join(localDir, "modal_runner.py");
   fs.writeFileSync(runnerPath, content, "utf-8");
@@ -488,48 +490,175 @@ async function showAndExecuteScript(
 
   // Ask to execute
   const choice = await vscode.window.showInformationMessage(
-    `Ready to launch ${actionType} on ${gpu}. Execute now?`,
+    `Ready to launch ${actionType} on ${gpu}. Review the script, then choose an action.`,
     { modal: true },
-    "Execute",
-    "Execute (Detached)",
+    "Launch",
     "Cancel"
   );
 
   if (choice === "Cancel" || !choice) {
-    vscode.window.showInformationMessage("Execution cancelled.");
+    vscode.window.showInformationMessage("Execution cancelled. modal_runner.py kept for manual use.");
     return;
   }
 
-  const useDetach = choice === "Execute (Detached)" || detach;
+  // Create output channel for logs
+  const outputChannel = vscode.window.createOutputChannel(`M-GPUX: ${actionType} (${gpu})`, "log");
+  outputChannel.show(true);
+  outputChannel.appendLine(`═══════════════════════════════════════════════`);
+  outputChannel.appendLine(`  M-GPUX: Launching ${actionType} on ${gpu}`);
+  outputChannel.appendLine(`  Profile: ${getActiveProfile()?.name ?? "default"}`);
+  outputChannel.appendLine(`  Time: ${new Date().toLocaleString()}`);
+  outputChannel.appendLine(`═══════════════════════════════════════════════\n`);
 
-  // Activate profile via modal CLI
-  const terminal = vscode.window.createTerminal({
-    name: `M-GPUX: ${actionType} (${gpu})`,
-    cwd: localDir,
-  });
-  terminal.show();
-
-  // Run modal
-  const detachFlag = useDetach ? " --detach" : "";
-  terminal.sendText(`modal run${detachFlag} "${runnerPath}"`);
-
-  // Offer cleanup after a delay
-  const cleanup = await vscode.window.showInformationMessage(
-    `Script is running in terminal. Delete modal_runner.py when done?`,
-    "Delete Later",
-    "Keep File"
-  );
-  if (cleanup === "Delete Later") {
-    // Register a disposable that watches for terminal close
-    const disposable = vscode.window.onDidCloseTerminal((t) => {
-      if (t === terminal) {
-        try {
-          fs.unlinkSync(runnerPath);
-        } catch {
-          // file may already be deleted
-        }
-        disposable.dispose();
-      }
-    });
+  // Activate profile first
+  const selectedProfile = getActiveProfile();
+  if (selectedProfile) {
+    outputChannel.appendLine(`▸ Activating profile: ${selectedProfile.name}`);
+    const activateResult = await runCommand("modal", ["profile", "activate", selectedProfile.name], localDir);
+    if (activateResult.exitCode !== 0) {
+      outputChannel.appendLine(`⚠ Profile activation warning: ${activateResult.stderr}`);
+    } else {
+      outputChannel.appendLine(`✓ Profile activated\n`);
+    }
   }
+
+  // Run modal with progress — use just filename with cwd to avoid space-in-path issues
+  const useDetach = detach;
+  const runnerFilename = path.basename(runnerPath);
+  const args = useDetach
+    ? ["run", "--detach", runnerFilename]
+    : ["run", runnerFilename];
+
+  outputChannel.appendLine(`▸ Running: modal ${args.join(" ")}`);
+  outputChannel.appendLine(`  CWD: ${localDir}`);
+  outputChannel.appendLine(`  Mode: ${useDetach ? "Detached (background)" : "Foreground"}\n`);
+
+  // Show progress in notification
+  vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `M-GPUX: Launching ${actionType} on ${gpu}...`,
+      cancellable: true,
+    },
+    (progress, token) => {
+      return new Promise<void>((resolve) => {
+        const proc = spawn("modal", args, {
+          cwd: localDir,
+          shell: true,
+          env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+        });
+
+        let foundUrl = false;
+
+        token.onCancellationRequested(() => {
+          proc.kill();
+          outputChannel.appendLine("\n⚠ Cancelled by user.");
+          resolve();
+        });
+
+        proc.stdout.on("data", (data: Buffer) => {
+          const text = data.toString();
+          outputChannel.append(text);
+
+          // Detect URLs in output
+          const urlMatch = text.match(/https?:\/\/[^\s"']+/g);
+          if (urlMatch && !foundUrl) {
+            foundUrl = true;
+            const url = urlMatch[0];
+
+            progress.report({ message: "Ready! Opening..." });
+
+            // Show persistent notification with URL
+            vscode.window.showInformationMessage(
+              `${actionType} is ready on ${gpu}!`,
+              "Open in Browser",
+              "Copy URL"
+            ).then((action) => {
+              if (action === "Open in Browser") {
+                vscode.env.openExternal(vscode.Uri.parse(url));
+              } else if (action === "Copy URL") {
+                vscode.env.clipboard.writeText(url);
+                vscode.window.showInformationMessage("URL copied to clipboard!");
+              }
+            });
+
+            outputChannel.appendLine(`\n${"═".repeat(50)}`);
+            outputChannel.appendLine(`  ✓ ${actionType} READY`);
+            outputChannel.appendLine(`  URL: ${url}`);
+            outputChannel.appendLine(`${"═".repeat(50)}\n`);
+          }
+        });
+
+        proc.stderr.on("data", (data: Buffer) => {
+          const text = data.toString();
+          outputChannel.append(text);
+
+          // Modal also prints URLs and status to stderr
+          const urlMatch = text.match(/https?:\/\/[^\s"']+/g);
+          if (urlMatch && !foundUrl) {
+            foundUrl = true;
+            const url = urlMatch[0];
+            progress.report({ message: "Ready!" });
+
+            vscode.window.showInformationMessage(
+              `${actionType} is running on ${gpu}`,
+              "Open Modal Dashboard"
+            ).then((action) => {
+              if (action === "Open Modal Dashboard") {
+                vscode.env.openExternal(vscode.Uri.parse(url));
+              }
+            });
+          }
+        });
+
+        proc.on("close", (code: number | null) => {
+          if (code === 0) {
+            outputChannel.appendLine(`\n✓ Process completed successfully.`);
+            if (!foundUrl) {
+              vscode.window.showInformationMessage(`${actionType} on ${gpu} completed.`);
+            }
+          } else if (code !== null) {
+            outputChannel.appendLine(`\n✗ Process exited with code ${code}.`);
+            vscode.window.showWarningMessage(
+              `${actionType} exited with code ${code}. Check Output for details.`
+            );
+          }
+
+          // Cleanup temp file
+          try {
+            if (fs.existsSync(runnerPath)) {
+              fs.unlinkSync(runnerPath);
+              outputChannel.appendLine(`  Cleaned up ${path.basename(runnerPath)}`);
+            }
+          } catch { /* ignore */ }
+
+          resolve();
+        });
+
+        proc.on("error", (err: Error) => {
+          outputChannel.appendLine(`\n✗ Failed to start: ${err.message}`);
+          vscode.window.showErrorMessage(`Failed to run modal: ${err.message}`);
+          resolve();
+        });
+      });
+    }
+  );
+}
+
+/** Helper: run a command and return stdout/stderr/exitCode */
+function runCommand(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const { spawn } = require("child_process");
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args, { cwd, shell: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" } });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+    proc.on("close", (code: number | null) => {
+      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    });
+    proc.on("error", () => {
+      resolve({ stdout, stderr, exitCode: 1 });
+    });
+  });
 }
