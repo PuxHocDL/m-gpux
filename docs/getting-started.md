@@ -55,3 +55,53 @@ m-gpux billing usage --days 30 --all
 3. Switch between profiles with `account switch`.
 4. Start GPU sessions through `hub`.
 5. Review usage weekly with `billing usage`.
+
+## Deploy an LLM API
+
+Turn any HuggingFace model into an OpenAI-compatible API with authentication:
+
+### 1. Create an API key
+
+```bash
+m-gpux serve keys create --name my-key
+```
+
+### 2. Deploy with the interactive wizard
+
+```bash
+m-gpux serve deploy
+```
+
+The wizard guides you through model, GPU, context length, keep-warm, and API key selection.
+
+### 3. Test your endpoint
+
+```bash
+curl https://<your-workspace>--m-gpux-llm-api-serve.modal.run/v1/models \
+  -H "Authorization: Bearer sk-mgpux-..."
+```
+
+### 4. Use with OpenAI SDK
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://<your-workspace>--m-gpux-llm-api-serve.modal.run/v1",
+    api_key="sk-mgpux-...",
+)
+
+response = client.chat.completions.create(
+    model="your-model-name",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(response.choices[0].message.content)
+```
+
+### 5. Stop when done
+
+```bash
+m-gpux serve stop
+# or stop all running apps
+m-gpux stop --all
+```
