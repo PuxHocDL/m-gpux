@@ -220,9 +220,14 @@ async def proxy(request: Request, path: str):
                     yield f"data: {err}{nl}{nl}data: [DONE]{nl}{nl}".encode()
             return StreamingResponse(gen(), media_type="text/event-stream")
         r = await http_client.request(request.method, f"/v1/{path}", content=body, headers=headers)
-        return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type","application/json"))
+        resp_body = r.content
+        return Response(content=resp_body, status_code=r.status_code,
+                        headers={"content-length": str(len(resp_body))},
+                        media_type=r.headers.get("content-type","application/json"))
     except (httpx.ConnectError, httpx.TimeoutException):
         return JSONResponse(status_code=503, content={"error":{"message":"Model is still loading. Try again in a minute.","type":"server_error"}})
+    except Exception as exc:
+        return JSONResponse(status_code=502, content={"error":{"message":f"Backend error: {exc}","type":"server_error"}})
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info",
