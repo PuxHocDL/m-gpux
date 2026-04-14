@@ -225,7 +225,9 @@ async def proxy(request: Request, path: str):
         return JSONResponse(status_code=503, content={"error":{"message":"Model is still loading. Try again in a minute.","type":"server_error"}})
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info",
+                backlog=2048, limit_concurrency=200, limit_max_requests=None,
+                timeout_keep_alive=120, h11_max_incomplete_event_size=0)
 """
 
 
@@ -237,7 +239,7 @@ if __name__ == "__main__":
     min_containers={keep_warm},
     volumes=VOLUMES_PLACEHOLDER,
 )
-@modal.concurrent(max_inputs=50)
+@modal.concurrent(max_inputs=200)
 @modal.web_server(port=8000, startup_timeout=20 * MINUTES)
 def serve():
     _print_metrics()
