@@ -159,13 +159,26 @@ MINUTES = 60
 
 PROXY_CODE = """
 import httpx, json, os, asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 import uvicorn
 
 API_KEY = os.environ["MGPUX_API_KEY"]
 VLLM = "http://127.0.0.1:8001"
-app = FastAPI()
+
+pool_limits = httpx.Limits(max_connections=200, max_keepalive_connections=100, keepalive_expiry=120)
+timeout = httpx.Timeout(600.0, connect=30.0)
+http_client = None
+
+@asynccontextmanager
+async def lifespan(app):
+    global http_client
+    http_client = httpx.AsyncClient(base_url=VLLM, limits=pool_limits, timeout=timeout)
+    yield
+    await http_client.aclose()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.middleware("http")
 async def auth(request, call_next):
@@ -182,9 +195,8 @@ async def auth(request, call_next):
 @app.get("/health")
 async def health():
     try:
-        async with httpx.AsyncClient(base_url=VLLM, timeout=3) as c:
-            r = await c.get("/v1/models")
-            return {"status": "ok", "vllm_ready": r.status_code == 200}
+        r = await http_client.get("/v1/models", timeout=3)
+        return {"status": "ok", "vllm_ready": r.status_code == 200}
     except Exception:
         return {"status": "ok", "vllm_ready": False}
 
@@ -200,22 +212,22 @@ async def proxy(request: Request, path: str):
         if is_stream:
             async def gen():
                 try:
-                    async with httpx.AsyncClient(base_url=VLLM, timeout=httpx.Timeout(600.0)) as c:
-                        async with c.stream(request.method, f"/v1/{path}", content=body, headers=headers) as r:
-                            async for chunk in r.aiter_bytes(): yield chunk
+                    async with http_client.stream(request.method, f"/v1/{path}", content=body, headers=headers) as r:
+                        async for chunk in r.aiter_bytes(): yield chunk
                 except Exception as e:
                     err = json.dumps({"error":{"message":str(e),"type":"server_error"}})
                     nl = chr(10)
                     yield f"data: {err}{nl}{nl}data: [DONE]{nl}{nl}".encode()
             return StreamingResponse(gen(), media_type="text/event-stream")
-        async with httpx.AsyncClient(base_url=VLLM, timeout=httpx.Timeout(600.0)) as c:
-            r = await c.request(request.method, f"/v1/{path}", content=body, headers=headers)
-            return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type","application/json"))
+        r = await http_client.request(request.method, f"/v1/{path}", content=body, headers=headers)
+        return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type","application/json"))
     except (httpx.ConnectError, httpx.TimeoutException):
         return JSONResponse(status_code=503, content={"error":{"message":"Model is still loading. Try again in a minute.","type":"server_error"}})
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info",
+                backlog=2048, limit_concurrency=200, limit_max_requests=None,
+                timeout_keep_alive=120, h11_max_incomplete_event_size=0)
 """
 
 
@@ -227,7 +239,7 @@ if __name__ == "__main__":
     min_containers={keep_warm},
     volumes=VOLUMES_PLACEHOLDER,
 )
-@modal.concurrent(max_inputs=50)
+@modal.concurrent(max_inputs=200)
 @modal.web_server(port=8000, startup_timeout=20 * MINUTES)
 def serve():
     _print_metrics()
@@ -251,7 +263,16 @@ def serve():
     with open("/tmp/_proxy.py", "w") as f:
         f.write(PROXY_CODE)
     print("[M-GPUX] Starting auth proxy on :8000")
-    subprocess.Popen([sys.executable, "/tmp/_proxy.py"])
+
+    import threading, time as _time
+    def _watch_proxy():
+        while True:
+            proc = subprocess.Popen([sys.executable, "/tmp/_proxy.py"])
+            print(f"[M-GPUX] Proxy started (pid={proc.pid})")
+            proc.wait()
+            print(f"[M-GPUX] Proxy exited with code {proc.returncode}, restarting in 1s...")
+            _time.sleep(1)
+    threading.Thread(target=_watch_proxy, daemon=True).start()
 '''
 
 # ─── Model presets ────────────────────────────────────────────
