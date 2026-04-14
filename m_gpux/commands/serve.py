@@ -256,7 +256,6 @@ def serve():
         "--served-model-name", MODEL_NAME,
         "--host", "0.0.0.0",
         "--port", "8001",
-        "--enforce-eager",
         "--tensor-parallel-size", "1",
         "--max-model-len", "{max_model_len}",
     ]
