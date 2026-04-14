@@ -258,6 +258,11 @@ def serve():
         "--port", "8001",
         "--tensor-parallel-size", "1",
         "--max-model-len", "{max_model_len}",
+        "--gpu-memory-utilization", "0.95",
+        "--enable-prefix-caching",
+        "--num-scheduler-steps", "10",
+        "--max-num-seqs", "128",
+        "--enable-chunked-prefill",
     ]
     print("[M-GPUX] Starting vLLM on :8001:", " ".join(vllm_cmd))
     subprocess.Popen(vllm_cmd)
