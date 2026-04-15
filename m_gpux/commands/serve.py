@@ -148,7 +148,7 @@ API_KEY = "{api_key}"
 vllm_image = (
     modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.12")
     .entrypoint([])
-    .pip_install("vllm", "transformers", "hf-transfer", "httpx", "fastapi", "uvicorn")
+    .pip_install("vllm", "transformers", "hf-transfer", "httpx", "fastapi", "uvicorn[standard]")
     .env(ENV_DICT_PLACEHOLDER)
 )
 
@@ -209,25 +209,27 @@ async def proxy(request: Request, path: str):
         try: is_stream = json.loads(body).get("stream", False)
         except: pass
     try:
+        async def stream_response():
+            async with http_client.stream(request.method, f"/v1/{path}", content=body, headers=headers) as r:
+                async for chunk in r.aiter_bytes():
+                    yield chunk
         if is_stream:
-            async def gen():
-                try:
-                    async with http_client.stream(request.method, f"/v1/{path}", content=body, headers=headers) as r:
-                        async for chunk in r.aiter_bytes(): yield chunk
-                except Exception as e:
-                    err = json.dumps({"error":{"message":str(e),"type":"server_error"}})
-                    nl = chr(10)
-                    yield f"data: {err}{nl}{nl}data: [DONE]{nl}{nl}".encode()
-            return StreamingResponse(gen(), media_type="text/event-stream")
+            return StreamingResponse(stream_response(), media_type="text/event-stream")
         r = await http_client.request(request.method, f"/v1/{path}", content=body, headers=headers)
-        return Response(content=r.content, status_code=r.status_code, media_type=r.headers.get("content-type","application/json"))
+        return StreamingResponse(
+            iter([r.content]),
+            status_code=r.status_code,
+            media_type=r.headers.get("content-type", "application/json"),
+        )
     except (httpx.ConnectError, httpx.TimeoutException):
         return JSONResponse(status_code=503, content={"error":{"message":"Model is still loading. Try again in a minute.","type":"server_error"}})
+    except Exception as exc:
+        return JSONResponse(status_code=502, content={"error":{"message":f"Backend error: {exc}","type":"server_error"}})
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info",
                 backlog=2048, limit_concurrency=200, limit_max_requests=None,
-                timeout_keep_alive=120, h11_max_incomplete_event_size=0)
+                timeout_keep_alive=120)
 """
 
 
@@ -251,9 +253,12 @@ def serve():
         "--served-model-name", MODEL_NAME,
         "--host", "0.0.0.0",
         "--port", "8001",
-        "--enforce-eager",
         "--tensor-parallel-size", "1",
         "--max-model-len", "{max_model_len}",
+        "--gpu-memory-utilization", "0.95",
+        "--enable-prefix-caching",
+        "--max-num-seqs", "128",
+        "--enable-chunked-prefill",
     ]
     print("[M-GPUX] Starting vLLM on :8001:", " ".join(vllm_cmd))
     subprocess.Popen(vllm_cmd)
