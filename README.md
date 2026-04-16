@@ -1,38 +1,58 @@
-# m-gpux
+<div align="center">
+  <h1>🚀 m-gpux</h1>
+  <p><em>A professional CLI toolkit for Modal power users. Need fast GPU access, multi-profile account control, and simple cost visibility? Look no further.</em></p>
 
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
-[![CLI](https://img.shields.io/badge/interface-Typer%20%2B%20Rich-0ea5e9)](https://typer.tiangolo.com/)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-22c55e)](https://puxhocdl.github.io/m-gpux/)
+  <p>
+    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
+    <a href="https://pypi.org/project/m-gpux/"><img src="https://img.shields.io/badge/PyPI-m--gpux-f59e0b?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
+    <a href="https://typer.tiangolo.com/"><img src="https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-0ea5e9?style=for-the-badge&logo=terminal&logoColor=white" alt="CLI"></a>
+    <a href="https://puxhocdl.github.io/m-gpux/"><img src="https://img.shields.io/badge/Docs-GitHub%20Pages-22c55e?style=for-the-badge&logo=github&logoColor=white" alt="Docs"></a>
+    <a href="https://github.com/PuxHocDL/m-gpux/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-gray?style=for-the-badge" alt="License"></a>
+  </p>
+</div>
 
-`m-gpux` is a professional CLI toolkit for Modal power users who need fast GPU access, multi-profile account control, and simple cost visibility.
+<hr/>
 
-## Highlights
+## ✨ Highlights
 
-- **LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth
-- Interactive GPU hub for Jupyter, script execution, and web shell sessions
-- Multi-account profile management in one command namespace
-- Billing inspection per profile or across all configured accounts
-- Friendly terminal UX with rich tables, prompts, and guided flows
+- **🧠 LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
+- **⚡ Interactive GPU Hub** — Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
+- **👥 Multi-Account Management** — Seamlessly manage multiple profiles in one unified command namespace.
+- **💸 Unified Cost Visibility** — Inspect billing per profile or get a comprehensive view across all configured accounts.
+- **🎨 Friendly Terminal UX** — Enjoy rich tables, intuitive prompts, and interactive guided flows right in your terminal.
 
-## Table of Contents
+## 📖 Table of Contents
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Core Commands](#core-commands)
-- [Documentation](#documentation)
-- [Architecture](#architecture)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
+- [Installation](#%EF%B8%8F-installation)
+- [Quick Start](#-quick-start)
+- [Core Commands](#%EF%B8%8F-core-commands)
+  - [Profile Management](#-profile-management)
+  - [Interactive Hub](#-interactive-hub)
+  - [LLM API Server](#-llm-api-server)
+  - [Billing](#-billing)
+- [Architecture](#%EF%B8%8F-architecture)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
 
-## Installation
+---
 
-### Requirements
+## ⚙️ Installation
 
-- Python 3.10+
-- Modal account credentials (`token_id`, `token_secret`)
-- Modal CLI in PATH (`modal` command)
+### Prerequisites
 
-### Install from source
+- **Python**: 3.10 or higher.
+- **Credentials**: Modal account credentials (`token_id`, `token_secret`).
+- **Modal CLI**: Ensure the `modal` CLI is installed and in your PATH.
+
+### PyPI (Recommended)
+The fastest way to get started is by installing directly from PyPI.
+
+```bash
+pip install m-gpux
+```
+
+### From Source
+Great for contributors or users who want the bleeding edge.
 
 ```bash
 git clone https://github.com/PuxHocDL/m-gpux.git
@@ -40,13 +60,11 @@ cd m-gpux
 pip install -e .
 ```
 
-### Install from PyPI
+---
 
-```bash
-pip install m-gpux
-```
+## 🚀 Quick Start
 
-## Quick Start
+Get up and running in 5 easy steps:
 
 ```bash
 # 1) Add your first profile
@@ -65,146 +83,137 @@ m-gpux serve deploy
 m-gpux billing usage --days 30 --all
 ```
 
-## Core Commands
+---
 
-### Global
+## 🛠️ Core Commands
 
-```bash
-m-gpux --help
-m-gpux info
-```
+Whether you need to manage your accounts, deploy APIs, or check your billing, we've got you covered. Check out our global commands with `m-gpux --help` and `m-gpux info`.
 
-### Profile Management
+### 👥 Profile Management
+Seamlessly hop between different Modal environments.
 
 ```bash
-m-gpux account list
-m-gpux account add
-m-gpux account switch <profile_name>
-m-gpux account remove <profile_name>
+m-gpux account list                    # View all active profiles
+m-gpux account add                     # Interactively add a new profile
+m-gpux account switch <profile_name>   # Switch active profile
+m-gpux account remove <profile_name>   # Remove an existing profile
 ```
+> **Note**: Modal profiles are safely persisted in `~/.modal.toml`. If the active profile is removed, another existing profile is automatically promoted.
 
-### Billing
-
-```bash
-m-gpux billing open
-m-gpux billing usage --days 7
-m-gpux billing usage --account personal
-m-gpux billing usage --all
-```
-
-### Interactive Hub
+### ⚡ Interactive Hub
+Your control center for remote execution.
 
 ```bash
 m-gpux hub
 ```
+**Actions included:**
+- 🪐 Launch Jupyter Lab on your selected GPU.
+- 📜 Run local Python scripts natively on remote GPUs.
+- 💻 Initiate an interactive web Bash shell session.
 
-Hub actions:
-
-- Jupyter Lab on selected GPU
-- Run local Python script on selected GPU
-- Interactive web Bash shell on selected GPU
-
-### LLM API Server
+### 🧠 LLM API Server
+Turn your HuggingFace models into live endpoints.
 
 ```bash
-# Create an API key
-m-gpux serve keys create
+m-gpux serve deploy             # Deploy a model (interactive wizard)
+m-gpux serve warmup             # Check warm status
+m-gpux serve stop               # Stop the server
 
-# Deploy a model (interactive wizard)
-m-gpux serve deploy
-
-# Check warm status
-m-gpux serve warmup
-
-# Stop the server
-m-gpux serve stop
+# Secure your endpoints
+m-gpux serve keys create        # Generate a new API key
+m-gpux serve keys list          # List all keys (masked for security)
+m-gpux serve keys show <name>   # Reveal the full key value
+m-gpux serve keys revoke <name> # Revoke access
 ```
 
-Deploy any HuggingFace model as an OpenAI-compatible API with:
+**Key Features:**
+- Bearer token authentication (401/403).
+- Full Support for streaming & non-streaming chat completions.
+- Intuitively configurable GPU selection, context lengths, and keep-warm containers.
+- 11 built-in popular model presets (Qwen, Llama, Gemma, Phi, etc.).
 
-- Bearer token authentication (401/403)
-- Streaming & non-streaming chat completions
-- Configurable GPU, context length, and keep-warm containers
-- 11 popular model presets (Qwen, Llama, Gemma, Phi, etc.)
-
-### API Key Management
+### 💸 Billing
+Keep unexpected costs at bay.
 
 ```bash
-m-gpux serve keys create        # Generate a new key
-m-gpux serve keys list          # List all keys (masked)
-m-gpux serve keys show <name>   # Reveal full key value
-m-gpux serve keys revoke <name> # Revoke a key
+m-gpux billing open                    # Open billing dashboard in browser
+m-gpux billing usage --days 7          # Review last 7 days of usage
+m-gpux billing usage --account dev     # Target specific accounts
+m-gpux billing usage --all             # Aggregate cross-account usage
 ```
 
-### Stop Running Apps
+### 🛑 Stop Processes
+Clean up your workspace quickly.
 
 ```bash
-m-gpux stop          # Stop apps on current profile
+m-gpux stop          # Stop apps on the current profile
 m-gpux stop --all    # Stop apps across ALL profiles
 ```
 
-## Documentation
+---
 
-- Website: https://puxhocdl.github.io/m-gpux/
-- Local docs index: [docs/index.md](docs/index.md)
-- Getting started: [docs/getting-started.md](docs/getting-started.md)
-- Commands: [docs/commands.md](docs/commands.md)
-- FAQ: [docs/faq.md](docs/faq.md)
+## 📚 Documentation
 
-## Architecture
+Dive deeper into our extensive guides:
+- 🌐 **Website:** [puxhocdl.github.io/m-gpux](https://puxhocdl.github.io/m-gpux/)
+- 🏠 **Local Index:** [`docs/index.md`](docs/index.md)
+- 🚀 **Getting Started:** [`docs/getting-started.md`](docs/getting-started.md)
+- 🧰 **Commands Reference:** [`docs/commands.md`](docs/commands.md)
+- ❓ **FAQ:** [`docs/faq.md`](docs/faq.md)
 
-- `m_gpux/main.py`: CLI entrypoint and command registration
-- `m_gpux/commands/account.py`: profile CRUD and active profile switching
-- `m_gpux/commands/billing.py`: usage aggregation and billing dashboard links
-- `m_gpux/commands/hub.py`: guided GPU runtime launcher
-- `m_gpux/commands/serve.py`: LLM API deployment, auth proxy, API key management
-- `m_gpux/commands/load.py`: live GPU hardware metrics probe
+---
 
-## Configuration
+## 🏗️ Architecture
 
-Modal profiles are persisted in `~/.modal.toml`.
+Under the hood, `m-gpux` is built for modularity:
 
-If the active profile is removed, another existing profile is promoted automatically.
+| Component | Responsibility |
+| :--- | :--- |
+| `m_gpux/main.py` | CLI entrypoint and command registration |
+| `m_gpux/commands/account.py` | Profile CRUD operations and switching |
+| `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
+| `m_gpux/commands/hub.py` | Guided GPU runtime execution launcher |
+| `m_gpux/commands/serve.py` | LLM API deployment, proxy, and auth management |
+| `m_gpux/commands/load.py` | Live hardware metrics probe |
 
-## Troubleshooting
+---
 
-- `No configured Modal profiles found`
-  - Run `m-gpux account add`.
-- `modal: command not found`
-  - Install Modal CLI and ensure PATH is set correctly.
-- Script file does not exist in hub mode
-  - Run command from the script directory or provide the correct filename.
+## 🔧 Troubleshooting
 
-## Contributing
+Have issues? Here's how to fix common hiccups:
 
+- **`No configured Modal profiles found`**
+  - **Fix:** Run `m-gpux account add` to set one up.
+- **`modal: command not found`**
+  - **Fix:** Make sure the Modal CLI is installed and your PATH is set correctly.
+- **`Script file does not exist in hub mode`**
+  - **Fix:** Ensure you run the command from the script's directory, or double-check the path you provided.
+
+---
+
+## 🤝 Contributing
+
+We welcome your PRs! Help us polish the UX, refine commands, and expand the documentation.
+
+**Local Setup:**
 ```bash
 pip install -e .
 python -m m_gpux.main --help
 ```
 
-Open PRs are welcome for UX polish, command improvements, and docs quality.
+### 📦 PyPI Publishing
 
-## Release to PyPI
-
-The repository includes automated PyPI publishing via GitHub Actions.
-
-1. Configure a Trusted Publisher on PyPI with:
-  - Project: `m-gpux`
-  - Owner: `PuxHocDL`
-  - Repository: `m-gpux`
-  - Workflow: `publish-pypi.yml`
-  - Environment: `pypi`
-2. Create GitHub environment `pypi` in repository settings.
-3. Bump `version` in `pyproject.toml`.
-4. Create and push a version tag:
-
+Automated with GitHub Actions. Maintainers can release instantly:
+1. Ensure the PyPI Trusted Publisher is configured (`pypi` environment, `PuxHocDL/m-gpux`).
+2. Update the `version` inside `pyproject.toml`.
+3. Tag the release:
 ```bash
-git tag v1.0.8
-git push origin v1.0.8
+git tag v1.0.8 && git push origin v1.0.8
 ```
+The *Publish Python Package* workflow will build and upload.
 
-The workflow `Publish Python Package` will build and publish automatically with OIDC.
+---
 
-## License
-
-MIT
+<div align="center">
+  <p>Available under the <strong>MIT License</strong>.</p>
+</div>

@@ -494,6 +494,36 @@ def deploy():
         except OSError:
             pass
 
+    # ── Auto-stream logs so user can see vLLM loading status ──
+    console.print(Panel(
+        "[bold cyan]Streaming server logs...[/bold cyan]\n"
+        "You can monitor vLLM startup here. Press [bold yellow]Ctrl+C[/bold yellow] to stop watching.",
+        border_style="cyan",
+    ))
+    try:
+        subprocess.run(["modal", "app", "logs", "m-gpux-llm-api"])
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped watching logs.[/dim]")
+
+
+# ─── Logs command ─────────────────────────────────────────────
+
+
+@app.command("logs")
+def logs():
+    """Stream live logs from the deployed LLM API server."""
+    console.print(Panel.fit(
+        "[bold cyan]Streaming logs from m-gpux-llm-api[/bold cyan]\n"
+        "[dim]Press Ctrl+C to stop.[/dim]",
+        border_style="cyan",
+    ))
+    try:
+        subprocess.run(["modal", "app", "logs", "m-gpux-llm-api"])
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
+    except FileNotFoundError:
+        console.print("[red]Modal CLI not found. Install with: pip install modal[/red]")
+
 
 # ─── Stop command ─────────────────────────────────────────────
 
