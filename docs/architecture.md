@@ -92,21 +92,37 @@ Modal's `@modal.web_server(port=8000)` requires a server to be listening on the 
 Client Request
     │
     ▼
-┌─ Auth Middleware ─────────────────────────────┐
-│  1. Is path /health, /, /docs, /openapi.json? │
-│     → YES: Pass through (no auth)             │
-│     → NO: Check Authorization header          │
-│                                               │
-│  2. No "Bearer" prefix?                       │
-│     → 401 {"error": "Missing API key..."}     │
-│                                               │
-│  3. Key doesn't match?                        │
-│     → 403 {"error": "Invalid API key"}        │
-│                                               │
-│  4. Valid key                                  │
-│     → Proxy to vLLM on localhost:8001         │
-└───────────────────────────────────────────────┘
+┌─ Auth Middleware ──────────────────────────────────┐
+│  1. Is path /health, /, /docs, /openapi.json,     │
+│     /stats?                                        │
+│     → YES: Pass through (no auth)                  │
+│     → NO: Check Authorization header               │
+│                                                    │
+│  2. No "Bearer" prefix?                            │
+│     → 401 {"error": "Missing API key..."}          │
+│                                                    │
+│  3. Key doesn't match?                             │
+│     → 403 {"error": "Invalid API key"}             │
+│                                                    │
+│  4. Too many concurrent requests (>150)?           │
+│     → 429 {"error": "Too many concurrent..."}      │
+│                                                    │
+│  5. Valid key + capacity available                  │
+│     → Proxy to vLLM on localhost:8001 (with retry) │
+└────────────────────────────────────────────────────┘
 ```
+
+### Proxy Resilience
+
+The auth proxy includes several features to prevent request loss under load:
+
+| Feature | Details |
+|---|---|
+| **Retry with backoff** | 3 attempts with 1s→2s→4s delays on `ConnectError`, `TimeoutException`, `RemoteProtocolError`, `ReadError` |
+| **Backpressure (429)** | Tracks in-flight requests; rejects with 429 when >150 concurrent |
+| **Internal streaming** | Non-stream requests use `httpx.stream()` internally to collect chunks — keeps connection alive during long inference (prevents timeout on 5+ min completions) |
+| **Stream error recovery** | Streaming responses catch mid-stream errors and yield a proper SSE error event instead of leaving truncated responses (prevents `TransferEncodingError`) |
+| **Metrics tracking** | Every request's latency, status, token usage tracked for `/stats` and `dashboard` |
 
 ### Streaming
 
@@ -136,7 +152,7 @@ Subsequent deploys: weights are already cached (cold start ~1-3 min).
 | `min_containers=1` | One container always running. Response time ~0.9s. Costs GPU time continuously. |
 | `scaledown_window=5min` | After last request, container stays warm for 5 minutes before scaling down. |
 | `timeout=24h` | Max container lifetime before forced restart. |
-| `max_inputs=50` | Up to 50 concurrent requests per container (via `@modal.concurrent`). |
+| `max_inputs=200` | Up to 200 concurrent requests per container (via `@modal.concurrent`). |
 
 ### API Key Storage
 

@@ -190,15 +190,17 @@ Interactive 5-step wizard to deploy a model:
 | 1 | Model (11 presets or custom HuggingFace ID) | `Qwen/Qwen2.5-7B-Instruct` |
 | 2 | GPU type | Recommended for selected model |
 | 3 | Max context length (tokens) | `4096` |
+| 3.5 | vLLM engine tuning (GPU mem utilization, max seqs, tensor parallel) | `0.92`, `128`, `1` |
 | 4 | Min containers / keep warm | `1` |
 | 5 | API key (select existing or auto-create) | First active key |
 
 **What gets deployed:**
 
 - A Modal app named `m-gpux-llm-api` with:
-    - **Auth proxy** (FastAPI + uvicorn on port 8000) — validates `Authorization: Bearer` headers
+    - **Auth proxy** (FastAPI + uvicorn on port 8000) — validates `Authorization: Bearer` headers, retry with backoff, backpressure (429 when overloaded), internal streaming for long inference
     - **vLLM backend** (on port 8001) — OpenAI-compatible `/v1/chat/completions`, `/v1/models`, etc.
     - **Shared Volumes** — `m-gpux-hf-cache` and `m-gpux-vllm-cache` persist model weights across deployments
+    - **Stats endpoint** (`/stats`) — real-time metrics: inflight requests, latency percentiles, token counts, GPU/CPU/RAM/disk usage
 
 **Endpoint URL format:**
 
@@ -214,15 +216,58 @@ https://<workspace>--m-gpux-llm-api-serve.modal.run
 | Invalid key | `403 Forbidden` |
 | Valid key | Request proxied to vLLM |
 | `/health` endpoint | Always `200 OK` (no auth required) |
+| `/stats` endpoint | Always `200 OK` (no auth required) |
+| Too many concurrent requests | `429 Too Many Requests` with `retry_after` |
 
 **Supported API routes:**
 
 | Route | Method | Description |
 |---|---|---|
-| `/health` | GET | Health check + vLLM readiness |
+| `/health` | GET | Health check + vLLM readiness + inflight count |
+| `/stats` | GET | Full metrics: latency, throughput, GPU/CPU/RAM, tokens |
 | `/v1/models` | GET | List loaded models |
 | `/v1/chat/completions` | POST | Chat completion (streaming & non-streaming) |
 | `/v1/completions` | POST | Text completion |
+
+**Proxy resilience features:**
+
+| Feature | Behavior |
+|---|---|
+| Retry with backoff | 3 attempts with 1s, 2s, 4s delays on connection errors |
+| Backpressure | Returns 429 when >150 concurrent requests in-flight |
+| Internal streaming | Non-stream requests use streaming internally to prevent timeout on long inference |
+| Error recovery | `RemoteProtocolError`, `ReadError` caught and retried; stream errors yield SSE error event |
+
+### dashboard
+
+```bash
+m-gpux serve dashboard
+m-gpux serve dashboard --url https://workspace--m-gpux-llm-api-serve.modal.run
+m-gpux serve dashboard --interval 5
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `--url`, `-u` | Base URL of the deployed API | Auto-detected from profiles |
+| `--interval`, `-i` | Refresh interval in seconds | `3.0` |
+
+Live terminal dashboard with Rich, showing:
+
+- **GPU** — VRAM usage, compute utilization, memory bandwidth, temperature, power draw (progress bars)
+- **System** — CPU load, RAM usage, disk usage (progress bars)
+- **Traffic** — in-flight requests with capacity bar, success rate, error counts (4xx/5xx/429)
+- **Latency** — avg, P50, P95, P99, min, max with scaled bars
+- **Tokens** — prompt/completion counts with ratio bars
+
+Color coding: cyan (<40%) → green (<70%) → yellow (<90%) → red (≥90%).
+
+### logs
+
+```bash
+m-gpux serve logs
+```
+
+Streams live logs from the deployed `m-gpux-llm-api` app. Press Ctrl+C to stop.
 
 ### stop
 
