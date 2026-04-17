@@ -395,7 +395,8 @@ async def _proxy_with_retry(method, url, content, headers, is_stream):
                         # Yield a proper SSE error so client gets notified instead of
                         # Modal seeing a truncated response (TransferEncodingError)
                         err_payload = json.dumps({"error": {"message": f"Stream interrupted: {stream_exc}", "type": "server_error"}})
-                        yield f"data: {err_payload}\\n\\ndata: [DONE]\\n\\n".encode()
+                        NL = chr(10)
+                        yield f"data: {err_payload}{NL}{NL}data: [DONE]{NL}{NL}".encode()
                 return StreamingResponse(stream_response(), media_type="text/event-stream"), 200, retries_used
 
             # ── Internal streaming for non-stream requests ──
