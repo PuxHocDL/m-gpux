@@ -38,3 +38,7 @@ venv.bak/
 
 # Modal Manager Specific
 modal_runner.py
+_regen.py
+_test_*.py
+test_modal.py
+test_inference.py
