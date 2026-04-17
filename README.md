@@ -116,7 +116,9 @@ Turn your HuggingFace models into live endpoints.
 
 ```bash
 m-gpux serve deploy             # Deploy a model (interactive wizard)
-m-gpux serve warmup             # Check warm status
+m-gpux serve dashboard          # Live metrics dashboard in terminal
+m-gpux serve logs               # Stream server logs
+m-gpux serve warmup             # Trigger cold start and warm up engine
 m-gpux serve stop               # Stop the server
 
 # Secure your endpoints
@@ -128,8 +130,10 @@ m-gpux serve keys revoke <name> # Revoke access
 
 **Key Features:**
 - Bearer token authentication (401/403).
-- Full Support for streaming & non-streaming chat completions.
-- Intuitively configurable GPU selection, context lengths, and keep-warm containers.
+- Full support for streaming & non-streaming chat completions.
+- **Live dashboard** — GPU/CPU/RAM metrics, latency percentiles, traffic, and token counts with progress bars.
+- **Resilient proxy** — automatic retry with backoff, backpressure (429), internal streaming to prevent timeouts on long inference.
+- Configurable vLLM hyperparameters (GPU memory utilization, tensor parallelism, max sequences).
 - 11 built-in popular model presets (Qwen, Llama, Gemma, Phi, etc.).
 
 ### 💸 Billing

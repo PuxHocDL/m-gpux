@@ -58,7 +58,7 @@ The hub generates a `modal_runner.py` script, shows it for review, then executes
 
 ```bash
 m-gpux serve keys create --name prod     # generate API key
-m-gpux serve deploy                      # 5-step wizard
+m-gpux serve deploy                      # 6-step wizard
 ```
 
 The wizard walks through:
@@ -66,10 +66,17 @@ The wizard walks through:
 1. **Model** — 11 presets (Qwen, Llama, Gemma, Mistral, DeepSeek, Phi) or custom HuggingFace ID
 2. **GPU** — T4, L4, A10G, L40S, A100, A100-80GB, H100, H200, B200
 3. **Context length** — max sequence length (lower = faster startup)
+3.5. **Engine tuning** — GPU memory utilization, max concurrent sequences, tensor parallel size
 4. **Keep warm** — `0` scales to zero (saves cost), `1+` keeps container(s) always running (no cold start)
 5. **API key** — pick an existing key or auto-create one
 
-After deploy, your endpoint is a drop-in replacement for OpenAI / OpenRouter:
+After deploy, monitor your server with the live dashboard:
+
+```bash
+m-gpux serve dashboard
+```
+
+Your endpoint is a drop-in replacement for OpenAI / OpenRouter:
 
 ```python
 from openai import OpenAI
