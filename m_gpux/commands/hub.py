@@ -9,6 +9,7 @@ import sys
 import tomlkit
 from typing import Optional
 from m_gpux.commands._metrics_snippet import FUNCTIONS as _METRICS_FUNCTIONS
+from m_gpux.commands._ui import arrow_select
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -41,20 +42,14 @@ def _select_profile() -> Optional[str]:
         return name
 
     console.print("\n[bold cyan]Step 0: Select Workspace / Profile[/bold cyan]")
-    console.print(f"  [bold yellow]0[/bold yellow]: [bold magenta]AUTO[/bold magenta] — Smart pick (most credit remaining)")
-    for idx, (name, is_active) in enumerate(profiles, 1):
-        marker = " [bold green](active)[/bold green]" if is_active else ""
-        console.print(f"  [bold yellow]{idx}[/bold yellow]: {name}{marker}")
+    profile_options = [("AUTO", "Smart pick (most credit remaining)")]
+    for name, is_active in profiles:
+        marker = " (active)" if is_active else ""
+        profile_options.append((name, f"Modal profile{marker}"))
 
-    default_idx = "0"
-    valid_choices = [str(i) for i in range(0, len(profiles) + 1)]
-    choice = Prompt.ask(
-        "Select profile (0=auto)",
-        choices=valid_choices,
-        default=default_idx,
-    )
+    choice_idx = arrow_select(profile_options, title="Select Workspace", default=0)
 
-    if choice == "0":
+    if choice_idx == 0:
         from m_gpux.commands.account import get_best_profile
         console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
         best_name, best_remaining = get_best_profile()
@@ -64,7 +59,7 @@ def _select_profile() -> Optional[str]:
         console.print(f"  [bold green]Auto-selected: {best_name} (${best_remaining:.2f} remaining)[/bold green]")
         return best_name
 
-    selected_name, _ = profiles[int(choice) - 1]
+    selected_name, _ = profiles[choice_idx - 1]
     console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
     return selected_name
 
@@ -392,25 +387,21 @@ def hub_main():
     _activate_profile(selected_profile)
     
     console.print("\n[bold cyan]Step 1: Choose your GPU[/bold cyan]")
-    for k, v in AVAILABLE_GPUS.items():
-        console.print(f"  [bold yellow]{k}[/bold yellow]: {v[0]:<10} - {v[1]}")
-        
-    gpu_choice = Prompt.ask("Select GPU", choices=list(AVAILABLE_GPUS.keys()), default="2")
-    selected_gpu = AVAILABLE_GPUS[gpu_choice][0]
+    gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
+    gpu_idx = arrow_select(gpu_options, title="Select GPU", default=1)
+    selected_gpu = list(AVAILABLE_GPUS.values())[gpu_idx][0]
     
     console.print(f"\n[green]You selected: [bold]{selected_gpu}[/bold][/green]")
     
     console.print("\n[bold cyan]Step 2: Choose Application[/bold cyan]")
-    actions = {
-        "1": "Jupyter Notebook (Interactive)",
-        "2": "Run a Python Script (Uploads directory automatically)",
-        "3": "Bash Shell (Interactive Web Terminal)",
-        "4": "vLLM Inference Server (OpenAI-compatible API)"
-    }
-    for k, v in actions.items():
-        console.print(f"  [bold yellow]{k}[/bold yellow]: {v}")
-        
-    action_choice = Prompt.ask("Select Action", choices=["1", "2", "3", "4"], default="1")
+    action_options = [
+        ("Jupyter Notebook", "Interactive GPU-backed lab session"),
+        ("Run Python Script", "Upload directory & execute on GPU"),
+        ("Bash Shell", "Interactive web terminal"),
+        ("vLLM Inference", "OpenAI-compatible API server"),
+    ]
+    action_idx = arrow_select(action_options, title="Select Action", default=0)
+    action_choice = str(action_idx + 1)
     
     if action_choice == "1":
         # --- Environment Setup ---
@@ -543,11 +534,13 @@ def hub_main():
             console.print(f"\n[bold yellow]Warning:[/bold yellow] Your script contains [bold]{len(input_matches)}[/bold] `input()` call(s).")
             console.print("[dim]Modal containers have no interactive stdin.[/dim]")
             console.print("\n[bold cyan]How would you like to handle this?[/bold cyan]")
-            console.print("  [bold yellow]1[/bold yellow]: [bold green]Interactive terminal[/bold green] [dim](recommended)[/dim] — opens a web terminal where you run the script yourself")
-            console.print("  [bold yellow]2[/bold yellow]: Pre-fill responses — provide stdin answers in advance")
-            console.print("  [bold yellow]3[/bold yellow]: Run anyway — script will crash on first input() call")
-            
-            handle_choice = Prompt.ask("Select", choices=["1", "2", "3"], default="1")
+            input_options = [
+                ("Interactive terminal", "(recommended) opens a web terminal to run the script"),
+                ("Pre-fill responses", "provide stdin answers in advance"),
+                ("Run anyway", "script will crash on first input() call"),
+            ]
+            handle_idx = arrow_select(input_options, title="Handle input() calls", default=0)
+            handle_choice = str(handle_idx + 1)
             
             if handle_choice == "1":
                 script = (INTERACTIVE_SCRIPT
@@ -590,7 +583,6 @@ def hub_main():
         execute_modal_temp_script(script, f"Web Bash Shell on {selected_gpu}")
         
     elif action_choice == "4":
-        console.print("\n[bold cyan]Select a model to serve:[/bold cyan]")
         models = {
             "1": ("Qwen/Qwen2.5-1.5B-Instruct", "Tiny 1.5B — T4/L4 friendly, fast"),
             "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10G/A100, good quality"),
@@ -598,11 +590,9 @@ def hub_main():
             "4": ("google/gemma-2-9b-it", "Gemma 9B — A10G/A100"),
             "5": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10G/A100"),
         }
-        for k, (name, desc) in models.items():
-            console.print(f"  [bold yellow]{k}[/bold yellow]: {name:<45} {desc}")
-        
-        model_choice = Prompt.ask("Select model", choices=list(models.keys()), default="1")
-        selected_model = models[model_choice][0]
+        model_options = [(name, desc) for name, desc in models.values()]
+        model_idx = arrow_select(model_options, title="Select model to serve", default=0)
+        selected_model = list(models.values())[model_idx][0]
         
         script = (VLLM_SCRIPT
             .replace("{gpu_type}", selected_gpu)
@@ -627,11 +617,12 @@ def hub_main():
             title="OPENCLAW INTEGRATION", border_style="magenta"
         ))
         
-        deploy_mode = Prompt.ask(
-            "Deploy mode",
-            choices=["run", "deploy"],
-            default="deploy"
-        )
+        deploy_options = [
+            ("deploy", "Persistent deployment (recommended for serving)"),
+            ("run", "One-time run (stops when terminal closes)"),
+        ]
+        deploy_idx = arrow_select(deploy_options, title="Deploy mode", default=0)
+        deploy_mode = deploy_options[deploy_idx][0]
         
         if deploy_mode == "deploy":
             script = script.replace("# __METRICS__", _METRICS_FUNCTIONS)
