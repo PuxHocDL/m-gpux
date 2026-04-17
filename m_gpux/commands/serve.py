@@ -13,6 +13,7 @@ import threading
 from datetime import datetime
 from m_gpux.commands._metrics_snippet import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.commands.hub import _select_profile, _activate_profile, AVAILABLE_GPUS
+from m_gpux.commands._ui import arrow_select
 
 app = typer.Typer(
     help="Deploy LLMs as OpenAI-compatible APIs with API key authentication.",
@@ -567,36 +568,36 @@ def deploy():
 
     # ── Step 1: Model ──
     console.print("\n[bold cyan]Step 1: Select Model[/bold cyan]")
+    model_options = []
     for k, (name, desc, _) in SERVE_MODELS.items():
-        console.print(f"  [bold yellow]{k:>2}[/bold yellow]: {name:<45} {desc}")
-    console.print(f"  [bold yellow] 0[/bold yellow]: {'(custom)':<45} Enter a HuggingFace model ID")
+        model_options.append((name, desc))
+    model_options.append(("(custom)", "Enter a HuggingFace model ID"))
 
-    model_choice = Prompt.ask("Select model", default="2")
-    if model_choice == "0":
+    model_idx = arrow_select(model_options, title="Select Model", default=1)
+
+    if model_idx == len(SERVE_MODELS):  # custom option (last)
         selected_model = Prompt.ask("HuggingFace model ID (e.g. org/model-name)")
         recommended_gpu = "A100"
-    elif model_choice in SERVE_MODELS:
-        selected_model, _, recommended_gpu = SERVE_MODELS[model_choice]
     else:
-        console.print("[red]Invalid choice.[/red]")
-        raise typer.Exit(1)
+        key = list(SERVE_MODELS.keys())[model_idx]
+        selected_model, _, recommended_gpu = SERVE_MODELS[key]
 
     console.print(f"  [green]Model:[/green] [bold]{selected_model}[/bold]")
 
     # ── Step 2: GPU ──
     console.print(f"\n[bold cyan]Step 2: Choose GPU[/bold cyan]  [dim](recommended: {recommended_gpu})[/dim]")
-    for k, (gpu, desc) in AVAILABLE_GPUS.items():
-        marker = " [bold green]<- recommended[/bold green]" if gpu == recommended_gpu else ""
-        console.print(f"  [bold yellow]{k:>2}[/bold yellow]: {gpu:<16} {desc}{marker}")
-
-    default_gpu_key = "5"
-    for k, (gpu, _) in AVAILABLE_GPUS.items():
+    gpu_keys = list(AVAILABLE_GPUS.keys())
+    gpu_options = []
+    default_gpu_idx = 4  # fallback to A100
+    for i, k in enumerate(gpu_keys):
+        gpu, desc = AVAILABLE_GPUS[k]
+        rec_marker = " <- recommended" if gpu == recommended_gpu else ""
+        gpu_options.append((gpu, f"{desc}{rec_marker}"))
         if gpu == recommended_gpu:
-            default_gpu_key = k
-            break
+            default_gpu_idx = i
 
-    gpu_choice = Prompt.ask("Select GPU", choices=list(AVAILABLE_GPUS.keys()), default=default_gpu_key)
-    selected_gpu = AVAILABLE_GPUS[gpu_choice][0]
+    gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
+    selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
     console.print(f"  [green]GPU:[/green] [bold]{selected_gpu}[/bold]")
 
     # ── Step 3: Max context length ──
