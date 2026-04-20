@@ -98,7 +98,7 @@ m-gpux account add                     # Interactively add a new profile
 m-gpux account switch <profile_name>   # Switch active profile
 m-gpux account remove <profile_name>   # Remove an existing profile
 ```
-> **Note**: Modal profiles are safely persisted in `~/.modal.toml`. If the active profile is removed, another existing profile is automatically promoted.
+> **Note**: Modal profiles are safely persisted in `~/.modal.toml`. If the active profile is removed, another existing profile is automatically promoted. ^-^
 
 ### ⚡ Interactive Hub
 Your control center for remote execution.
