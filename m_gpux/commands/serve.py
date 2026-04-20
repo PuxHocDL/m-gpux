@@ -176,7 +176,7 @@ http_client = None
 import threading
 _inflight = 0
 _inflight_lock = threading.Lock()
-MAX_INFLIGHT = 150  # reject new requests beyond this to avoid silent hangs
+MAX_INFLIGHT = 64  # reject new requests beyond this to avoid KV cache saturation
 
 # ── Retry config ──
 RETRY_ATTEMPTS = 3
@@ -491,7 +491,7 @@ if __name__ == "__main__":
     min_containers={keep_warm},
     volumes=VOLUMES_PLACEHOLDER,
 )
-@modal.concurrent(max_inputs=200)
+@modal.concurrent(max_inputs=80)
 @modal.web_server(port=8000, startup_timeout=20 * MINUTES)
 def serve():
     _print_metrics()
@@ -509,6 +509,7 @@ def serve():
         "--enable-prefix-caching",
         "--max-num-seqs", "{max_num_seqs}",
         "--enable-chunked-prefill",
+        "--max-num-batched-tokens", "{max_num_batched_tokens}",
     ]
     print("[M-GPUX] Starting vLLM on :8001:", " ".join(vllm_cmd))
     subprocess.Popen(vllm_cmd)
@@ -619,7 +620,10 @@ def deploy():
         gpu_mem_util = "0.92"
 
     console.print("  [dim]max-num-seqs: max concurrent sequences in the engine (higher = more throughput but more VRAM)[/dim]")
-    max_num_seqs = Prompt.ask("  Max concurrent sequences", default="128")
+    max_num_seqs = Prompt.ask("  Max concurrent sequences", default="48")
+
+    console.print("  [dim]max-num-batched-tokens: max tokens processed per batch (controls prefill pressure)[/dim]")
+    max_num_batched_tokens = Prompt.ask("  Max batched tokens", default="8192")
 
     console.print("  [dim]tensor-parallel-size: number of GPUs for tensor parallelism (1 for single GPU)[/dim]")
     tensor_parallel = Prompt.ask("  Tensor parallel size", default="1")
@@ -629,7 +633,7 @@ def deploy():
     console.print("  [dim]  top-p: nucleus sampling probability (0.9-1.0)[/dim]")
     console.print("  [dim]  Note: clients can always override these per-request in the JSON body.[/dim]")
 
-    console.print(f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, tp={tensor_parallel}")
+    console.print(f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, batched_tok={max_num_batched_tokens}, tp={tensor_parallel}")
 
     # ── Step 4: Keep warm ──
     console.print("\n[bold cyan]Step 4: Keep Warm[/bold cyan]")
@@ -675,13 +679,18 @@ def deploy():
         '        "/root/.cache/vllm": vllm_cache,\n'
         '    }'
     )
+    # ── Append GPU count for tensor parallelism ──
+    tp_int = int(tensor_parallel) if tensor_parallel.isdigit() else 1
+    gpu_spec = selected_gpu if tp_int <= 1 else f"{selected_gpu}:{tp_int}"
+
     script = (SERVE_TEMPLATE
         .replace("{model_name}", selected_model)
-        .replace("{gpu_type}", selected_gpu)
+        .replace("{gpu_type}", gpu_spec)
         .replace("{api_key}", first_key)
         .replace("{max_model_len}", max_model_len)
         .replace("{gpu_mem_util}", gpu_mem_util)
         .replace("{max_num_seqs}", max_num_seqs)
+        .replace("{max_num_batched_tokens}", max_num_batched_tokens)
         .replace("{tensor_parallel}", tensor_parallel)
         .replace("{keep_warm}", str(keep_warm_val))
         .replace("ENV_DICT_PLACEHOLDER", env_dict)
