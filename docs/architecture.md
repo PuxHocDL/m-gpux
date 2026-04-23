@@ -13,6 +13,7 @@ m_gpux/
     ├── account.py           # Profile CRUD (add/list/switch/remove)
     ├── billing.py           # Usage aggregation and billing dashboard links
     ├── hub.py               # Interactive GPU runtime launcher (Jupyter/script/shell)
+    ├── video.py             # Text-to-video generation workflows
     ├── vision.py            # Image classification training workflow
     ├── serve.py             # LLM API deployment, auth proxy, API key management
     ├── load.py              # Live GPU hardware metrics probe
@@ -25,7 +26,7 @@ m_gpux/
 
 m-gpux is built on [Typer](https://typer.tiangolo.com/) with [Rich](https://rich.readthedocs.io/) for terminal output. The entrypoint is `m_gpux.main:app`, registered as the `m-gpux` console script in `pyproject.toml`.
 
-Each command module (`account`, `billing`, `hub`, `vision`, `serve`, `load`) defines its own `typer.Typer()` app, which is attached to the main app via `app.add_typer()`.
+Each command module (`account`, `billing`, `hub`, `video`, `vision`, `serve`, `load`) defines its own `typer.Typer()` app, which is attached to the main app via `app.add_typer()`.
 
 ### Profile Management
 
@@ -43,14 +44,14 @@ token_secret = "as-..."
 
 When switching profiles, m-gpux calls `modal profile activate <name>` to set the active profile for subsequent Modal CLI commands.
 
-### Script Generation (Hub, Vision & Serve)
+### Script Generation (Hub, Video, Vision & Serve)
 
-The `hub`, `vision train`, and `serve deploy` flows follow the same pattern:
+The `hub`, `video generate`, `vision train`, and `serve deploy` flows follow the same pattern:
 
 1. **Collect parameters** via interactive prompts (GPU, action, model, etc.)
 2. **Generate a Python script** (`modal_runner.py`) from a template with string substitution
 3. **Show the script** for review (syntax-highlighted with Rich)
-4. **Execute** via `modal run` (hub / vision) or `modal deploy` (serve)
+4. **Execute** via `modal run` (hub / video / vision) or `modal deploy` (serve)
 
 The generated script is fully transparent — users can edit it before execution.
 

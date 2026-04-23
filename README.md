@@ -198,6 +198,7 @@ Under the hood, `m-gpux` is built for modularity:
 | `m_gpux/commands/account.py` | Profile CRUD operations and switching |
 | `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
 | `m_gpux/commands/hub.py` | Guided GPU runtime execution launcher |
+| `m_gpux/commands/video.py` | Text-to-video generation workflow on Modal GPUs |
 | `m_gpux/commands/vision.py` | Image classification training workflow for local datasets |
 | `m_gpux/commands/serve.py` | LLM API deployment, proxy, and auth management |
 | `m_gpux/commands/load.py` | Live hardware metrics probe |
