@@ -1151,7 +1151,12 @@ def evaluate():
             raise RuntimeError("Dataset classes do not match checkpoint classes.")
 
         num_samples = len(base_dataset.samples)
-        val_split = float(train_config.get("validation_split", CONFIG["fallback_validation_split"]))
+        override_val_split = CONFIG.get("override_validation_split")
+        if override_val_split is not None:
+            val_split = float(override_val_split)
+        else:
+            checkpoint_val_split = float(train_config.get("validation_split", 0.0))
+            val_split = checkpoint_val_split if checkpoint_val_split > 0 else float(CONFIG["default_validation_split"])
         seed = int(train_config.get("seed", CONFIG["fallback_seed"]))
         val_size = max(1, int(num_samples * val_split))
         if val_size >= num_samples:
@@ -1706,6 +1711,36 @@ def _normalize_volume_path(raw_path: str) -> str:
     return raw_path.strip().lstrip("/").replace("\\", "/")
 
 
+def _ensure_positive_int(value: int, label: str) -> int:
+    if value < 1:
+        raise typer.BadParameter(f"{label} must be >= 1.")
+    return value
+
+
+def _ensure_non_negative_int(value: int, label: str) -> int:
+    if value < 0:
+        raise typer.BadParameter(f"{label} must be >= 0.")
+    return value
+
+
+def _ensure_positive_float(value: float, label: str) -> float:
+    if value <= 0:
+        raise typer.BadParameter(f"{label} must be > 0.")
+    return value
+
+
+def _ensure_non_negative_float(value: float, label: str) -> float:
+    if value < 0:
+        raise typer.BadParameter(f"{label} must be >= 0.")
+    return value
+
+
+def _ensure_probability(value: float, label: str) -> float:
+    if value < 0 or value >= 1:
+        raise typer.BadParameter(f"{label} must be between 0 and < 1.")
+    return value
+
+
 def _resolve_checkpoint_reference(
     run_name: Optional[str],
     checkpoint_path: Optional[str],
@@ -1835,38 +1870,42 @@ def train(
     else:
         resolved_validation_split = 0.0
 
-    resolved_epochs = epochs if epochs is not None else IntPrompt.ask("Epochs", default=10)
+    resolved_epochs = _ensure_positive_int(
+        epochs if epochs is not None else IntPrompt.ask("Epochs", default=10),
+        "Epochs",
+    )
     resolved_batch_size = (
-        batch_size
+        _ensure_positive_int(batch_size, "Batch size")
         if batch_size is not None
-        else IntPrompt.ask("Batch size", default=model_config["batch_size"])
+        else _ensure_positive_int(IntPrompt.ask("Batch size", default=model_config["batch_size"]), "Batch size")
     )
     resolved_image_size = (
-        image_size
+        _ensure_positive_int(image_size, "Image size")
         if image_size is not None
-        else IntPrompt.ask("Image size", default=model_config["image_size"])
+        else _ensure_positive_int(IntPrompt.ask("Image size", default=model_config["image_size"]), "Image size")
     )
     resolved_learning_rate = (
-        learning_rate
+        _ensure_positive_float(learning_rate, "Learning rate")
         if learning_rate is not None
-        else FloatPrompt.ask("Learning rate", default=3e-4)
+        else _ensure_positive_float(FloatPrompt.ask("Learning rate", default=3e-4), "Learning rate")
     )
     optimizer_name = _prompt_optimizer()
     scheduler_name = _prompt_scheduler()
     augmentation_name = _prompt_augmentation()
 
-    weight_decay = FloatPrompt.ask("Weight decay", default=1e-4)
-    momentum = FloatPrompt.ask("Momentum (used by SGD/RMSprop)", default=0.9)
-    label_smoothing = FloatPrompt.ask("Label smoothing", default=0.0)
-    dropout = FloatPrompt.ask("Head dropout", default=0.0)
-    grad_accumulation_steps = IntPrompt.ask("Gradient accumulation steps", default=1)
-    num_workers = IntPrompt.ask("Data loader workers", default=4)
+    weight_decay = _ensure_non_negative_float(FloatPrompt.ask("Weight decay", default=1e-4), "Weight decay")
+    momentum = _ensure_non_negative_float(FloatPrompt.ask("Momentum (used by SGD/RMSprop)", default=0.9), "Momentum")
+    label_smoothing = _ensure_probability(FloatPrompt.ask("Label smoothing", default=0.0), "Label smoothing")
+    dropout = _ensure_probability(FloatPrompt.ask("Head dropout", default=0.0), "Head dropout")
+    grad_accumulation_steps = _ensure_positive_int(IntPrompt.ask("Gradient accumulation steps", default=1), "Gradient accumulation steps")
+    num_workers = _ensure_non_negative_int(IntPrompt.ask("Data loader workers", default=4), "Data loader workers")
     seed = IntPrompt.ask("Random seed", default=42)
-    timeout_hours = FloatPrompt.ask("Timeout in hours", default=8.0)
+    timeout_hours = _ensure_positive_float(FloatPrompt.ask("Timeout in hours", default=8.0), "Timeout in hours")
     early_stopping_patience = IntPrompt.ask(
         "Early stopping patience (0 disables)",
         default=5,
     )
+    early_stopping_patience = _ensure_non_negative_int(early_stopping_patience, "Early stopping patience")
     freeze_backbone = Confirm.ask("Freeze backbone and train only the classification head?", default=False)
 
     default_experiment = (
@@ -2006,10 +2045,18 @@ def predict(
         raise typer.BadParameter("No supported image files found in the provided input path.")
 
     selected_gpu = _resolve_gpu_name(gpu)
-    resolved_top_k = top_k if top_k is not None else IntPrompt.ask("Top-k predictions per image", default=3)
-    resolved_batch_size = batch_size if batch_size is not None else IntPrompt.ask("Batch size", default=16)
-    num_workers = IntPrompt.ask("Data loader workers", default=2)
-    timeout_hours = FloatPrompt.ask("Timeout in hours", default=2.0)
+    resolved_top_k = _ensure_positive_int(
+        top_k if top_k is not None else IntPrompt.ask("Top-k predictions per image", default=3),
+        "Top-k predictions",
+    )
+    resolved_batch_size = _ensure_positive_int(
+        batch_size if batch_size is not None else IntPrompt.ask("Batch size", default=16),
+        "Batch size",
+    )
+    num_workers = _ensure_non_negative_int(IntPrompt.ask("Data loader workers", default=2), "Data loader workers")
+    timeout_hours = _ensure_positive_float(FloatPrompt.ask("Timeout in hours", default=2.0), "Timeout in hours")
+    if max_images is not None:
+        _ensure_positive_int(max_images, "Max images")
 
     if checkpoint_path:
         resolved_checkpoint_path = checkpoint_path.strip().lstrip("/").replace("\\", "/")
@@ -2136,10 +2183,18 @@ def evaluate(
         checkpoint_path,
     )
     selected_gpu = _resolve_gpu_name(gpu)
-    resolved_top_k = top_k if top_k is not None else IntPrompt.ask("Top-k accuracy", default=5)
-    resolved_batch_size = batch_size if batch_size is not None else IntPrompt.ask("Batch size", default=32)
-    num_workers = IntPrompt.ask("Data loader workers", default=2)
-    timeout_hours = FloatPrompt.ask("Timeout in hours", default=2.0)
+    if validation_split is not None and not 0.05 <= validation_split < 0.5:
+        raise typer.BadParameter("Validation split must be between 0.05 and 0.5.")
+    resolved_top_k = _ensure_positive_int(
+        top_k if top_k is not None else IntPrompt.ask("Top-k accuracy", default=5),
+        "Top-k accuracy",
+    )
+    resolved_batch_size = _ensure_positive_int(
+        batch_size if batch_size is not None else IntPrompt.ask("Batch size", default=32),
+        "Batch size",
+    )
+    num_workers = _ensure_non_negative_int(IntPrompt.ask("Data loader workers", default=2), "Data loader workers")
+    timeout_hours = _ensure_positive_float(FloatPrompt.ask("Timeout in hours", default=2.0), "Timeout in hours")
 
     dataset_ignore_input = Prompt.ask(
         "Dataset ignore patterns (comma-separated)",
@@ -2184,7 +2239,8 @@ def evaluate(
         "fallback_image_size": 224,
         "dataset_mode": dataset_layout["mode"],
         "split": resolved_split,
-        "fallback_validation_split": validation_split if validation_split is not None else 0.2,
+        "override_validation_split": validation_split,
+        "default_validation_split": 0.2,
         "fallback_seed": 42,
     }
 
@@ -2257,7 +2313,7 @@ def export(
         checkpoint_path,
     )
     resolved_formats = _resolve_export_formats(export_format)
-    timeout_hours = FloatPrompt.ask("Timeout in hours", default=1.0)
+    timeout_hours = _ensure_positive_float(FloatPrompt.ask("Timeout in hours", default=1.0), "Timeout in hours")
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     default_output_dir = f"{inferred_run_name}/exports/export-{timestamp}"
