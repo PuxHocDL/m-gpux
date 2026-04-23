@@ -11,6 +11,7 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 | `m-gpux` | Show welcome screen with quick actions |
 | `m-gpux info` | Print version and framework metadata |
 | `m-gpux hub` | Interactive GPU session launcher |
+| `m-gpux vision` | Train computer vision models on Modal GPUs |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
 | `m-gpux stop` | Stop running m-gpux apps |
 | `m-gpux account` | Manage Modal profiles |
@@ -166,6 +167,171 @@ Opens an interactive terminal session in the browser, running on the selected GP
     The hub shows the full `modal_runner.py` before executing. You can modify pip packages, timeouts, environment variables, or the container image before pressing Enter.
 
 After execution completes, you're prompted whether to stop the app and release the GPU.
+
+---
+
+## vision
+
+Train image classification models on Modal GPUs from local datasets.
+
+```bash
+m-gpux vision train
+m-gpux vision predict
+m-gpux vision evaluate
+m-gpux vision export
+```
+
+The command validates a local dataset, then launches a wizard that generates a full `modal_runner.py` training job.
+
+### train
+
+```bash
+m-gpux vision train
+m-gpux vision train --dataset ./data/cats-vs-dogs --model resnet50 --gpu A10G
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `--dataset`, `-d` | Local dataset folder | `./data` if it exists, otherwise current directory |
+| `--model`, `-m` | TorchVision image-classification model builder | Interactive chooser |
+| `--gpu`, `-g` | Modal GPU type | Interactive chooser |
+| `--epochs` | Number of training epochs | `10` |
+| `--batch-size` | Batch size | Model-dependent suggestion |
+| `--image-size` | Input image resolution | Model-dependent suggestion |
+| `--learning-rate`, `--lr` | Optimizer learning rate | `3e-4` |
+| `--validation-split` | Validation fraction for non-pre-split datasets | `0.2` |
+| `--pretrained/--no-pretrained` | Initialize from pretrained ImageNet weights | `--pretrained` |
+| `--mixed-precision/--no-mixed-precision` | Use AMP on GPU | `--mixed-precision` |
+| `--artifact-volume` | Modal Volume name for checkpoints and metrics | `m-gpux-vision-artifacts` |
+
+### Supported dataset layouts
+
+`vision train` supports these local folder layouts:
+
+```text
+dataset/
+  train/
+    cat/
+    dog/
+  val/
+    cat/
+    dog/
+  test/
+    cat/
+    dog/
+```
+
+or:
+
+```text
+dataset/
+  cat/
+  dog/
+```
+
+For the second layout, `m-gpux` creates a validation split automatically.
+
+### What gets trained
+
+The generated job includes:
+
+- A TorchVision image-classification model (ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more)
+- Configurable optimizer, scheduler, augmentation strength, early stopping, and gradient accumulation
+- Mixed precision training on GPU
+- Checkpoints, config, history, and summary JSON saved to a Modal Volume
+
+### Artifacts
+
+Artifacts are written into the Modal Volume you select, under a run-specific folder such as:
+
+```text
+m-gpux-vision-artifacts/
+  imgclf-resnet50-20260420-113500/
+    checkpoints/
+      best_model.pt
+      last_model.pt
+    config.json
+    history.json
+    summary.json
+```
+
+You can download files later with the Modal CLI:
+
+```bash
+modal volume get m-gpux-vision-artifacts <run-name>/summary.json summary.json
+modal volume get m-gpux-vision-artifacts <run-name>/checkpoints/best_model.pt best_model.pt
+```
+
+### predict
+
+```bash
+m-gpux vision predict
+m-gpux vision predict --input ./samples --run-name imgclf-resnet50-20260420-113500 --gpu T4
+```
+
+Load a saved checkpoint from the artifact volume and run inference on a local image file or folder.
+
+| Option | Description | Default |
+|---|---|---|
+| `--input`, `-i` | Local image file or folder | `./samples` if it exists, otherwise current directory |
+| `--run-name` | Experiment name inside the artifact volume | Interactive prompt |
+| `--checkpoint-path` | Explicit checkpoint path inside the volume | `<run-name>/checkpoints/best_model.pt` |
+| `--gpu`, `-g` | Modal GPU type | Interactive chooser |
+| `--top-k` | Number of ranked classes per image | `3` |
+| `--batch-size` | Inference batch size | `16` |
+| `--max-images` | Optional cap on images from an input folder | No cap |
+| `--mixed-precision/--no-mixed-precision` | Use AMP on GPU | `--mixed-precision` |
+| `--artifact-volume` | Modal Volume name for checkpoints/predictions | `m-gpux-vision-artifacts` |
+
+`vision predict` reads the saved `config` and `class_names` from the checkpoint, reconstructs the model automatically, and writes a JSON prediction report back into the artifact volume.
+
+### evaluate
+
+```bash
+m-gpux vision evaluate
+m-gpux vision evaluate --dataset ./data/cats-vs-dogs --run-name imgclf-resnet50-20260420-113500 --split test --gpu T4
+```
+
+Evaluate a saved checkpoint on a local dataset and persist a detailed metrics report to the artifact volume.
+
+| Option | Description | Default |
+|---|---|---|
+| `--dataset`, `-d` | Local dataset folder | `./data` if it exists, otherwise current directory |
+| `--run-name` | Experiment name inside the artifact volume | Interactive prompt |
+| `--checkpoint-path` | Explicit checkpoint path inside the volume | `<run-name>/checkpoints/best_model.pt` |
+| `--gpu`, `-g` | Modal GPU type | Interactive chooser |
+| `--split` | Which split to evaluate: `auto`, `train`, `val`, `test` when available | `auto` |
+| `--top-k` | Top-k accuracy to compute | `5` |
+| `--batch-size` | Evaluation batch size | `32` |
+| `--validation-split` | Fallback validation fraction for single-root datasets | `0.2` |
+| `--mixed-precision/--no-mixed-precision` | Use AMP on GPU | `--mixed-precision` |
+| `--artifact-volume` | Modal Volume name for checkpoints/evaluation reports | `m-gpux-vision-artifacts` |
+
+The JSON report includes loss, accuracy, top-k accuracy, confusion matrix, macro F1, and per-class precision/recall/F1.
+
+### export
+
+```bash
+m-gpux vision export
+m-gpux vision export --run-name imgclf-resnet50-20260420-113500 --format all
+```
+
+Export a saved checkpoint into deployment-friendly formats.
+
+| Option | Description | Default |
+|---|---|---|
+| `--run-name` | Experiment name inside the artifact volume | Interactive prompt |
+| `--checkpoint-path` | Explicit checkpoint path inside the volume | `<run-name>/checkpoints/best_model.pt` |
+| `--format` | Export format: `onnx`, `torchscript`, or `all` | `all` |
+| `--output-dir` | Output directory inside the artifact volume | `<run-name>/exports/export-<timestamp>` |
+| `--artifact-volume` | Modal Volume name for checkpoints/exports | `m-gpux-vision-artifacts` |
+
+Artifacts written by `vision export` include:
+
+- `model.onnx` when ONNX export is selected
+- `model.ts` when TorchScript export is selected
+- `labels.json`
+- `export_summary.json`
 
 ---
 

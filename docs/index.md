@@ -12,6 +12,7 @@ Welcome to the official docs for **m-gpux** — a production-focused CLI toolkit
 |---|---|
 | **Multi-profile management** | Add, switch, and remove Modal identities — all stored in `~/.modal.toml` |
 | **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU (T4 → B200) |
+| **Vision Training** | Train image classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
 | **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys — stored locally in `~/.m-gpux/api_keys.json` |
 | **Billing Dashboard** | Inspect 7/30/90-day usage per profile or aggregated across all accounts |
@@ -40,6 +41,7 @@ cd m-gpux && pip install -e .
 |---|---|
 | [Getting Started](getting-started.md) | Install, add your first profile, and launch a GPU session in 5 minutes |
 | [Command Reference](commands.md) | Every command, flag, and option with examples |
+| [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
 | [Architecture](architecture.md) | How m-gpux works internally — proxy layer, template generation, profile resolution |
 | [FAQ & Troubleshooting](faq.md) | Common errors and how to fix them |
 
@@ -94,7 +96,33 @@ for chunk in resp:
     print(chunk.choices[0].delta.content or "", end="")
 ```
 
-### 3. Check costs across all accounts
+### 3. Train an image classification model
+
+```bash
+m-gpux vision train
+```
+
+The vision wizard walks through:
+
+1. **Dataset folder** — accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
+2. **Model** — choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
+3. **Training knobs** — GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
+4. **Artifacts** — checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
+
+After training, run inference on fresh local images:
+
+```bash
+m-gpux vision predict
+```
+
+Evaluate the saved checkpoint or export it for deployment:
+
+```bash
+m-gpux vision evaluate
+m-gpux vision export
+```
+
+### 4. Check costs across all accounts
 
 ```bash
 m-gpux billing usage --days 7 --all
@@ -102,7 +130,7 @@ m-gpux billing usage --days 7 --all
 
 Aggregates compute spend from every configured profile into a single Rich table.
 
-### 4. Stop running apps and release GPUs
+### 5. Stop running apps and release GPUs
 
 ```bash
 m-gpux stop --all       # scan ALL profiles, pick which to stop

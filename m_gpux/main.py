@@ -13,6 +13,7 @@ from m_gpux.commands import billing
 from m_gpux.commands import hub
 from m_gpux.commands import load
 from m_gpux.commands import serve
+from m_gpux.commands import vision
 
 app = typer.Typer(
     name="m-gpux", 
@@ -29,6 +30,7 @@ app.add_typer(billing.app, name="billing", help="Track infrastructure costs acro
 app.command(name="hub", help="Launch interactive UI to provision Python scripts, Terminals, or Jupyter on GPUs.", rich_help_panel="Compute Engine")(hub.hub_main)
 app.add_typer(load.app, name="load", help="Probe a GPU container and display live hardware metrics.", rich_help_panel="Compute Engine")
 app.add_typer(serve.app, name="serve", help="Deploy LLMs as OpenAI-compatible APIs with API key auth.", rich_help_panel="Compute Engine")
+app.add_typer(vision.app, name="vision", help="Train computer vision models on Modal GPUs with local datasets.", rich_help_panel="Compute Engine")
 
 HERO_LOGO = """
 [bold cyan] ███╗   ███╗      ██████╗ ██████╗ ██╗   ██╗██╗  ██╗[/bold cyan]
@@ -45,6 +47,7 @@ def render_welcome() -> None:
     quick_actions = Table.grid(padding=(0, 2))
     quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
     quick_actions.add_row("[bold yellow]m-gpux hub[/bold yellow]", "Launch Jupyter, script runner, or web shell")
+    quick_actions.add_row("[bold yellow]m-gpux vision train[/bold yellow]", "Train an image classifier from a local dataset")
     quick_actions.add_row("[bold yellow]m-gpux serve deploy[/bold yellow]", "Deploy LLM as OpenAI-compatible API")
     quick_actions.add_row("[bold yellow]m-gpux stop[/bold yellow]", "Stop running apps and release GPUs")
     quick_actions.add_row("[bold yellow]m-gpux load probe[/bold yellow]", "Probe a GPU and display hardware metrics")

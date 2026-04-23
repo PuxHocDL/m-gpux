@@ -13,6 +13,7 @@ m_gpux/
     ├── account.py           # Profile CRUD (add/list/switch/remove)
     ├── billing.py           # Usage aggregation and billing dashboard links
     ├── hub.py               # Interactive GPU runtime launcher (Jupyter/script/shell)
+    ├── vision.py            # Image classification training workflow
     ├── serve.py             # LLM API deployment, auth proxy, API key management
     ├── load.py              # Live GPU hardware metrics probe
     └── _metrics_snippet.py  # GPU metrics code injected into generated Modal scripts
@@ -24,7 +25,7 @@ m_gpux/
 
 m-gpux is built on [Typer](https://typer.tiangolo.com/) with [Rich](https://rich.readthedocs.io/) for terminal output. The entrypoint is `m_gpux.main:app`, registered as the `m-gpux` console script in `pyproject.toml`.
 
-Each command module (`account`, `billing`, `hub`, `serve`, `load`) defines its own `typer.Typer()` app, which is attached to the main app via `app.add_typer()`.
+Each command module (`account`, `billing`, `hub`, `vision`, `serve`, `load`) defines its own `typer.Typer()` app, which is attached to the main app via `app.add_typer()`.
 
 ### Profile Management
 
@@ -42,16 +43,38 @@ token_secret = "as-..."
 
 When switching profiles, m-gpux calls `modal profile activate <name>` to set the active profile for subsequent Modal CLI commands.
 
-### Script Generation (Hub & Serve)
+### Script Generation (Hub, Vision & Serve)
 
-Both `hub` and `serve deploy` follow the same pattern:
+The `hub`, `vision train`, and `serve deploy` flows follow the same pattern:
 
 1. **Collect parameters** via interactive prompts (GPU, action, model, etc.)
 2. **Generate a Python script** (`modal_runner.py`) from a template with string substitution
 3. **Show the script** for review (syntax-highlighted with Rich)
-4. **Execute** via `modal run` (hub) or `modal deploy` (serve)
+4. **Execute** via `modal run` (hub / vision) or `modal deploy` (serve)
 
 The generated script is fully transparent — users can edit it before execution.
+
+### Vision Training Architecture
+
+The `vision train` command packages a local dataset into the Modal container with `Image.add_local_dir`, then runs a full PyTorch image-classification training loop on the selected GPU.
+
+The generated training app includes:
+
+- Dataset layout validation for `train/`, `val/`, optional `test/`, or a single folder of class subdirectories
+- TorchVision model initialization with optional pretrained weights
+- Configurable optimizer, scheduler, augmentation, mixed precision, early stopping, and gradient accumulation
+- Persistent checkpoint + metrics storage in a Modal Volume so runs survive container shutdown
+
+The `vision predict` command reuses those persisted artifacts:
+
+- Loads a saved checkpoint and class labels from the Modal Volume
+- Uploads a local image file or folder into the inference container
+- Reconstructs the model automatically from the saved training config
+- Writes prediction JSON reports back into the same Volume
+
+The `vision evaluate` command follows the same checkpoint-loading pattern, but mounts a local dataset and computes persisted evaluation reports such as accuracy, top-k accuracy, confusion matrix, macro F1, and per-class metrics.
+
+The `vision export` command loads the same checkpoint and emits deployment artifacts (`model.onnx`, `model.ts`, `labels.json`) into the artifact Volume so the training run can flow directly into downstream deployment or packaging steps.
 
 ---
 
