@@ -444,6 +444,91 @@ async def _proxy_with_retry(method, url, content, headers, is_stream):
     resp = JSONResponse(status_code=503, content={"error": {"message": f"vLLM not responding after {RETRY_ATTEMPTS} attempts. Model may still be loading.", "type": "server_error"}, "retry_after": 30})
     return resp, 503, retries_used, 0, 0
 
+# ── Force-stream reassembly for non-streaming completion requests ──
+# Modal web_server ASGI proxy has ~120s request timeout.
+# Non-streaming requests that take longer get killed (ServerDisconnectedError).
+# Fix: force stream=true to vLLM, collect SSE chunks, reassemble into JSON.
+# StreamingResponse sends keepalive whitespace every 15s to keep connection alive.
+async def _reassemble_stream(method, url, content, headers):
+    NL = chr(10)
+    async def _gen():
+        chunks_data = []
+        usage_data = {}
+        last_ka = _time.time()
+        try:
+            async with http_client.stream(method, url, content=content, headers=headers) as r:
+                if r.status_code != 200:
+                    yield await r.aread()
+                    return
+                buf = ""
+                async for raw in r.aiter_text():
+                    buf += raw
+                    if _time.time() - last_ka > 15:
+                        yield b" "
+                        last_ka = _time.time()
+                    while NL in buf:
+                        line, buf = buf.split(NL, 1)
+                        line = line.strip()
+                        if not line.startswith("data: "):
+                            continue
+                        d = line[6:].strip()
+                        if d == "[DONE]":
+                            continue
+                        try:
+                            chunks_data.append(json.loads(d))
+                        except Exception:
+                            pass
+        except Exception as e:
+            yield json.dumps({"error": {"message": str(e), "type": "server_error"}}).encode()
+            return
+        if not chunks_data:
+            yield json.dumps({"error": {"message": "Empty response from model", "type": "server_error"}}).encode()
+            return
+        first = chunks_data[0]
+        parts_c, parts_r, tc_acc, fr = [], [], {}, None
+        for c in chunks_data:
+            chs = c.get("choices", [])
+            if not chs:
+                if c.get("usage"):
+                    usage_data = c["usage"]
+                continue
+            cho = chs[0]
+            dl = cho.get("delta", {})
+            if dl.get("content"):
+                parts_c.append(dl["content"])
+            if dl.get("reasoning_content"):
+                parts_r.append(dl["reasoning_content"])
+            for tc in dl.get("tool_calls", []):
+                ix = tc.get("index", 0)
+                if ix not in tc_acc:
+                    tc_acc[ix] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                if tc.get("id"):
+                    tc_acc[ix]["id"] = tc["id"]
+                fn = tc.get("function", {})
+                if fn.get("name"):
+                    tc_acc[ix]["function"]["name"] += fn["name"]
+                if fn.get("arguments"):
+                    tc_acc[ix]["function"]["arguments"] += fn["arguments"]
+            if cho.get("finish_reason"):
+                fr = cho["finish_reason"]
+            if c.get("usage"):
+                usage_data = c["usage"]
+        msg = {"role": "assistant", "content": "".join(parts_c) or None}
+        if parts_r:
+            msg["reasoning_content"] = "".join(parts_r)
+        if tc_acc:
+            msg["tool_calls"] = [tc_acc[i] for i in sorted(tc_acc)]
+        assembled = {
+            "id": first.get("id", ""),
+            "object": "chat.completion",
+            "created": first.get("created", 0),
+            "model": first.get("model", ""),
+            "choices": [{"index": 0, "message": msg, "finish_reason": fr or "stop"}],
+            "usage": usage_data or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+        yield json.dumps(assembled).encode()
+    return StreamingResponse(_gen(), media_type="application/json")
+
 @app.api_route("/v1/{path:path}", methods=["GET","POST"])
 async def proxy(request: Request, path: str):
     global _inflight
@@ -460,9 +545,25 @@ async def proxy(request: Request, path: str):
         body = await request.body()
         headers = {k:v for k,v in request.headers.items() if k.lower() not in ("host","authorization","content-length")}
         is_stream = False
+        force_streamed = False
         if body:
-            try: is_stream = json.loads(body).get("stream", False)
-            except: pass
+            try:
+                body_json = json.loads(body)
+                is_stream = body_json.get("stream", False)
+                # Force streaming for completion endpoints to prevent Modal ~120s proxy timeout.
+                # vLLM returns SSE; proxy reassembles into normal JSON for the client.
+                if not is_stream and path in ("chat/completions", "completions"):
+                    body_json["stream"] = True
+                    body_json.setdefault("stream_options", {})["include_usage"] = True
+                    body = json.dumps(body_json).encode()
+                    force_streamed = True
+            except Exception:
+                pass
+        if force_streamed:
+            resp = await _reassemble_stream(request.method, f"/v1/{path}", body, headers)
+            latency = _time.time() - t0
+            _record_request(latency, 200)
+            return resp
         result = await _proxy_with_retry(request.method, f"/v1/{path}", body, headers, is_stream)
         latency = _time.time() - t0
         if is_stream:
@@ -504,12 +605,17 @@ def serve():
         "--host", "0.0.0.0",
         "--port", "8001",
         "--tensor-parallel-size", "{tensor_parallel}",
+        "--seed", "1024",
         "--max-model-len", "{max_model_len}",
         "--gpu-memory-utilization", "{gpu_mem_util}",
         "--enable-prefix-caching",
         "--max-num-seqs", "{max_num_seqs}",
         "--enable-chunked-prefill",
         "--max-num-batched-tokens", "{max_num_batched_tokens}",
+        "--reasoning-parser", "qwen3",
+        "--enable-auto-tool-choice",
+        "--tool-call-parser", "qwen3_coder",
+        "--trust-remote-code",
     ]
     print("[M-GPUX] Starting vLLM on :8001:", " ".join(vllm_cmd))
     subprocess.Popen(vllm_cmd)
@@ -671,8 +777,22 @@ def deploy():
 
     first_key = active_keys[0]
 
+    # ── Step 6: HuggingFace Token ──
+    console.print("\n[bold cyan]Step 6: HuggingFace Token (optional)[/bold cyan]")
+    console.print("  [dim]Speeds up model downloads and avoids rate limits.[/dim]")
+    console.print("  [dim]Get your token at: https://huggingface.co/settings/tokens[/dim]")
+    default_hf_token = os.environ.get("HF_TOKEN", "")
+    hf_token = Prompt.ask("  HF Token (Enter to skip)", default=default_hf_token, password=True)
+    if hf_token.strip():
+        console.print("  [green]HF Token:[/green] ****" + hf_token.strip()[-4:])
+    else:
+        console.print("  [yellow]No HF token — downloads may be slower / rate-limited.[/yellow]")
+
     # ── Build script ──
-    env_dict = '{"HF_HUB_ENABLE_HF_TRANSFER": "1"}'
+    if hf_token.strip():
+        env_dict = '{"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_TOKEN": "' + hf_token.strip() + '"}'
+    else:
+        env_dict = '{"HF_HUB_ENABLE_HF_TRANSFER": "1"}'
     volumes_dict = (
         '{\n'
         '        "/root/.cache/huggingface": hf_cache,\n'
