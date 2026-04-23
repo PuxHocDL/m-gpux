@@ -1311,6 +1311,7 @@ image = (
         "torch>=2.4.0",
         "torchvision>=0.19.0",
         "onnx>=1.16.0",
+        "onnxscript>=0.1.0",
     )
 )
 
@@ -1419,7 +1420,7 @@ def export():
                 "input": {0: "batch"},
                 "logits": {0: "batch"},
             },
-            opset_version=17,
+            opset_version=18,
         )
         exported_files["onnx"] = str(Path(OUTPUT_DIR) / "model.onnx")
 
