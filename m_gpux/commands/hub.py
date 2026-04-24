@@ -66,9 +66,12 @@ def _select_profile() -> Optional[str]:
 
 def _activate_profile(profile_name: str):
     """Activate the given profile via `modal profile activate`."""
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
     result = subprocess.run(
         ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     if result.returncode != 0:
         console.print(f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]")
@@ -318,7 +321,10 @@ def execute_modal_temp_script(content: str, description: str, detach: bool = Fal
         ))
     
     try:
-        subprocess.run(cmd)
+        env = os.environ.copy()
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("PYTHONUTF8", "1")
+        subprocess.run(cmd, env=env)
     except KeyboardInterrupt:
         if detach:
             console.print(f"\n[green]Disconnected locally. The remote container is still running.[/green]")

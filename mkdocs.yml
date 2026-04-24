@@ -34,6 +34,7 @@ nav:
   - Guide:
       - Getting Started: getting-started.md
       - Command Reference: commands.md
+      - Vision Training: vision.md
       - Architecture: architecture.md
   - Support:
       - FAQ and Troubleshooting: faq.md

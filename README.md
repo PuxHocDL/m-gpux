@@ -17,6 +17,7 @@
 
 - **🧠 LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
 - **⚡ Interactive GPU Hub** — Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
+- **🖼️ Vision Workflows** — Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
 - **👥 Multi-Account Management** — Seamlessly manage multiple profiles in one unified command namespace.
 - **💸 Unified Cost Visibility** — Inspect billing per profile or get a comprehensive view across all configured accounts.
 - **🎨 Friendly Terminal UX** — Enjoy rich tables, intuitive prompts, and interactive guided flows right in your terminal.
@@ -28,6 +29,7 @@
 - [Core Commands](#%EF%B8%8F-core-commands)
   - [Profile Management](#-profile-management)
   - [Interactive Hub](#-interactive-hub)
+  - [Computer Vision](#%EF%B8%8F-computer-vision)
   - [LLM API Server](#-llm-api-server)
   - [Billing](#-billing)
 - [Architecture](#%EF%B8%8F-architecture)
@@ -76,10 +78,13 @@ m-gpux account list
 # 3) Launch the interactive GPU hub
 m-gpux hub
 
-# 4) Deploy an LLM as an OpenAI-compatible API
+# 4) Train an image classifier from a local dataset
+m-gpux vision train
+
+# 5) Deploy an LLM as an OpenAI-compatible API
 m-gpux serve deploy
 
-# 5) Inspect 30-day usage across all accounts
+# 6) Inspect 30-day usage across all accounts
 m-gpux billing usage --days 30 --all
 ```
 
@@ -110,6 +115,22 @@ m-gpux hub
 - 🪐 Launch Jupyter Lab on your selected GPU.
 - 📜 Run local Python scripts natively on remote GPUs.
 - 💻 Initiate an interactive web Bash shell session.
+
+### 🖼️ Computer Vision
+Train and predict image classifiers on Modal GPUs directly from local folders.
+
+```bash
+m-gpux vision train
+m-gpux vision predict
+```
+
+**Workflow highlights:**
+- Validates common dataset layouts such as `dataset/train/<class>` + `dataset/val/<class>` or a single root folder with class subdirectories.
+- Lets you choose from many TorchVision models including ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more.
+- Configures GPU, epochs, batch size, image size, optimizer, scheduler, augmentation strength, mixed precision, and other training knobs.
+- Saves checkpoints, metrics, and run summaries into a persistent Modal Volume for later download.
+- Reloads saved checkpoints for inference so users can classify new local images without rebuilding the model config by hand.
+- Supports evaluation reports plus `onnx` / `torchscript` exports from the same saved checkpoints.
 
 ### 🧠 LLM API Server
 Turn your HuggingFace models into live endpoints.
@@ -177,6 +198,8 @@ Under the hood, `m-gpux` is built for modularity:
 | `m_gpux/commands/account.py` | Profile CRUD operations and switching |
 | `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
 | `m_gpux/commands/hub.py` | Guided GPU runtime execution launcher |
+| `m_gpux/commands/video.py` | Text-to-video generation workflow on Modal GPUs |
+| `m_gpux/commands/vision.py` | Image classification training workflow for local datasets |
 | `m_gpux/commands/serve.py` | LLM API deployment, proxy, and auth management |
 | `m_gpux/commands/load.py` | Live hardware metrics probe |
 
