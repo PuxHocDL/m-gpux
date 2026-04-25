@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --surface: 0 0% 98%;
+    --border: 0 0% 90%;
+    --primary: 24 98% 50%;
+    --muted: 0 0% 45%;
+  }
+  
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 93%;
+    --surface: 0 0% 7%;
+    --border: 0 0% 16%;
+    --primary: 24 98% 50%;
+    --muted: 0 0% 63%;
+  }
+
+
+}
+
+@layer utilities {
+  .glow {
+    box-shadow: 0 0 40px -10px rgba(249, 115, 22, 0.4);
+  }
+  .border-glow {
+    border: 1px solid rgba(249, 115, 22, 0.3);
+  }
+  .bg-grid-pattern {
+    background-size: 40px 40px;
+    background-image: linear-gradient(to right, rgba(128, 128, 128, 0.1) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(128, 128, 128, 0.1) 1px, transparent 1px);
+  }
+}
