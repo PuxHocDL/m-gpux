@@ -175,13 +175,36 @@ After execution completes, you're prompted whether to stop the app and release t
 Train image classification models on Modal GPUs from local datasets.
 
 ```bash
+m-gpux vision sample-data
 m-gpux vision train
 m-gpux vision predict
 m-gpux vision evaluate
 m-gpux vision export
 ```
 
-The command validates a local dataset, then launches a wizard that generates a full `modal_runner.py` training job.
+The command group can generate a tiny demo dataset, validate a local dataset, then launch a wizard that generates a full `modal_runner.py` training job.
+
+### sample-data
+
+```bash
+m-gpux vision sample-data
+m-gpux vision sample-data --output ./data/demo-shapes --image-size 160
+m-gpux vision sample-data --layout single-root --images-per-class 30
+```
+
+Generate a small local image-classification dataset for demos and smoke tests. The generated classes are `circle`, `square`, and `triangle`, written as PNG images with no external downloads.
+
+| Option | Description | Default |
+|---|---|---|
+| `--output`, `-o` | Destination folder | `data/m-gpux-vision-sample` |
+| `--layout` | Dataset layout: `split` or `single-root` | `split` |
+| `--image-size` | Generated image size in pixels | `128` |
+| `--images-per-class` | Images per class for single-root layout | `24` |
+| `--train-per-class` | Training images per class for split layout | `12` |
+| `--val-per-class` | Validation images per class for split layout | `4` |
+| `--test-per-class` | Test images per class for split layout; use `0` to skip | `4` |
+| `--seed` | Random seed for deterministic sample images | `42` |
+| `--force` | Overwrite files in the destination folder | `false` |
 
 ### train
 

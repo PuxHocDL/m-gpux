@@ -39,6 +39,8 @@ IMAGE_EXTENSIONS = {
 
 DEFAULT_DATASET_IGNORES = ["__pycache__", ".DS_Store", "Thumbs.db"]
 DEFAULT_ARTIFACT_VOLUME = "m-gpux-vision-artifacts"
+DEFAULT_SAMPLE_DATASET_PATH = "data/m-gpux-vision-sample"
+SAMPLE_CLASS_NAMES = ("circle", "square", "triangle")
 
 MODEL_CATALOG = [
     {
@@ -1660,6 +1662,156 @@ def _render_dataset_summary(dataset_root: Path, layout: dict) -> None:
     console.print(table)
 
 
+def _clamp_channel(value: float) -> int:
+    return max(0, min(255, int(round(value))))
+
+
+def _jitter_color(color: tuple[int, int, int], rng, amount: int) -> tuple[int, int, int]:
+    return tuple(_clamp_channel(channel + rng.randint(-amount, amount)) for channel in color)
+
+
+def _point_in_triangle(
+    x: float,
+    y: float,
+    a: tuple[float, float],
+    b: tuple[float, float],
+    c: tuple[float, float],
+) -> bool:
+    def sign(p1, p2, p3):
+        return (p1[0] - p3[0]) * (p2[1] - p3[1]) - (p2[0] - p3[0]) * (p1[1] - p3[1])
+
+    d1 = sign((x, y), a, b)
+    d2 = sign((x, y), b, c)
+    d3 = sign((x, y), c, a)
+    has_negative = d1 < 0 or d2 < 0 or d3 < 0
+    has_positive = d1 > 0 or d2 > 0 or d3 > 0
+    return not (has_negative and has_positive)
+
+
+def _write_png_rgb(path: Path, width: int, height: int, pixels: list[tuple[int, int, int]]) -> None:
+    import struct
+    import zlib
+
+    raw = bytearray()
+    for y in range(height):
+        raw.append(0)
+        row_start = y * width
+        for red, green, blue in pixels[row_start : row_start + width]:
+            raw.extend((red, green, blue))
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        checksum = zlib.crc32(tag + payload) & 0xFFFFFFFF
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", checksum)
+
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(bytes(raw), level=9))
+        + chunk(b"IEND", b"")
+    )
+    path.write_bytes(png)
+
+
+def _sample_shape_pixels(class_name: str, image_size: int, rng) -> list[tuple[int, int, int]]:
+    palette = {
+        "circle": ((236, 246, 255), (25, 118, 210), (11, 65, 143)),
+        "square": ((241, 250, 244), (46, 125, 50), (23, 74, 30)),
+        "triangle": ((255, 248, 235), (239, 108, 0), (141, 60, 0)),
+    }
+    background, fill, border = palette[class_name]
+    background = _jitter_color(background, rng, 10)
+    fill = _jitter_color(fill, rng, 24)
+    border = _jitter_color(border, rng, 12)
+
+    cx = image_size / 2 + rng.randint(-image_size // 10, image_size // 10)
+    cy = image_size / 2 + rng.randint(-image_size // 10, image_size // 10)
+    shape_size = rng.randint(int(image_size * 0.42), int(image_size * 0.62))
+    half = shape_size / 2
+    radius = shape_size / 2
+    triangle = (
+        (cx, cy - half),
+        (cx - half * 0.95, cy + half * 0.78),
+        (cx + half * 0.95, cy + half * 0.78),
+    )
+
+    pixels = []
+    for y in range(image_size):
+        for x in range(image_size):
+            gradient = 10 * y / max(1, image_size - 1)
+            noise = rng.randint(-5, 5)
+            pixel = tuple(_clamp_channel(channel + gradient + noise) for channel in background)
+
+            dx = x - cx
+            dy = y - cy
+            inside = False
+            edge = False
+
+            if class_name == "circle":
+                distance = (dx * dx + dy * dy) ** 0.5
+                inside = distance <= radius
+                edge = radius - 3 <= distance <= radius
+            elif class_name == "square":
+                inside = abs(dx) <= half and abs(dy) <= half
+                edge = inside and (abs(abs(dx) - half) <= 3 or abs(abs(dy) - half) <= 3)
+            elif class_name == "triangle":
+                inside = _point_in_triangle(x, y, *triangle)
+                inner_triangle = (
+                    (cx, cy - half + 5),
+                    (cx - half * 0.86, cy + half * 0.70),
+                    (cx + half * 0.86, cy + half * 0.70),
+                )
+                edge = inside and not _point_in_triangle(x, y, *inner_triangle)
+
+            if inside:
+                pixel = border if edge else _jitter_color(fill, rng, 8)
+
+            pixels.append(pixel)
+
+    return pixels
+
+
+def _clear_directory(path: Path) -> None:
+    import shutil
+
+    for child in path.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _generate_sample_dataset(
+    output_root: Path,
+    *,
+    layout: str,
+    image_size: int,
+    images_per_class: int,
+    train_per_class: int,
+    val_per_class: int,
+    test_per_class: int,
+    seed: int,
+) -> None:
+    import random
+
+    rng = random.Random(seed)
+    if layout == "split":
+        split_counts = [("train", train_per_class), ("val", val_per_class)]
+        if test_per_class > 0:
+            split_counts.append(("test", test_per_class))
+    else:
+        split_counts = [(None, images_per_class)]
+
+    for split_name, count in split_counts:
+        for class_name in SAMPLE_CLASS_NAMES:
+            class_dir = output_root / class_name if split_name is None else output_root / split_name / class_name
+            class_dir.mkdir(parents=True, exist_ok=True)
+            for index in range(1, count + 1):
+                image_rng = random.Random(rng.randint(0, 2**31 - 1))
+                filename = f"{class_name}-{index:03d}.png"
+                pixels = _sample_shape_pixels(class_name, image_size, image_rng)
+                _write_png_rgb(class_dir / filename, image_size, image_size, pixels)
+
+
 def _resolve_image_input_path(input_path: Optional[str]) -> Path:
     default_path = "samples" if Path("samples").exists() else "."
     raw_value = input_path or Prompt.ask(
@@ -1803,6 +1955,106 @@ def _resolve_export_formats(format_name: Optional[str]) -> list[str]:
     if resolved == "all":
         return ["onnx", "torchscript"]
     return [resolved]
+
+
+@app.command("sample-data")
+def sample_data(
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Destination folder for the generated sample dataset",
+    ),
+    layout: str = typer.Option(
+        "split",
+        "--layout",
+        help="Dataset layout: split or single-root",
+    ),
+    image_size: int = typer.Option(128, "--image-size", help="Generated image size in pixels"),
+    images_per_class: int = typer.Option(
+        24,
+        "--images-per-class",
+        help="Images per class for single-root layout",
+    ),
+    train_per_class: int = typer.Option(
+        12,
+        "--train-per-class",
+        help="Training images per class for split layout",
+    ),
+    val_per_class: int = typer.Option(
+        4,
+        "--val-per-class",
+        help="Validation images per class for split layout",
+    ),
+    test_per_class: int = typer.Option(
+        4,
+        "--test-per-class",
+        help="Test images per class for split layout; set 0 to skip test split",
+    ),
+    seed: int = typer.Option(42, "--seed", help="Random seed for deterministic sample images"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite files in the destination folder if it already exists",
+    ),
+):
+    """
+    Generate a tiny local image-classification dataset for demos and smoke tests.
+
+    The dataset contains three synthetic classes: circle, square, and triangle.
+    It is intentionally small, deterministic, and generated without downloads.
+    """
+
+    console.print(
+        Panel.fit(
+            "[bold magenta]m-gpux Vision Sample Data[/bold magenta]\n"
+            "Generate a lightweight local dataset for image-classification demos.",
+            border_style="cyan",
+        )
+    )
+
+    resolved_layout = layout.strip().lower().replace("_", "-")
+    if resolved_layout in {"root", "single"}:
+        resolved_layout = "single-root"
+    if resolved_layout not in {"split", "single-root"}:
+        raise typer.BadParameter("Layout must be either 'split' or 'single-root'.")
+
+    resolved_image_size = _ensure_positive_int(image_size, "Image size")
+    if resolved_image_size < 32:
+        raise typer.BadParameter("Image size must be at least 32 pixels.")
+    resolved_images_per_class = _ensure_positive_int(images_per_class, "Images per class")
+    resolved_train_per_class = _ensure_positive_int(train_per_class, "Train images per class")
+    resolved_val_per_class = _ensure_positive_int(val_per_class, "Validation images per class")
+    resolved_test_per_class = _ensure_non_negative_int(test_per_class, "Test images per class")
+
+    output_root = Path(output or DEFAULT_SAMPLE_DATASET_PATH).expanduser().resolve()
+    if output_root.exists() and not output_root.is_dir():
+        raise typer.BadParameter(f"Output path exists but is not a directory: {output_root}")
+    if output_root.exists() and any(output_root.iterdir()):
+        if not force:
+            raise typer.BadParameter(
+                f"Output folder is not empty: {output_root}. Use --force to overwrite it."
+            )
+        _clear_directory(output_root)
+    output_root.mkdir(parents=True, exist_ok=True)
+
+    _generate_sample_dataset(
+        output_root,
+        layout=resolved_layout,
+        image_size=resolved_image_size,
+        images_per_class=resolved_images_per_class,
+        train_per_class=resolved_train_per_class,
+        val_per_class=resolved_val_per_class,
+        test_per_class=resolved_test_per_class,
+        seed=seed,
+    )
+
+    dataset_layout = _inspect_dataset_layout(output_root)
+    console.print("[green]Sample dataset generated successfully.[/green]\n")
+    _render_dataset_summary(output_root, dataset_layout)
+
+    console.print("\n[bold]Try it with:[/bold]")
+    console.print(f"  [cyan]m-gpux vision train --dataset {output_root} --model resnet18 --gpu T4[/cyan]")
 
 
 @app.command("train")

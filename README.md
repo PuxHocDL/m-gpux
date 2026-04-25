@@ -66,7 +66,7 @@ pip install -e .
 
 ## 🚀 Quick Start
 
-Get up and running in 5 easy steps:
+Get up and running in 6 easy steps:
 
 ```bash
 # 1) Add your first profile
@@ -78,8 +78,9 @@ m-gpux account list
 # 3) Launch the interactive GPU hub
 m-gpux hub
 
-# 4) Train an image classifier from a local dataset
-m-gpux vision train
+# 4) Generate a tiny sample vision dataset, then train on it
+m-gpux vision sample-data
+m-gpux vision train --dataset ./data/m-gpux-vision-sample
 
 # 5) Deploy an LLM as an OpenAI-compatible API
 m-gpux serve deploy
@@ -120,11 +121,13 @@ m-gpux hub
 Train and predict image classifiers on Modal GPUs directly from local folders.
 
 ```bash
+m-gpux vision sample-data
 m-gpux vision train
 m-gpux vision predict
 ```
 
 **Workflow highlights:**
+- Generates a tiny synthetic shape dataset locally for demos and smoke tests, with no external downloads.
 - Validates common dataset layouts such as `dataset/train/<class>` + `dataset/val/<class>` or a single root folder with class subdirectories.
 - Lets you choose from many TorchVision models including ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more.
 - Configures GPU, epochs, batch size, image size, optimizer, scheduler, augmentation strength, mixed precision, and other training knobs.

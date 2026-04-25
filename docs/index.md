@@ -12,7 +12,7 @@ Welcome to the official docs for **m-gpux** — a production-focused CLI toolkit
 |---|---|
 | **Multi-profile management** | Add, switch, and remove Modal identities — all stored in `~/.modal.toml` |
 | **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU (T4 → B200) |
-| **Vision Training** | Train image classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
+| **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
 | **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys — stored locally in `~/.m-gpux/api_keys.json` |
 | **Billing Dashboard** | Inspect 7/30/90-day usage per profile or aggregated across all accounts |
@@ -99,7 +99,8 @@ for chunk in resp:
 ### 3. Train an image classification model
 
 ```bash
-m-gpux vision train
+m-gpux vision sample-data
+m-gpux vision train --dataset ./data/m-gpux-vision-sample
 ```
 
 The vision wizard walks through:
