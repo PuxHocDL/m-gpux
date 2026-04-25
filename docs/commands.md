@@ -192,7 +192,7 @@ m-gpux vision sample-data --output ./data/demo-shapes --image-size 160
 m-gpux vision sample-data --layout single-root --images-per-class 30
 ```
 
-Generate a small local image-classification dataset for demos and smoke tests. The generated classes are `circle`, `square`, and `triangle`, written as PNG images with no external downloads.
+Generate or refresh a small local image-classification dataset for demos and smoke tests. The repository includes the default generated dataset at `data/m-gpux-vision-sample`; the generated classes are `circle`, `square`, and `triangle`, written as PNG images with no external downloads.
 
 | Option | Description | Default |
 |---|---|---|

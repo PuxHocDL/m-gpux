@@ -42,7 +42,7 @@ For a single-root dataset, `m-gpux` creates the validation split automatically.
 
 ## Sample dataset generator
 
-Use `sample-data` when you want a quick smoke-test dataset without downloading anything:
+The repository includes a ready-to-use smoke-test dataset at `data/m-gpux-vision-sample`. Use `sample-data` when you want to regenerate it or create a customized copy without downloading anything:
 
 ```bash
 m-gpux vision sample-data

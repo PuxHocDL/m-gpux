@@ -127,7 +127,7 @@ m-gpux vision predict
 ```
 
 **Workflow highlights:**
-- Generates a tiny synthetic shape dataset locally for demos and smoke tests, with no external downloads.
+- Includes a tiny synthetic shape dataset for demos and can regenerate/customize it locally with no external downloads.
 - Validates common dataset layouts such as `dataset/train/<class>` + `dataset/val/<class>` or a single root folder with class subdirectories.
 - Lets you choose from many TorchVision models including ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more.
 - Configures GPU, epochs, batch size, image size, optimizer, scheduler, augmentation strength, mixed precision, and other training knobs.

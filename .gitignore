@@ -44,5 +44,4 @@ _regen.py
 _test_*.py
 test_modal.py
 test_inference.py
-data/m-gpux-vision-sample/
 .tmp_smoke/
