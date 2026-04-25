@@ -1,16 +1,17 @@
 # Vision Training
 
-`m-gpux vision train`, `vision evaluate`, `vision predict`, and `vision export` form a complete image-classification workflow on Modal without making the user rewrite training, evaluation, inference, or export boilerplate.
+`m-gpux vision sample-data`, `vision train`, `vision evaluate`, `vision predict`, and `vision export` form a complete image-classification workflow on Modal without making the user rewrite dataset setup, training, evaluation, inference, or export boilerplate.
 
 ## What it does
 
-The command:
+The workflow:
 
-1. Validates a local dataset folder
-2. Prompts for model, GPU, and training hyperparameters
-3. Generates a complete `modal_runner.py`
-4. Runs the job on Modal
-5. Saves checkpoints and metrics to a Modal Volume
+1. Optionally generates a tiny local sample dataset
+2. Validates a local dataset folder
+3. Prompts for model, GPU, and training hyperparameters
+4. Generates a complete `modal_runner.py`
+5. Runs the job on Modal
+6. Saves checkpoints and metrics to a Modal Volume
 
 ## Supported dataset layouts
 
@@ -39,7 +40,55 @@ dataset/
 
 For a single-root dataset, `m-gpux` creates the validation split automatically.
 
+## Sample dataset generator
+
+The repository includes a ready-to-use smoke-test dataset at `data/m-gpux-vision-sample`. Use `sample-data` when you want to regenerate it or create a customized copy without downloading anything:
+
+```bash
+m-gpux vision sample-data
+```
+
+By default this creates:
+
+```text
+data/m-gpux-vision-sample/
+  train/
+    circle/
+    square/
+    triangle/
+  val/
+    circle/
+    square/
+    triangle/
+  test/
+    circle/
+    square/
+    triangle/
+```
+
+Useful options:
+
+```bash
+m-gpux vision sample-data --output ./data/demo-shapes --image-size 160
+m-gpux vision sample-data --layout single-root --images-per-class 30
+m-gpux vision sample-data --force
+```
+
 ## Example
+
+Create a built-in demo dataset:
+
+```bash
+m-gpux vision sample-data --output ./data/m-gpux-vision-sample
+```
+
+Then train on it:
+
+```bash
+m-gpux vision train --dataset ./data/m-gpux-vision-sample --model resnet18 --gpu T4
+```
+
+Or train on your own dataset:
 
 ```bash
 m-gpux vision train --dataset ./data/cats-vs-dogs --model resnet50 --gpu A10G

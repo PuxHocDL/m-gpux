@@ -41,6 +41,9 @@ Issues = "https://github.com/PuxHocDL/m-gpux/issues"
 [project.scripts]
 m-gpux = "m_gpux.main:app"
 
+[tool.setuptools.packages.find]
+include = ["m_gpux*"]
+
 [project.optional-dependencies]
 dev = [
     "build>=1.2.2",
