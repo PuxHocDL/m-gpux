@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import Navbar from './components/layout/Navbar';
-import Footer from './components/layout/Footer';
-import Hero from './components/home/Hero';
-import InstallationTabs from './components/home/InstallationTabs';
-import FeaturesGrid from './components/home/FeaturesGrid';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import DashboardLayout from './layouts/DashboardLayout';
+import Deploy from './pages/dashboard/Deploy';
+import Billing from './pages/dashboard/Billing';
+import ApiKeys from './pages/dashboard/ApiKeys';
+import Settings from './pages/dashboard/Settings';
+import Playground from './pages/dashboard/Playground';
 
 function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -20,20 +23,26 @@ function App() {
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   return (
-    <div className="min-h-screen bg-background text-foreground relative overflow-hidden flex flex-col transition-colors duration-300">
-      {/* Background Grid */}
-      <div className="absolute inset-0 bg-grid-pattern [mask-image:linear-gradient(to_bottom,black,transparent)] pointer-events-none opacity-20 z-0"></div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-background text-foreground relative overflow-hidden flex flex-col transition-colors duration-300">
+        {/* Background Grid - Global */}
+        <div className="absolute inset-0 bg-grid-pattern [mask-image:linear-gradient(to_bottom,black,transparent)] pointer-events-none opacity-20 z-0 fixed"></div>
 
-      <Navbar isDarkMode={isDarkMode} toggleTheme={toggleTheme} />
-      
-      <main className="flex-1 relative z-10">
-        <Hero />
-        <InstallationTabs />
-        <FeaturesGrid />
-      </main>
-
-      <Footer />
-    </div>
+        <Routes>
+          {/* Public Landing Page */}
+          <Route path="/" element={<LandingPage isDarkMode={isDarkMode} toggleTheme={toggleTheme} />} />
+          
+          {/* Dashboard Layout */}
+          <Route path="/dashboard" element={<DashboardLayout isDarkMode={isDarkMode} toggleTheme={toggleTheme} />}>
+            <Route index element={<Deploy />} />
+            <Route path="billing" element={<Billing />} />
+            <Route path="keys" element={<ApiKeys />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="playground" element={<Playground />} />
+          </Route>
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 }
 
