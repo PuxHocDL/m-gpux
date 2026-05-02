@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="470" viewBox="0 0 1180 470" role="img" aria-labelledby="title desc">
+  <title id="title">Web hosting deploy flow</title>
+  <desc id="desc">The host command validates a local app, generates a Modal script, deploys it, and exposes a public Modal URL.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#f0fdf4"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="13" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#475569"/>
+    </marker>
+    <style>
+      .title{font:800 26px IBM Plex Sans,Segoe UI,sans-serif;fill:#0f172a}
+      .label{font:800 17px IBM Plex Sans,Segoe UI,sans-serif;fill:#0f172a}
+      .small{font:500 13px IBM Plex Sans,Segoe UI,sans-serif;fill:#475569}
+      .mono{font:600 12px IBM Plex Mono,Consolas,monospace;fill:#334155}
+      .card{fill:#fff;stroke:#cbd5e1;filter:url(#shadow)}
+      .line{stroke:#475569;stroke-width:2.4;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1180" height="470" rx="28" fill="url(#bg)"/>
+  <text x="60" y="58" class="title">Web hosting flow</text>
+  <text x="60" y="86" class="small">ASGI, WSGI, and static sites share the same reviewable generated-template path.</text>
+
+  <g transform="translate(70 150)">
+    <rect width="180" height="140" rx="22" class="card"/>
+    <text x="90" y="42" text-anchor="middle" class="label">Local App</text>
+    <text x="90" y="72" text-anchor="middle" class="mono">main:app</text>
+    <text x="90" y="96" text-anchor="middle" class="small">requirements</text>
+  </g>
+  <g transform="translate(300 150)">
+    <rect width="180" height="140" rx="22" class="card"/>
+    <text x="90" y="42" text-anchor="middle" class="label">Wizard</text>
+    <text x="90" y="72" text-anchor="middle" class="small">profile, compute</text>
+    <text x="90" y="96" text-anchor="middle" class="small">warm replica</text>
+  </g>
+  <g transform="translate(530 150)">
+    <rect width="180" height="140" rx="22" class="card"/>
+    <text x="90" y="42" text-anchor="middle" class="label">Review</text>
+    <text x="90" y="72" text-anchor="middle" class="mono">modal_runner.py</text>
+    <text x="90" y="96" text-anchor="middle" class="small">editable script</text>
+  </g>
+  <g transform="translate(760 150)">
+    <rect width="180" height="140" rx="22" class="card"/>
+    <text x="90" y="42" text-anchor="middle" class="label">Modal Deploy</text>
+    <text x="90" y="72" text-anchor="middle" class="small">ASGI / WSGI</text>
+    <text x="90" y="96" text-anchor="middle" class="small">static server</text>
+  </g>
+  <g transform="translate(990 150)">
+    <rect width="130" height="140" rx="22" class="card"/>
+    <text x="65" y="42" text-anchor="middle" class="label">URL</text>
+    <text x="65" y="72" text-anchor="middle" class="small">public</text>
+    <text x="65" y="96" text-anchor="middle" class="small">modal.run</text>
+  </g>
+
+  <path class="line" d="M250 220 H290"/>
+  <path class="line" d="M480 220 H520"/>
+  <path class="line" d="M710 220 H750"/>
+  <path class="line" d="M940 220 H980"/>
+
+  <rect x="265" y="345" width="650" height="52" rx="16" fill="#14532d" opacity="0.9"/>
+  <text x="590" y="376" text-anchor="middle" font-family="IBM Plex Sans,Segoe UI,sans-serif" font-size="15" font-weight="700" fill="#dcfce7">Pick deploy for a stable service; pick run for a temporary validation tunnel.</text>
+</svg>

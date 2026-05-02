@@ -43,8 +43,8 @@ You will be prompted for:
 | Field | Description | Where to find it |
 |---|---|---|
 | **Profile name** | A label like `personal` or `work` | You choose this |
-| **Token ID** | Modal API token ID | [modal.com/settings](https://modal.com/settings) â†’ API Tokens |
-| **Token Secret** | Modal API token secret | Same page, shown once at creation |
+| **Token ID** | Modal API token ID | [modal.com/settings](https://modal.com/settings) -> API Tokens |
+| **Token Secret** | Modal API token secret | Same page -> API Tokens, shown once at creation |
 
 Profiles are stored in `~/.modal.toml`. You can add as many as you need.
 
@@ -62,15 +62,16 @@ You will see a table of all configured profiles, with the active one marked.
 m-gpux hub
 ```
 
+<figure class="doc-figure">
+  <img src="assets/hub-terminal.svg" alt="Web Bash terminal rendering path">
+  <figcaption>The browser terminal is intentionally close to VS Code's direct-shell model.</figcaption>
+</figure>
+
 The interactive hub walks you through:
 
 1. Select a profile
 2. Pick a GPU
-3. Pick an action:
-   - Jupyter Lab
-   - Run Python script
-   - Web Bash shell
-   - vLLM inference
+3. Pick an action: Jupyter Lab, Run Python script, Web Bash shell, or vLLM inference
 4. Review the generated `modal_runner.py`
 5. Press Enter to launch, or edit the script first
 
@@ -78,7 +79,7 @@ The interactive hub walks you through:
     The hub generates a Modal deployment script (`modal_runner.py`) with your chosen GPU and action, then runs it with Modal. The script is fully editable, so you can add pip packages, change timeouts, or customize the container image before launch.
 
 !!! tip "Smooth browser terminal"
-    The Web Bash shell now uses direct `bash` by default for smoother interaction, cleaner rendering, and fewer WebSocket heartbeat interruptions. `tmux` is still installed; run `tmux` manually when you want detachable sessions.
+    The Web Bash shell uses direct `bash` by default for smoother interaction and cleaner rendering. `tmux` is still installed; run `tmux` manually when you want detachable sessions.
 
 ## Step 4: Host your first web app
 
@@ -99,6 +100,11 @@ For a static site:
 ```bash
 m-gpux host static --dir ./site
 ```
+
+<figure class="doc-figure">
+  <img src="assets/host-deploy-flow.svg" alt="Web hosting deployment flow">
+  <figcaption>The host wizard turns a local ASGI, WSGI, or static app into a reviewable Modal deployment.</figcaption>
+</figure>
 
 The hosting wizard asks for:
 
@@ -130,6 +136,11 @@ m-gpux billing open
 ## Step 6: Deploy an LLM API
 
 Turn any HuggingFace model into a production OpenAI-compatible API with authentication.
+
+<figure class="doc-figure">
+  <img src="assets/llm-api-architecture.svg" alt="LLM API server architecture">
+  <figcaption>The public endpoint is the auth proxy; vLLM stays behind it on localhost.</figcaption>
+</figure>
 
 ### 1. Create an API key
 

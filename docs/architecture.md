@@ -1,36 +1,54 @@
 # Architecture
 
-This page explains how m-gpux works internally — from CLI structure to the LLM API server proxy layer.
+This page explains how `m-gpux` is put together: the CLI/plugin system, the generated Modal scripts, the Web Bash terminal path, and the LLM API server proxy layer.
+
+<figure class="doc-figure">
+  <img src="assets/mgpux-overview.svg" alt="m-gpux system overview">
+  <figcaption>High-level flow from local CLI intent to Modal GPU workloads.</figcaption>
+</figure>
 
 ## Project Structure
 
-```
+`m-gpux` is organized around a small core plus feature plugins. The CLI entrypoint discovers plugins and attaches their Typer commands to the root app.
+
+```text
 m_gpux/
-├── __init__.py              # Package version
-├── main.py                  # CLI entrypoint, command registration, welcome screen, top-level stop
-└── commands/
-    ├── __init__.py
-    ├── account.py           # Profile CRUD (add/list/switch/remove)
-    ├── billing.py           # Usage aggregation and billing dashboard links
-    ├── hub.py               # Interactive GPU runtime launcher (Jupyter/script/shell)
-    ├── video.py             # Text-to-video generation workflows
-    ├── vision.py            # Image classification training workflow
-    ├── serve.py             # LLM API deployment, auth proxy, API key management
-    ├── load.py              # Live GPU hardware metrics probe
-    └── _metrics_snippet.py  # GPU metrics code injected into generated Modal scripts
+  __init__.py
+  main.py                    # CLI entrypoint and plugin registration
+  core/
+    console.py               # shared Rich console
+    gpus.py                  # GPU and CPU catalogs
+    metrics.py               # metrics snippet injected into generated scripts
+    plugin.py                # PluginBase, registry, entry-point discovery
+    profiles.py              # Modal profile loading, switching, selection
+    runner.py                # generated script execution helpers
+    ui.py                    # interactive arrow-key menu
+  plugins/
+    account/                 # profile CRUD
+    billing/                 # usage reports and billing links
+    host/                    # ASGI, WSGI, and static hosting
+    hub/                     # Jupyter, scripts, Web Bash, vLLM launchers
+    info/                    # CLI/package diagnostics
+    load/                    # GPU hardware probe
+    serve/                   # LLM API deployment and API key management
+    stop/                    # discover and stop running apps
+    video/                   # text-to-video workflows
+    vision/                  # image-classification workflows
 ```
 
-## How it works
+## CLI Framework
 
-### CLI Framework
+The root command is `m_gpux.main:app`, registered in `pyproject.toml` as the `m-gpux` console script. The root app stays intentionally small: it loads built-in plugins, discovers third-party plugins through the `m_gpux.plugins` entry-point group, and lets each plugin register its own command tree.
 
-m-gpux is built on [Typer](https://typer.tiangolo.com/) with [Rich](https://rich.readthedocs.io/) for terminal output. The entrypoint is `m_gpux.main:app`, registered as the `m-gpux` console script in `pyproject.toml`.
+This keeps the feature surface easy to extend:
 
-Each command module (`account`, `billing`, `hub`, `video`, `vision`, `serve`, `load`) defines its own `typer.Typer()` app, which is attached to the main app via `app.add_typer()`.
+- Core modules own shared behavior such as profiles, generated-script execution, GPU catalogs, and UI helpers.
+- Plugins own user-facing workflows such as `hub`, `serve`, `vision`, `host`, and `billing`.
+- Third-party packages can add commands without editing the root CLI.
 
-### Profile Management
+## Profile Management
 
-Profiles are stored in `~/.modal.toml` using the [tomlkit](https://github.com/sdispater/tomlkit) library. Each section represents a profile:
+Profiles are stored in `~/.modal.toml`. Each section represents one Modal identity:
 
 ```toml
 [personal]
@@ -42,150 +60,150 @@ token_id = "ak-..."
 token_secret = "as-..."
 ```
 
-When switching profiles, m-gpux calls `modal profile activate <name>` to set the active profile for subsequent Modal CLI commands.
+When a workflow needs a target account, `m-gpux` either uses the selected profile or activates it through:
 
-### Script Generation (Hub, Video, Vision & Serve)
+```bash
+modal profile activate <name>
+```
 
-The `hub`, `video generate`, `vision train`, and `serve deploy` flows follow the same pattern:
+The hub can also offer an automatic profile choice when enough billing information is available.
 
-1. **Collect parameters** via interactive prompts (GPU, action, model, etc.)
-2. **Generate a Python script** (`modal_runner.py`) from a template with string substitution
-3. **Show the script** for review (syntax-highlighted with Rich)
-4. **Execute** via `modal run` (hub / video / vision) or `modal deploy` (serve)
+## Generated Script Pattern
 
-For Web Bash sessions, the hub now prefers a direct `bash --login` process behind `ttyd` instead of wrapping the default shell in `tmux`. This keeps rendering close to VS Code's integrated terminal, reduces repaint artifacts, and lowers heartbeat churn via a longer WebSocket ping interval. `tmux` is still installed and configured for users who want to start detachable sessions manually.
+Most workflows follow the same transparent execution pattern:
 
-The generated script is fully transparent — users can edit it before execution.
+1. Collect parameters through prompts or command flags.
+2. Generate a `modal_runner.py` file from a Python template.
+3. Show the script for review before execution.
+4. Run it with `modal run`, or deploy it with `modal deploy`.
 
-### Vision Training Architecture
+This pattern is used by `hub`, `host`, `vision`, `video`, and `serve`. The generated script is intentionally editable so users can inspect Modal decorators, dependencies, timeout settings, volumes, and uploaded paths before committing to a run.
 
-The `vision train` command packages a local dataset into the Modal container with `Image.add_local_dir`, then runs a full PyTorch image-classification training loop on the selected GPU.
+## Web Bash Terminal
+
+The Web Bash shell uses `ttyd` as the browser terminal bridge. The default path is deliberately close to VS Code's integrated terminal:
+
+<figure class="doc-figure">
+  <img src="assets/hub-terminal.svg" alt="Web Bash terminal architecture">
+  <figcaption>The default shell path is direct bash for clean rendering; tmux is installed but opt-in.</figcaption>
+</figure>
+
+The important choices are:
+
+- `ttyd` launches `bash --login` directly by default.
+- The prompt is simple ASCII, not a powerline or emoji-heavy prompt.
+- `tmux` is still installed and configured, but users start it manually when they need detachable sessions.
+- Terminal rendering options favor stable glyph layout and repaint behavior.
+
+This reduces the common browser-terminal problems where tmux status lines, unicode prompt glyphs, or font-width mismatches make characters appear overwritten.
+
+## Vision Training Architecture
+
+`vision train` packages a local dataset into the Modal container with `Image.add_local_dir`, then runs a PyTorch image-classification training loop on the selected GPU.
 
 The generated training app includes:
 
-- Dataset layout validation for `train/`, `val/`, optional `test/`, or a single folder of class subdirectories
-- TorchVision model initialization with optional pretrained weights
-- Configurable optimizer, scheduler, augmentation, mixed precision, early stopping, and gradient accumulation
-- Persistent checkpoint + metrics storage in a Modal Volume so runs survive container shutdown
+- Dataset layout validation for `train/`, `val/`, optional `test/`, or a single folder of class subdirectories.
+- TorchVision model initialization with optional pretrained weights.
+- Configurable optimizer, scheduler, augmentation, mixed precision, early stopping, and gradient accumulation.
+- Persistent checkpoint and metrics storage in a Modal Volume.
 
-The `vision predict` command reuses those persisted artifacts:
+Downstream commands reuse the same artifacts:
 
-- Loads a saved checkpoint and class labels from the Modal Volume
-- Uploads a local image file or folder into the inference container
-- Reconstructs the model automatically from the saved training config
-- Writes prediction JSON reports back into the same Volume
-
-The `vision evaluate` command follows the same checkpoint-loading pattern, but mounts a local dataset and computes persisted evaluation reports such as accuracy, top-k accuracy, confusion matrix, macro F1, and per-class metrics.
-
-The `vision export` command loads the same checkpoint and emits deployment artifacts (`model.onnx`, `model.ts`, `labels.json`) into the artifact Volume so the training run can flow directly into downstream deployment or packaging steps.
-
----
+- `vision predict` loads checkpoints and class labels to classify new local images.
+- `vision evaluate` loads checkpoints and computes accuracy, top-k accuracy, confusion matrix, macro F1, and per-class metrics.
+- `vision export` writes deployment artifacts such as ONNX, TorchScript, labels, and export summaries.
 
 ## LLM API Server Architecture
 
-The `serve deploy` command creates a unique two-process architecture inside a single Modal container:
+`serve deploy` creates a two-process architecture inside one Modal GPU container. The proxy starts quickly on port `8000`, which satisfies Modal's web server startup probe. vLLM starts in the background on port `8001` and can take longer to load model weights.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Modal Container (GPU)                     │
-│                                                             │
-│  ┌──────────────────────┐    ┌───────────────────────────┐  │
-│  │   Auth Proxy (8000)  │───▶│    vLLM Backend (8001)    │  │
-│  │   FastAPI + uvicorn  │    │    OpenAI-compatible API  │  │
-│  │                      │    │                           │  │
-│  │  • Bearer token auth │    │  • /v1/chat/completions   │  │
-│  │  • 401/403 responses │    │  • /v1/models             │  │
-│  │  • Streaming proxy   │    │  • /v1/completions        │  │
-│  │  • /health endpoint  │    │  • Model loading/serving  │  │
-│  └──────────────────────┘    └───────────────────────────┘  │
-│           ▲                                                  │
-│           │ Port 8000 (Modal web_server)                     │
-└───────────┼─────────────────────────────────────────────────┘
-            │
-     ┌──────┴──────┐
-     │   Internet  │
-     │   Clients   │
-     └─────────────┘
-```
+<figure class="doc-figure">
+  <img src="assets/llm-api-architecture.svg" alt="LLM API server architecture">
+  <figcaption>Only the FastAPI auth proxy is exposed publicly; vLLM stays internal on localhost.</figcaption>
+</figure>
 
-### Why two processes?
+## Why Two Processes?
 
-Modal's `@modal.web_server(port=8000)` requires a server to be listening on the specified port quickly (startup timeout). vLLM takes several minutes to load large models. By starting FastAPI first (instant) and vLLM second (background), the container passes Modal's health probe immediately.
+Large models may take minutes to load. Modal's `@modal.web_server(port=8000)` expects a listening web server within the startup timeout. If vLLM owned the public port directly, slow model loading could look like a failed startup.
 
-### Auth Flow
+The split solves that:
 
-```
-Client Request
-    │
-    ▼
-┌─ Auth Middleware ──────────────────────────────────┐
-│  1. Is path /health, /, /docs, /openapi.json,     │
-│     /stats?                                        │
-│     → YES: Pass through (no auth)                  │
-│     → NO: Check Authorization header               │
-│                                                    │
-│  2. No "Bearer" prefix?                            │
-│     → 401 {"error": "Missing API key..."}          │
-│                                                    │
-│  3. Key doesn't match?                             │
-│     → 403 {"error": "Invalid API key"}             │
-│                                                    │
-│  4. Too many concurrent requests (>150)?           │
-│     → 429 {"error": "Too many concurrent..."}      │
-│                                                    │
-│  5. Valid key + capacity available                  │
-│     → Proxy to vLLM on localhost:8001 (with retry) │
-└────────────────────────────────────────────────────┘
-```
+- FastAPI starts immediately and exposes `/health`.
+- vLLM loads in the background on `localhost:8001`.
+- The proxy returns clear loading or retry behavior instead of losing requests.
+- The public API gets auth, metrics, and backpressure before GPU inference work begins.
 
-### Proxy Resilience
+## Auth Flow
 
-The auth proxy includes several features to prevent request loss under load:
+<figure class="doc-figure">
+  <img src="assets/auth-flow.svg" alt="Auth proxy request flow">
+  <figcaption>Invalid or overloaded requests exit before hitting the GPU-heavy vLLM backend.</figcaption>
+</figure>
+
+The proxy applies these gates before forwarding a request:
+
+1. Public paths such as `/health`, `/docs`, `/openapi.json`, and `/stats` can pass without an API key.
+2. API paths require an `Authorization: Bearer ...` header.
+3. Missing keys return `401`.
+4. Invalid keys return `403`.
+5. Excess concurrent requests return `429`.
+6. Valid requests are proxied to vLLM with retry and streaming support.
+
+## Proxy Resilience
+
+The auth proxy includes several behaviors to reduce request loss under load:
 
 | Feature | Details |
 |---|---|
-| **Retry with backoff** | 3 attempts with 1s→2s→4s delays on `ConnectError`, `TimeoutException`, `RemoteProtocolError`, `ReadError` |
-| **Backpressure (429)** | Tracks in-flight requests; rejects with 429 when >150 concurrent |
-| **Internal streaming** | Non-stream requests use `httpx.stream()` internally to collect chunks — keeps connection alive during long inference (prevents timeout on 5+ min completions) |
-| **Stream error recovery** | Streaming responses catch mid-stream errors and yield a proper SSE error event instead of leaving truncated responses (prevents `TransferEncodingError`) |
-| **Metrics tracking** | Every request's latency, status, token usage tracked for `/stats` and `dashboard` |
+| Retry with backoff | Retries transient connect, timeout, protocol, and read errors. |
+| Backpressure | Tracks in-flight requests and rejects excess work with `429`. |
+| Internal streaming | Keeps long non-stream responses alive while collecting chunks from vLLM. |
+| Stream error recovery | Converts mid-stream failures into structured SSE error events when possible. |
+| Metrics tracking | Tracks latency, status, and token usage for dashboard and stats views. |
 
-### Streaming
+## Streaming
 
-For streaming requests (`"stream": true`), the proxy uses `httpx.AsyncClient.stream()` to forward vLLM's SSE chunks directly to the client in real-time. This means:
+For streaming requests (`"stream": true`), the proxy forwards vLLM's server-sent events directly to the client.
 
-- Time-to-first-token (TTFT) is the same as hitting vLLM directly
-- No buffering — chunks are yielded as they arrive
-- `text/event-stream` content type is preserved
+That means:
 
-### Model Caching
+- Time-to-first-token stays close to direct vLLM access.
+- Chunks are yielded as they arrive.
+- `text/event-stream` is preserved.
+- Client SDKs can consume the endpoint like an OpenAI-compatible API.
 
-Two Modal Volumes persist model weights across deployments and cold starts:
+## Model Caching
+
+Two Modal Volumes persist model artifacts across deployments and cold starts:
 
 | Volume | Mount Path | Contents |
 |---|---|---|
 | `m-gpux-hf-cache` | `/root/.cache/huggingface` | HuggingFace model downloads |
 | `m-gpux-vllm-cache` | `/root/.cache/vllm` | vLLM compiled model artifacts |
 
-First deploy: downloads weights from HuggingFace (5-15 min for large models).
-Subsequent deploys: weights are already cached (cold start ~1-3 min).
+The first deploy may spend several minutes downloading weights. Later deploys reuse the cached model data, so startup is usually much faster.
 
-### Container Lifecycle
+## Container Lifecycle
 
 | Setting | Behavior |
 |---|---|
-| `min_containers=0` | Scale to zero when idle. Cold start on first request (~3-5 min). |
-| `min_containers=1` | One container always running. Response time ~0.9s. Costs GPU time continuously. |
-| `scaledown_window=5min` | After last request, container stays warm for 5 minutes before scaling down. |
-| `timeout=24h` | Max container lifetime before forced restart. |
-| `max_inputs=200` | Up to 200 concurrent requests per container (via `@modal.concurrent`). |
+| `min_containers=0` | Scale to zero when idle. First request after idle may cold start. |
+| `min_containers=1` | Keep one container warm for lower first-token latency. |
+| `scaledown_window=5min` | Keep the container warm briefly after the last request. |
+| `timeout=24h` | Maximum function lifetime before restart. |
+| `max_inputs=200` | Allow many concurrent inputs per container through Modal concurrency. |
 
-### API Key Storage
+## API Key Storage
 
-```
+API keys are stored locally:
+
+```text
 ~/.m-gpux/
-└── api_keys.json
+  api_keys.json
 ```
+
+Example:
 
 ```json
 [
@@ -198,32 +216,28 @@ Subsequent deploys: weights are already cached (cold start ~1-3 min).
 ]
 ```
 
-Keys are generated with `secrets.token_hex(24)` (48 hex characters), prefixed with `sk-mgpux-`.
+Keys are generated with `secrets.token_hex(24)` and prefixed with `sk-mgpux-`.
 
-Only the **first active key** is embedded in the deployed Modal script. To use a different key, revoke the old one and redeploy.
+Only the active key selected during `serve deploy` is embedded in the generated Modal script. If you rotate keys, redeploy the server.
 
----
+## App Discovery
 
-## App Discovery (stop command)
+`m-gpux stop` finds running apps by:
 
-The top-level `m-gpux stop` command finds running apps by:
+1. Running `modal app list --json` for one profile or every configured profile.
+2. Filtering apps whose description starts with `m-gpux` and whose state is `deployed` or `running`.
+3. Presenting the matches in a selection table.
+4. Calling `modal app stop <app_id>` on selected apps.
 
-1. Running `modal app list --json` for each profile
-2. Filtering apps where `description` starts with `m-gpux` and `state` is `deployed` or `running`
-3. Presenting them in a selection table
-4. Calling `modal app stop <app_id>` on selected apps
-
-The `--all` flag scans every profile in `~/.modal.toml`. Without it, only the current active profile is scanned.
-
----
+Use `m-gpux stop --all` when you want to scan every profile in `~/.modal.toml`.
 
 ## GPU Metrics
 
-The `_metrics_snippet.py` module provides GPU monitoring functions that are injected into generated Modal scripts. These functions use `nvidia-smi` to report:
+The shared metrics snippet uses `nvidia-smi` to report:
 
-- GPU utilization percentage
-- VRAM usage (used / total)
-- GPU temperature
-- Power consumption
+- GPU utilization percentage.
+- VRAM usage.
+- GPU temperature.
+- Power consumption.
 
-The `load probe` command connects to a running container to display these metrics live.
+Generated Modal scripts can print one-time metrics at startup, and the `load probe` command can run a live hardware check for a selected GPU.

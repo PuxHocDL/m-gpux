@@ -72,9 +72,9 @@ m-gpux account add
 
 Interactive prompt to add or update a profile. You will be asked for:
 
-- **Profile name** â€” a local label such as `personal`, `work`, or `team-gpu`
-- **Token ID** â€” from [modal.com/settings](https://modal.com/settings)
-- **Token Secret** â€” shown once when the token is created
+- **Profile name** - a local label such as `personal`, `work`, or `team-gpu`
+- **Token ID** - from [modal.com/settings](https://modal.com/settings)
+- **Token Secret** - shown once when the token is created
 
 If a profile with the same name already exists, its credentials are updated.
 

@@ -1,6 +1,6 @@
 # m-gpux Documentation
 
-Welcome to the official docs for **m-gpux** â€” a production-focused CLI toolkit for Modal GPU operations.
+Welcome to the official docs for **m-gpux**, a production-focused CLI toolkit for Modal GPU operations.
 
 > One CLI to manage profiles, launch GPU runtimes, deploy web apps and LLM APIs, and track cloud costs.
 
@@ -8,14 +8,19 @@ Welcome to the official docs for **m-gpux** â€” a production-focused CLI to
 
 `m-gpux` turns Modal's serverless GPU platform into a streamlined developer experience:
 
+<figure class="doc-figure">
+  <img src="assets/mgpux-overview.svg" alt="m-gpux system overview">
+  <figcaption>One CLI coordinates local profiles, generated Modal scripts, GPU runtimes, hosted apps, and lifecycle cleanup.</figcaption>
+</figure>
+
 | Capability | Description |
 |---|---|
-| **Multi-profile management** | Add, switch, and remove Modal identities â€” all stored in `~/.modal.toml` |
+| **Multi-profile management** | Add, switch, and remove Modal identities, all stored in `~/.modal.toml` |
 | **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU |
 | **Web Hosting** | Deploy ASGI apps, WSGI apps, and static sites with generated Modal templates, dependency prompts, and deploy/run modes |
 | **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
-| **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys â€” stored locally in `~/.m-gpux/api_keys.json` |
+| **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys stored locally in `~/.m-gpux/api_keys.json` |
 | **Billing Dashboard** | Inspect 7/30/90-day usage per profile or aggregated across all accounts |
 | **GPU Metrics Probe** | Live hardware utilization (GPU %, VRAM, temperature) on running containers |
 | **App Lifecycle** | Stop any running m-gpux app (Jupyter, shells, hosted apps, LLM servers) from one command |
@@ -44,7 +49,7 @@ cd m-gpux && pip install -e .
 | [Command Reference](commands.md) | Every command, flag, and option with examples |
 | [Web Hosting](web-hosting.md) | Host FastAPI, Flask, Django, or static sites on Modal with `m-gpux host` |
 | [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
-| [Architecture](architecture.md) | How m-gpux works internally â€” proxy layer, template generation, profile resolution |
+| [Architecture](architecture.md) | How m-gpux works internally: proxy layer, template generation, profile resolution |
 | [FAQ & Troubleshooting](faq.md) | Common errors and how to fix them |
 
 ## Common Workflows
@@ -61,6 +66,11 @@ The hub generates a `modal_runner.py` script, shows it for review, then executes
 !!! note "Hub terminal update"
     The hub can launch Jupyter, Python scripts, vLLM serving, or a clean VS Code-like Web Bash terminal. The terminal uses direct `bash` by default, keeps `tmux` optional, and reduces WebSocket heartbeat noise for smoother interaction.
 
+<figure class="doc-figure">
+  <img src="assets/hub-terminal.svg" alt="VS Code-like Web Bash terminal architecture">
+  <figcaption>The Web Bash shell now favors a direct bash path for cleaner browser rendering.</figcaption>
+</figure>
+
 ### 2. Deploy an LLM as an OpenAI-compatible API
 
 ```bash
@@ -70,18 +80,23 @@ m-gpux serve deploy
 
 The wizard walks through:
 
-1. **Model** â€” 11 presets or a custom HuggingFace model ID
-2. **GPU** â€” choose the hardware for inference
-3. **Context length** â€” max sequence length
-4. **Engine tuning** â€” GPU memory utilization, max concurrent sequences, tensor parallel size
-5. **Keep warm** â€” `0` scales to zero, `1+` keeps container(s) always running
-6. **API key** â€” pick an existing key or auto-create one
+1. **Model**  11 presets or a custom HuggingFace model ID
+2. **GPU**  choose the hardware for inference
+3. **Context length**  max sequence length
+4. **Engine tuning**  GPU memory utilization, max concurrent sequences, tensor parallel size
+5. **Keep warm**  `0` scales to zero, `1+` keeps container(s) always running
+6. **API key**  pick an existing key or auto-create one
 
 After deploy, monitor your server with the live dashboard:
 
 ```bash
 m-gpux serve dashboard
 ```
+
+<figure class="doc-figure">
+  <img src="assets/llm-api-architecture.svg" alt="LLM API server architecture">
+  <figcaption>The LLM server exposes a FastAPI auth proxy and keeps vLLM private inside the Modal container.</figcaption>
+</figure>
 
 ### 3. Train an image classification model
 
@@ -92,10 +107,10 @@ m-gpux vision train --dataset ./data/m-gpux-vision-sample
 
 The vision wizard walks through:
 
-1. **Dataset folder** â€” accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
-2. **Model** â€” choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
-3. **Training knobs** â€” GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
-4. **Artifacts** â€” checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
+1. **Dataset folder**  accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
+2. **Model**  choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
+3. **Training knobs**  GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
+4. **Artifacts**  checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
 
 After training, run inference on fresh local images:
 
@@ -111,9 +126,9 @@ m-gpux host asgi --entry main:app
 
 The hosting flow supports:
 
-1. **ASGI** â€” FastAPI, Starlette, Quart, Django ASGI
-2. **WSGI** â€” Flask, Django WSGI
-3. **Static** â€” plain HTML, CSS, and JavaScript folders
+1. **ASGI**  FastAPI, Starlette, Quart, Django ASGI
+2. **WSGI**  Flask, Django WSGI
+3. **Static**  plain HTML, CSS, and JavaScript folders
 
 During the wizard, `m-gpux` asks for:
 
@@ -162,8 +177,8 @@ m-gpux supports all Modal GPU types:
 | 9 | H100 | 80 GB | Hopper architecture |
 | 10 | H100! | 80 GB | H100 reserved (guaranteed) |
 | 11 | H200 | 141 GB | HBM3e, next-gen Hopper |
-| 12 | B200 | â€” | Blackwell architecture |
-| 13 | B200+ | â€” | B200 reserved (guaranteed) |
+| 12 | B200 |  | Blackwell architecture |
+| 13 | B200+ |  | B200 reserved (guaranteed) |
 
 ## Links
 
