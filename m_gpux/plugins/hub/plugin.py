@@ -137,7 +137,7 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_jupyter():
     _print_metrics()
     _prepare_workspace()
@@ -473,7 +473,7 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_interactive():
     _print_metrics()
     _prepare_workspace()
@@ -596,7 +596,7 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_shell():
     _print_metrics()
     _prepare_workspace()
