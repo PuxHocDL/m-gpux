@@ -1,8 +1,8 @@
 # m-gpux Documentation
 
-Welcome to the official docs for **m-gpux** — a production-focused CLI toolkit for Modal GPU operations.
+Welcome to the official docs for **m-gpux** â€” a production-focused CLI toolkit for Modal GPU operations.
 
-> One CLI to manage profiles, launch GPU runtimes, deploy LLM APIs, and track cloud costs.
+> One CLI to manage profiles, launch GPU runtimes, deploy web apps and LLM APIs, and track cloud costs.
 
 ## What is m-gpux?
 
@@ -10,14 +10,15 @@ Welcome to the official docs for **m-gpux** — a production-focused CLI toolkit
 
 | Capability | Description |
 |---|---|
-| **Multi-profile management** | Add, switch, and remove Modal identities — all stored in `~/.modal.toml` |
-| **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU (T4 → B200) |
+| **Multi-profile management** | Add, switch, and remove Modal identities â€” all stored in `~/.modal.toml` |
+| **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU |
+| **Web Hosting** | Deploy ASGI apps, WSGI apps, and static sites with generated Modal templates, dependency prompts, and deploy/run modes |
 | **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
-| **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys — stored locally in `~/.m-gpux/api_keys.json` |
+| **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys â€” stored locally in `~/.m-gpux/api_keys.json` |
 | **Billing Dashboard** | Inspect 7/30/90-day usage per profile or aggregated across all accounts |
 | **GPU Metrics Probe** | Live hardware utilization (GPU %, VRAM, temperature) on running containers |
-| **App Lifecycle** | Stop any running m-gpux app (Jupyter, shells, LLM servers) from one command |
+| **App Lifecycle** | Stop any running m-gpux app (Jupyter, shells, hosted apps, LLM servers) from one command |
 
 ## Quick Install
 
@@ -41,8 +42,9 @@ cd m-gpux && pip install -e .
 |---|---|
 | [Getting Started](getting-started.md) | Install, add your first profile, and launch a GPU session in 5 minutes |
 | [Command Reference](commands.md) | Every command, flag, and option with examples |
+| [Web Hosting](web-hosting.md) | Host FastAPI, Flask, Django, or static sites on Modal with `m-gpux host` |
 | [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
-| [Architecture](architecture.md) | How m-gpux works internally — proxy layer, template generation, profile resolution |
+| [Architecture](architecture.md) | How m-gpux works internally â€” proxy layer, template generation, profile resolution |
 | [FAQ & Troubleshooting](faq.md) | Common errors and how to fix them |
 
 ## Common Workflows
@@ -50,8 +52,8 @@ cd m-gpux && pip install -e .
 ### 1. Launch Jupyter on a GPU
 
 ```bash
-m-gpux account add          # one-time setup
-m-gpux hub                  # pick GPU → pick Jupyter → launch
+m-gpux account add
+m-gpux hub
 ```
 
 The hub generates a `modal_runner.py` script, shows it for review, then executes `modal run` to start a GPU-backed Jupyter Lab with a public URL.
@@ -62,41 +64,23 @@ The hub generates a `modal_runner.py` script, shows it for review, then executes
 ### 2. Deploy an LLM as an OpenAI-compatible API
 
 ```bash
-m-gpux serve keys create --name prod     # generate API key
-m-gpux serve deploy                      # 6-step wizard
+m-gpux serve keys create --name prod
+m-gpux serve deploy
 ```
 
 The wizard walks through:
 
-1. **Model** — 11 presets (Qwen, Llama, Gemma, Mistral, DeepSeek, Phi) or custom HuggingFace ID
-2. **GPU** — T4, L4, A10G, L40S, A100, A100-80GB, H100, H200, B200
-3. **Context length** — max sequence length (lower = faster startup)
-3.5. **Engine tuning** — GPU memory utilization, max concurrent sequences, tensor parallel size
-4. **Keep warm** — `0` scales to zero (saves cost), `1+` keeps container(s) always running (no cold start)
-5. **API key** — pick an existing key or auto-create one
+1. **Model** â€” 11 presets or a custom HuggingFace model ID
+2. **GPU** â€” choose the hardware for inference
+3. **Context length** â€” max sequence length
+4. **Engine tuning** â€” GPU memory utilization, max concurrent sequences, tensor parallel size
+5. **Keep warm** â€” `0` scales to zero, `1+` keeps container(s) always running
+6. **API key** â€” pick an existing key or auto-create one
 
 After deploy, monitor your server with the live dashboard:
 
 ```bash
 m-gpux serve dashboard
-```
-
-Your endpoint is a drop-in replacement for OpenAI / OpenRouter:
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="https://<workspace>--m-gpux-llm-api-serve.modal.run/v1",
-    api_key="sk-mgpux-...",
-)
-resp = client.chat.completions.create(
-    model="Qwen/Qwen3-8B",
-    messages=[{"role": "user", "content": "Hello!"}],
-    stream=True,
-)
-for chunk in resp:
-    print(chunk.choices[0].delta.content or "", end="")
 ```
 
 ### 3. Train an image classification model
@@ -108,10 +92,10 @@ m-gpux vision train --dataset ./data/m-gpux-vision-sample
 
 The vision wizard walks through:
 
-1. **Dataset folder** — accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
-2. **Model** — choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
-3. **Training knobs** — GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
-4. **Artifacts** — checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
+1. **Dataset folder** â€” accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
+2. **Model** â€” choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
+3. **Training knobs** â€” GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
+4. **Artifacts** â€” checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
 
 After training, run inference on fresh local images:
 
@@ -119,14 +103,31 @@ After training, run inference on fresh local images:
 m-gpux vision predict
 ```
 
-Evaluate the saved checkpoint or export it for deployment:
+### 4. Host a web app on Modal
 
 ```bash
-m-gpux vision evaluate
-m-gpux vision export
+m-gpux host asgi --entry main:app
 ```
 
-### 4. Check costs across all accounts
+The hosting flow supports:
+
+1. **ASGI** â€” FastAPI, Starlette, Quart, Django ASGI
+2. **WSGI** â€” Flask, Django WSGI
+3. **Static** â€” plain HTML, CSS, and JavaScript folders
+
+During the wizard, `m-gpux` asks for:
+
+1. App name
+2. CPU or GPU compute
+3. Python dependencies or `requirements.txt`
+4. Upload exclude patterns
+5. Warm replica strategy
+6. `deploy` vs `run`
+
+!!! note "Full web guide"
+    The complete walkthrough lives in [Web Hosting](web-hosting.md), including project layouts, generated Modal patterns, scaling behavior, and troubleshooting.
+
+### 5. Check costs across all accounts
 
 ```bash
 m-gpux billing usage --days 7 --all
@@ -134,11 +135,11 @@ m-gpux billing usage --days 7 --all
 
 Aggregates compute spend from every configured profile into a single Rich table.
 
-### 5. Stop running apps and release GPUs
+### 6. Stop running apps and release GPUs
 
 ```bash
-m-gpux stop --all       # scan ALL profiles, pick which to stop
-m-gpux serve stop       # stop only the LLM API server
+m-gpux stop --all
+m-gpux serve stop
 ```
 
 !!! tip "Pro workflow"
@@ -161,26 +162,8 @@ m-gpux supports all Modal GPU types:
 | 9 | H100 | 80 GB | Hopper architecture |
 | 10 | H100! | 80 GB | H100 reserved (guaranteed) |
 | 11 | H200 | 141 GB | HBM3e, next-gen Hopper |
-| 12 | B200 | — | Blackwell architecture |
-| 13 | B200+ | — | B200 reserved (guaranteed) |
-
-## Model Presets (serve deploy)
-
-| # | Model | Size | Recommended GPU |
-|---|---|---|---|
-| 1 | `Qwen/Qwen2.5-1.5B-Instruct` | 1.5B | T4 / L4 |
-| 2 | `Qwen/Qwen2.5-7B-Instruct` | 7B | A10G |
-| 3 | `Qwen/Qwen3-8B` | 8B | A10G |
-| 4 | `Qwen/Qwen3.5-35B-A3B` | 35B MoE | A100-80GB |
-| 5 | `meta-llama/Llama-3.1-8B-Instruct` | 8B | A10G |
-| 6 | `google/gemma-2-9b-it` | 9B | A10G |
-| 7 | `mistralai/Mistral-7B-Instruct-v0.3` | 7B | A10G |
-| 8 | `Qwen/Qwen2.5-72B-Instruct-AWQ` | 72B AWQ | A100-80GB |
-| 9 | `meta-llama/Llama-3.1-70B-Instruct` | 70B | H100 |
-| 10 | `deepseek-ai/DeepSeek-V2-Lite-Chat` | 16B | A100 |
-| 11 | `microsoft/Phi-3-medium-4k-instruct` | 14B | A10G |
-
-Select **0** during the wizard to enter any custom HuggingFace model ID.
+| 12 | B200 | â€” | Blackwell architecture |
+| 13 | B200+ | â€” | B200 reserved (guaranteed) |
 
 ## Links
 

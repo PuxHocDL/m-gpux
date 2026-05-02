@@ -37,11 +37,48 @@
   border-radius: 6px;
 }
 
+.md-typeset pre {
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+.md-typeset pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: 1.55;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+.md-typeset table:not([class]) {
+  display: table;
+  width: 100%;
+  min-width: 34rem;
+}
+
+.md-typeset__table {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  vertical-align: top;
+}
+
 .md-typeset .admonition,
 .md-typeset details {
-  border-radius: 10px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .md-main__inner {
   max-width: 1320px;
+}
+
+@media screen and (max-width: 900px) {
+  .md-typeset table:not([class]) {
+    min-width: 30rem;
+  }
 }

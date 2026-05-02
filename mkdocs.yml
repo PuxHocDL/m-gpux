@@ -34,6 +34,7 @@ nav:
   - Guide:
       - Getting Started: getting-started.md
       - Command Reference: commands.md
+      - Web Hosting: web-hosting.md
       - Vision Training: vision.md
       - Architecture: architecture.md
   - Support:
@@ -46,5 +47,6 @@ markdown_extensions:
   - admonition
   - attr_list
   - md_in_html
+  - tables
   - toc:
       permalink: true
