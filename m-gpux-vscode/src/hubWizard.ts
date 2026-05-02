@@ -157,7 +157,8 @@ image = modal.Image.debian_slim()${pipSection}.pip_install("jupyterlab").add_loc
 
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
-    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    # Local files should win on every launch, while remote-only outputs remain.
+    subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
 def _start_workspace_autocommit(interval=20):
@@ -242,7 +243,8 @@ image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_comman
 
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
-    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    # Local files should win on every launch, while remote-only outputs remain.
+    subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
 def _start_workspace_autocommit(interval=20):
@@ -350,7 +352,8 @@ image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_comman
 
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
-    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    # Local files should win on every launch, while remote-only outputs remain.
+    subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
 def _start_workspace_autocommit(interval=20):

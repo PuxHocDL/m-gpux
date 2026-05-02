@@ -76,7 +76,7 @@ Use the mouse wheel or trackpad inside the terminal area. The terminal keeps 10,
 
 ### Files I create in Hub do not appear on my local machine
 
-Hub sessions now mount `/workspace` on a Modal Volume and auto-commit changes roughly every 20 seconds for Jupyter, Web Bash, and interactive terminals. This keeps the same folder layout as your local workspace and prevents remote files from disappearing when the terminal closes.
+Hub sessions mount `/workspace` on a Modal Volume and auto-commit changes roughly every 20 seconds for Jupyter, Web Bash, and interactive terminals. On each new launch, your current local workspace is copied into `/workspace` and overwrites files with the same relative path, so local code edits take effect without deleting remote-only outputs such as `experiments/`.
 
 Because detached Modal jobs cannot directly write back to your local disk, pull the saved workspace when you need it:
 

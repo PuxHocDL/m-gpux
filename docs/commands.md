@@ -163,7 +163,7 @@ Prompts for a local `.py` filename. The script is uploaded and executed on the s
 
 Opens a VS Code-like terminal session in the browser. The shell now starts as direct `bash` for smoother typing, cleaner rendering, scrollback support, and optional manual `tmux` when you want detachable sessions.
 
-The remote `/workspace` is backed by a Modal Volume. Files keep the same relative paths as your local workspace and are auto-committed about every 20 seconds. The terminal prints a `modal volume get ...` command you can run later to pull remote changes back to your machine.
+The remote `/workspace` is backed by a Modal Volume. Files keep the same relative paths as your local workspace and are auto-committed about every 20 seconds. On a new launch, local files overwrite matching paths in the Volume, while remote-only outputs remain. The terminal prints a `modal volume get ...` command you can run later to pull remote changes back to your machine.
 
 #### Interactive terminal for `input()` scripts
 
