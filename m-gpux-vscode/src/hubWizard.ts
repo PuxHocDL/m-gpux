@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
 
 // ---------------------------------------------------------------------------
@@ -139,26 +140,49 @@ const STABLE_TTYD_FLAGS = [
 ];
 
 function jupyterScript(gpu: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
+  const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
 import time
+import os
+import threading
 
 ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-jupyter")
+workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
 image = modal.Image.debian_slim()${pipSection}.pip_install("jupyterlab").add_local_dir(
-    "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(excludePatterns)}
+    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
 )
 
-@app.function(image=image, gpu="${gpu}", timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
 def run_jupyter():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     _monitor_metrics()
     jupyter_port = 8888
     with modal.forward(jupyter_port) as tunnel:
         print(f"\\n=======================================================")
         print(f"[JUPYTER READY] Connect via this URL: {tunnel.url}")
         print(f"  Workspace files mounted at: /workspace")
+        print(f"  Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
+        print(f"  Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace")
         print(f"=======================================================\\n")
         subprocess.Popen([
             "jupyter", "lab", "--no-browser", "--allow-root",
@@ -197,22 +221,45 @@ def run_script():
 `;
 }
 
-function bashScript(gpu: string): string {
+function bashScript(gpu: string, localDir: string, excludePatterns: string[]): string {
+  const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import os
 import subprocess
+import threading
+import time
 
 ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-shell")
+workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
 image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
     "chmod +x /usr/local/bin/ttyd"
-).pip_install("torch")
+).pip_install("torch").add_local_dir(
+    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
+)
 
-@app.function(image=image, gpu="${gpu}", timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
 def run_shell():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     port = 8888
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     os.makedirs("/workspace", exist_ok=True)
@@ -223,7 +270,9 @@ def run_shell():
     with modal.forward(port) as tunnel:
         print("\\n[WEB SHELL READY]")
         print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: direct bash\\n")
+        print("Workspace: /workspace   Mode: direct bash")
+        print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
+        print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
         proc = subprocess.Popen(
             ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
             env=env,
@@ -281,23 +330,44 @@ def serve():
 }
 
 function interactiveScript(gpu: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
+  const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
 import os
+import threading
+import time
 
 ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-interactive")
+workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
 image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
     "chmod +x /usr/local/bin/ttyd"
 )${pipSection}.add_local_dir(
-    "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(excludePatterns)}
+    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
 )
 
-@app.function(image=image, gpu="${gpu}", timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
 def run_interactive():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     port = 8888
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     with open("/root/.bashrc", "w", encoding="utf-8") as f:
@@ -308,13 +378,27 @@ def run_interactive():
         url = tunnel.url
         print("\\n[INTERACTIVE TERMINAL READY]")
         print("URL: " + url)
-        print("Workspace: /workspace   Run: python ${scriptName}\\n")
+        print("Workspace: /workspace   Run: python ${scriptName}")
+        print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
+        print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
         proc = subprocess.Popen(
             ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
             env=env,
         )
         proc.wait()
 `;
+}
+
+function workspaceVolumeName(localDir: string): string {
+  const normalized = path.resolve(localDir);
+  const base = path.basename(normalized) || "workspace";
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32) || "workspace";
+  const digest = crypto.createHash("sha1").update(normalized).digest("hex").slice(0, 10);
+  return `m-gpux-workspace-${slug}-${digest}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -458,7 +542,9 @@ export async function runHubWizard(): Promise<void> {
       break;
     }
     case "bash": {
-      scriptContent = bashScript(selectedGpu);
+      const excludes = await askExcludePatterns(defaultExcludes);
+      if (!excludes) { return; }
+      scriptContent = bashScript(selectedGpu, localDir, excludes);
       detach = true;
       break;
     }

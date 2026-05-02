@@ -3,6 +3,7 @@ from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
 import base64
+import hashlib
 import subprocess
 import os
 import sys
@@ -107,21 +108,40 @@ JUPYTER_SCRIPT = """
 import modal
 import os
 import subprocess
+import threading
 import time
 
 # __METRICS__
 
 app = modal.App("m-gpux-jupyter")
+workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
     modal.Image.debian_slim()
     {pip_section}
     .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets")
-    .add_local_dir("{local_dir}", remote_path="/workspace", ignore={exclude_patterns})
+    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
 )
 
-@app.function(image=image, {compute_spec}, timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
 def run_jupyter():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     # NOTE: background metrics monitor is intentionally disabled here.
     # It floods the tunnelled stdout every 30s which causes JupyterLab to
     # appear laggy. Re-enable manually if you need it.
@@ -130,6 +150,8 @@ def run_jupyter():
         print("\\n=======================================================")
         print(f"[JUPYTER READY] {tunnel.url}")
         print("  Workspace mounted at: /workspace")
+        print("  Sync volume: {workspace_volume} (auto-commit every ~20s)")
+        print("  Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace")
         print("=======================================================\\n", flush=True)
         proc = subprocess.Popen(
             [
@@ -395,15 +417,28 @@ def _b64(text: str) -> str:
     """
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
+
+def _workspace_volume_name(local_dir: str) -> str:
+    """Return a stable Modal Volume name for the current local workspace."""
+    root = os.path.abspath(local_dir)
+    base = os.path.basename(root.rstrip("\\/")) or "workspace"
+    slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in base)
+    slug = "-".join(part for part in slug.split("-") if part)[:32] or "workspace"
+    digest = hashlib.sha1(root.encode("utf-8")).hexdigest()[:10]
+    return f"m-gpux-workspace-{slug}-{digest}"
+
 INTERACTIVE_SCRIPT = """
 import base64
 import modal
 import os
 import subprocess
+import threading
+import time
 
 # __METRICS__
 
 app = modal.App("m-gpux-interactive")
+workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
     modal.Image.debian_slim()
     .apt_install(
@@ -416,16 +451,33 @@ image = (
         "mkdir -p /root/.config",
     )
     {pip_section}
-    .add_local_dir("{local_dir}", remote_path="/workspace", ignore={exclude_patterns})
+    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
 )
 
 _BASHRC_B64 = "{bashrc_b64}"
 _TMUX_B64 = "{tmux_b64}"
 _STARSHIP_B64 = "{starship_b64}"
 
-@app.function(image=image, {compute_spec}, timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
 def run_interactive():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     os.makedirs("/root/.config", exist_ok=True)
     with open("/root/.bashrc", "wb") as f:
         f.write(base64.b64decode(_BASHRC_B64))
@@ -439,7 +491,9 @@ def run_interactive():
     with modal.forward(port) as tunnel:
         print("\\n[INTERACTIVE TERMINAL READY]")
         print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Run: python {script_name}\\n", flush=True)
+        print("Workspace: /workspace   Run: python {script_name}")
+        print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
+        print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
         proc = subprocess.Popen(
             ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "--login"],
             env=env,
@@ -501,10 +555,13 @@ import base64
 import modal
 import os
 import subprocess
+import threading
+import time
 
 # __METRICS__
 
 app = modal.App("m-gpux-shell")
+workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
     modal.Image.debian_slim()
     .apt_install(
@@ -517,16 +574,33 @@ image = (
         "mkdir -p /root/.config",
     )
     {pip_section}
-    .add_local_dir("{local_dir}", remote_path="/workspace", ignore={exclude_patterns})
+    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
 )
 
 _BASHRC_B64 = "{bashrc_b64}"
 _TMUX_B64 = "{tmux_b64}"
 _STARSHIP_B64 = "{starship_b64}"
 
-@app.function(image=image, {compute_spec}, timeout=86400)
+def _prepare_workspace():
+    os.makedirs("/workspace", exist_ok=True)
+    subprocess.run(["cp", "-an", "/workspace_seed/.", "/workspace/"], check=False)
+    workspace_volume.commit()
+
+def _start_workspace_autocommit(interval=20):
+    def _loop():
+        while True:
+            time.sleep(interval)
+            try:
+                workspace_volume.commit()
+            except Exception as exc:
+                print(f"[sync] workspace commit failed: {exc}", flush=True)
+    threading.Thread(target=_loop, daemon=True).start()
+
+@app.function(image=image, {compute_spec}, timeout=86400, volumes={{"/workspace": workspace_volume}})
 def run_shell():
     _print_metrics()
+    _prepare_workspace()
+    _start_workspace_autocommit()
     os.makedirs("/root/.config", exist_ok=True)
     with open("/root/.bashrc", "wb") as f:
         f.write(base64.b64decode(_BASHRC_B64))
@@ -540,7 +614,9 @@ def run_shell():
     with modal.forward(port) as tunnel:
         print("\\n[WEB SHELL READY]")
         print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: direct bash\\n", flush=True)
+        print("Workspace: /workspace   Mode: direct bash")
+        print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
+        print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
         proc = subprocess.Popen(
             ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "--login"],
             env=env,
@@ -662,9 +738,11 @@ def hub_main():
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
 
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
+        workspace_volume = _workspace_volume_name(".")
         script = (JUPYTER_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{local_dir}", local_dir_escaped)
+            .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
             .replace("{pip_section}", pip_section))
         execute_modal_temp_script(script, f"Jupyter Lab on {compute_label}", detach=True)
@@ -735,6 +813,7 @@ def hub_main():
         input_matches = _re.findall(r'input\s*\(', script_content)
         
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
+        workspace_volume = _workspace_volume_name(".")
         base_script_name = os.path.basename(script_path)
         
         if input_matches:
@@ -754,6 +833,7 @@ def hub_main():
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
                     .replace("{local_dir}", local_dir_escaped)
+                    .replace("{workspace_volume}", workspace_volume)
                     .replace("{script_name}", base_script_name)
                     .replace("{exclude_patterns}", repr(exclude_patterns))
                     .replace("{pip_section}", pip_section)
@@ -841,9 +921,11 @@ def hub_main():
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
 
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
+        workspace_volume = _workspace_volume_name(".")
         script = (BASH_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{local_dir}", local_dir_escaped)
+            .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
             .replace("{pip_section}", pip_section)
             .replace("{bashrc_b64}", _b64(_BASHRC))

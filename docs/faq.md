@@ -74,6 +74,18 @@ The Web Bash shell is tuned for a VS Code-like experience: direct `bash`, a simp
 
 Use the mouse wheel or trackpad inside the terminal area. The terminal keeps 10,000 lines of browser scrollback and uses smooth wheel scrolling. If you start `tmux`, scrolling changes to tmux copy-mode behavior; press `Ctrl+b` then `[` or use tmux mouse mode to browse older output.
 
+### Files I create in Hub do not appear on my local machine
+
+Hub sessions now mount `/workspace` on a Modal Volume and auto-commit changes roughly every 20 seconds for Jupyter, Web Bash, and interactive terminals. This keeps the same folder layout as your local workspace and prevents remote files from disappearing when the terminal closes.
+
+Because detached Modal jobs cannot directly write back to your local disk, pull the saved workspace when you need it:
+
+```bash
+modal volume get <sync-volume-name> / ./m-gpux-workspace
+```
+
+The terminal prints the exact sync volume name and pull command when it starts.
+
 ### Can I install custom pip packages?
 
 Yes. Before pressing Enter, edit the generated `modal_runner.py` and add packages to the `.pip_install()` call:
