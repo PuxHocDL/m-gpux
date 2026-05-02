@@ -115,6 +115,10 @@ m-gpux account remove <profile_name>   # Remove an existing profile
 ### ⚡ Interactive Hub
 Your control center for remote execution.
 
+<p align="center">
+  <img src="docs/assets/interactive_hub.png" alt="Interactive Hub Preview" width="90%">
+</p>
+
 ```bash
 m-gpux hub
 ```
@@ -127,6 +131,10 @@ The Bash Shell action now starts a VS Code-like direct `bash` session in the bro
 
 ### 🌐 Web Hosting
 Deploy web apps and static sites as persistent public URLs on Modal.
+
+<p align="center">
+  <img src="docs/assets/web_hosting.png" alt="Web Hosting Preview" width="90%">
+</p>
 
 ```bash
 m-gpux host asgi --entry main:app     # FastAPI / Starlette
@@ -143,6 +151,10 @@ m-gpux host static --dir ./site       # HTML/CSS/JS folder
 
 ### 🖼️ Computer Vision
 Train and predict image classifiers on Modal GPUs directly from local folders.
+
+<p align="center">
+  <img src="docs/assets/vision_training.png" alt="Vision Training Preview" width="90%">
+</p>
 
 ```bash
 m-gpux vision sample-data
@@ -161,6 +173,10 @@ m-gpux vision predict
 
 ### 🧠 LLM API Server
 Turn your HuggingFace models into live endpoints.
+
+<p align="center">
+  <img src="docs/assets/llm_api.png" alt="LLM API Server Preview" width="90%">
+</p>
 
 ```bash
 m-gpux serve deploy             # Deploy a model (interactive wizard)
@@ -186,6 +202,10 @@ m-gpux serve keys revoke <name> # Revoke access
 
 ### 💸 Billing
 Keep unexpected costs at bay.
+
+<p align="center">
+  <img src="docs/assets/billing_dashboard.png" alt="Billing Dashboard Preview" width="90%">
+</p>
 
 ```bash
 m-gpux billing open                    # Open billing dashboard in browser
