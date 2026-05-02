@@ -1,4 +1,4 @@
-import typer
+﻿import typer
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -237,3 +237,21 @@ def remove_account(name: str = typer.Argument(..., help="Name of the Modal profi
     save_config(doc)
     console.print(f"[green]Successfully removed profile '{name}'[/green]")
 
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class AccountPlugin(_PluginBase):
+    name = "account"
+    help = "Configure identities and add multiple Modal profiles."
+    rich_help_panel = "Identity & Finance"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

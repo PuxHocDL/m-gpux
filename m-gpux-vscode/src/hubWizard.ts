@@ -74,6 +74,69 @@ def _monitor_metrics(interval=30):
     t.start()
 `;
 
+const WEB_TERMINAL_BASHRC = String.raw`
+export TERM=xterm-256color
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+export EDITOR=nano
+export HISTSIZE=50000
+export HISTFILESIZE=100000
+export HISTCONTROL=ignoreboth:erasedups
+shopt -s histappend checkwinsize globstar 2>/dev/null
+export PS1='\[\e[1;36m\]\w\[\e[0m\] \[\e[1;32m\]\$\[\e[0m\] '
+alias ll='ls -lah --color=auto --group-directories-first'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+alias py='python'
+alias gpus='nvidia-smi'
+cd /workspace 2>/dev/null || true
+if [ -z "$M_GPUX_WELCOMED" ] && [ -t 1 ]; then
+  export M_GPUX_WELCOMED=1
+  printf "\n\033[1mM-GPUX Web Terminal\033[0m\n"
+  printf "Tools: ll, py, gpus, rg, fd, top. Run tmux manually if you want sessions.\n\n"
+fi
+`;
+
+const WEB_TERMINAL_TMUX_CONF = String.raw`
+set -g default-terminal "xterm-256color"
+set -g mouse on
+set -g history-limit 200000
+set -g status off
+setw -g mode-keys vi
+set -sg escape-time 10
+set -g base-index 1
+setw -g pane-base-index 1
+set -g renumber-windows on
+set -g aggressive-resize on
+bind | split-window -h -c "#{pane_current_path}"
+bind - split-window -v -c "#{pane_current_path}"
+`;
+
+const STABLE_TTYD_FLAGS = [
+  "-W",
+  "-P", "120",
+  "-t", "fontSize=14",
+  "-t", "fontFamily=Cascadia Mono, Consolas, Menlo, monospace",
+  "-t", "fontWeight=400",
+  "-t", "fontWeightBold=700",
+  "-t", "lineHeight=1.2",
+  "-t", "letterSpacing=0",
+  "-t", "cursorStyle=bar",
+  "-t", "cursorBlink=true",
+  "-t", "scrollback=1000",
+  "-t", "rendererType=canvas",
+  "-t", "customGlyphs=true",
+  "-t", "rescaleOverlappingGlyphs=true",
+  "-t", "drawBoldTextInBrightColors=false",
+  "-t", "smoothScrollDuration=0",
+  "-t", "fastScrollModifier=alt",
+  "-t", "fastScrollSensitivity=10",
+  "-t", "disableResizeOverlay=true",
+  "-t", "macOptionIsMeta=true",
+  "-t", "theme={\"background\":\"#1e1e2e\",\"foreground\":\"#cdd6f4\",\"cursor\":\"#f5e0dc\",\"cursorAccent\":\"#1e1e2e\",\"selectionBackground\":\"#585b70\",\"black\":\"#45475a\",\"red\":\"#f38ba8\",\"green\":\"#a6e3a1\",\"yellow\":\"#f9e2af\",\"blue\":\"#89b4fa\",\"magenta\":\"#f5c2e7\",\"cyan\":\"#94e2d5\",\"white\":\"#bac2de\",\"brightBlack\":\"#585b70\",\"brightRed\":\"#f38ba8\",\"brightGreen\":\"#a6e3a1\",\"brightYellow\":\"#f9e2af\",\"brightBlue\":\"#89b4fa\",\"brightMagenta\":\"#f5c2e7\",\"brightCyan\":\"#94e2d5\",\"brightWhite\":\"#a6adc8\"}",
+  "-T", "xterm-256color",
+];
+
 function jupyterScript(gpu: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
   return `import modal
 import subprocess
@@ -135,8 +198,8 @@ def run_script():
 
 function bashScript(gpu: string): string {
   return `import modal
+import os
 import subprocess
-import time
 
 ${METRICS_SNIPPET}
 
@@ -149,14 +212,22 @@ image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_comman
 @app.function(image=image, gpu="${gpu}", timeout=86400)
 def run_shell():
     _print_metrics()
-    _monitor_metrics()
     port = 8888
+    env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+    os.makedirs("/workspace", exist_ok=True)
+    with open("/root/.bashrc", "w", encoding="utf-8") as f:
+        f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
+    with open("/root/.tmux.conf", "w", encoding="utf-8") as f:
+        f.write(${JSON.stringify(WEB_TERMINAL_TMUX_CONF)})
     with modal.forward(port) as tunnel:
-        print(f"\\n=======================================================")
-        print(f"[WEB SHELL READY] URL: {tunnel.url}")
-        print(f"=======================================================\\n")
-        subprocess.Popen(["ttyd", "-W", "-p", str(port), "tmux", "new-session", "-A", "-s", "main"])
-        time.sleep(86400)
+        print("\\n[WEB SHELL READY]")
+        print("URL: " + tunnel.url)
+        print("Workspace: /workspace   Mode: direct bash\\n")
+        proc = subprocess.Popen(
+            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
+            env=env,
+        )
+        proc.wait()
 `;
 }
 
@@ -171,7 +242,7 @@ app = modal.App("m-gpux-vllm")
 MODEL_NAME = "${modelName}"
 
 vllm_image = (
-    modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.12")
+    modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="3.12")
     .entrypoint([])
     .pip_install("vllm", "transformers", "hf-transfer")
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
@@ -211,7 +282,6 @@ def serve():
 function interactiveScript(gpu: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
   return `import modal
 import subprocess
-import time
 import os
 
 ${METRICS_SNIPPET}
@@ -227,21 +297,22 @@ image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_comman
 @app.function(image=image, gpu="${gpu}", timeout=86400)
 def run_interactive():
     _print_metrics()
-    _monitor_metrics()
     port = 8888
-    subprocess.run(["tmux", "new-session", "-d", "-s", "main", "-c", "/workspace"])
+    env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+    with open("/root/.bashrc", "w", encoding="utf-8") as f:
+        f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
+    with open("/root/.tmux.conf", "w", encoding="utf-8") as f:
+        f.write(${JSON.stringify(WEB_TERMINAL_TMUX_CONF)})
     with modal.forward(port) as tunnel:
         url = tunnel.url
-        print(f"\\n===========================================================")
-        print(f"  INTERACTIVE TERMINAL — DETACHED MODE")
-        print(f"  GPU: ${gpu}")
-        print(f"  URL: " + url)
-        print(f"  Your workspace is at /workspace")
-        print(f"  Script: python ${scriptName}")
-        print(f"  Reconnect by reopening the URL.")
-        print(f"===========================================================")
-        subprocess.Popen(["ttyd", "-W", "-p", str(port), "tmux", "attach-session", "-t", "main"])
-        time.sleep(86400)
+        print("\\n[INTERACTIVE TERMINAL READY]")
+        print("URL: " + url)
+        print("Workspace: /workspace   Run: python ${scriptName}\\n")
+        proc = subprocess.Popen(
+            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
+            env=env,
+        )
+        proc.wait()
 `;
 }
 
@@ -333,7 +404,7 @@ export async function runHubWizard(): Promise<void> {
       },
       {
         label: "$(terminal) Bash Shell",
-        description: "Interactive web terminal (ttyd + tmux)",
+        description: "VS Code-like web terminal (direct bash)",
         action: "bash",
       },
       {

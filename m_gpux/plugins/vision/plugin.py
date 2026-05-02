@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -11,9 +11,10 @@ from rich.panel import Panel
 from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
 from rich.table import Table
 
-from m_gpux.commands._ui import arrow_select
-from m_gpux.commands.hub import (
+from m_gpux.core.ui import arrow_select
+from m_gpux.core import (
     AVAILABLE_GPUS,
+    AVAILABLE_CPUS,
     _activate_profile,
     _select_profile,
     execute_modal_temp_script,
@@ -268,7 +269,7 @@ image = (
 
 @app.function(
     image=image,
-    gpu=CONFIG["gpu"],
+    __COMPUTE_SPEC__,
     timeout=TIMEOUT_SECONDS,
     volumes={"/artifacts": artifacts_volume},
 )
@@ -800,7 +801,7 @@ image = (
 
 @app.function(
     image=image,
-    gpu=CONFIG["gpu"],
+    __COMPUTE_SPEC__,
     timeout=TIMEOUT_SECONDS,
     volumes={"/artifacts": artifacts_volume},
 )
@@ -1036,7 +1037,7 @@ image = (
 
 @app.function(
     image=image,
-    gpu=CONFIG["gpu"],
+    __COMPUTE_SPEC__,
     timeout=TIMEOUT_SECONDS,
     volumes={"/artifacts": artifacts_volume},
 )
@@ -1547,18 +1548,59 @@ def _resolve_dataset_path(dataset: Optional[str]) -> Path:
 
 
 def _resolve_gpu_name(gpu: Optional[str]) -> str:
+    """Resolve compute selection. Returns a GPU name or CPU spec string like 'cpu:8:4096'."""
     if gpu:
+        # Check if it's a CPU spec like "cpu:8" or "cpu:8:4096"
+        if gpu.lower().startswith("cpu"):
+            parts = gpu.split(":")
+            cores = int(parts[1]) if len(parts) > 1 else 8
+            memory = int(parts[2]) if len(parts) > 2 else cores * 512
+            return f"cpu:{cores}:{memory}"
         for _, (name, _) in AVAILABLE_GPUS.items():
             if gpu.lower() == name.lower():
                 return name
         raise typer.BadParameter(
-            f"Unsupported GPU '{gpu}'. Choose one of: {', '.join(v[0] for v in AVAILABLE_GPUS.values())}"
+            f"Unsupported GPU '{gpu}'. Choose one of: {', '.join(v[0] for v in AVAILABLE_GPUS.values())} or cpu:<cores>"
         )
 
-    console.print("\n[bold cyan]Step 1: Choose GPU[/bold cyan]")
+    console.print("\n[bold cyan]Step 1: Choose Compute[/bold cyan]")
+    compute_type_options = [
+        ("GPU", "GPU acceleration (recommended for training)"),
+        ("CPU", "CPU-only (slower, good for small models/testing)"),
+    ]
+    compute_idx = arrow_select(compute_type_options, title="Compute Type", default=0)
+
+    if compute_idx == 1:
+        cpu_keys = list(AVAILABLE_CPUS.keys())
+        cpu_options = []
+        for k in cpu_keys:
+            cores, mem, desc = AVAILABLE_CPUS[k]
+            cpu_options.append((f"{cores} cores", desc))
+        cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
+        selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
+        return f"cpu:{selected_cores}:{selected_memory}"
+
     gpu_options = [(value[0], value[1]) for value in AVAILABLE_GPUS.values()]
     selected_index = arrow_select(gpu_options, title="Select GPU", default=1)
     return gpu_options[selected_index][0]
+
+
+def _compute_spec_from_gpu(selected_gpu: str) -> str:
+    """Convert a selected_gpu value to Modal function compute kwarg string."""
+    if selected_gpu.startswith("cpu:"):
+        parts = selected_gpu.split(":")
+        cores = parts[1]
+        memory = parts[2]
+        return f"cpu={cores}, memory={memory}"
+    return f'gpu="{selected_gpu}"'
+
+
+def _compute_label_from_gpu(selected_gpu: str) -> str:
+    """Return a human-readable label for the compute selection."""
+    if selected_gpu.startswith("cpu:"):
+        parts = selected_gpu.split(":")
+        return f"CPU ({parts[1]} cores, {parts[2]} MB)"
+    return selected_gpu
 
 
 def _resolve_model_config(model: Optional[str]) -> dict:
@@ -1660,6 +1702,151 @@ def _render_dataset_summary(dataset_root: Path, layout: dict) -> None:
     table.add_row("Val images", str(layout["val_count"]))
     table.add_row("Test images", str(layout["test_count"]))
     console.print(table)
+
+
+def _resolve_image_input_path(input_path: Optional[str]) -> Path:
+    default_path = "samples" if Path("samples").exists() else "."
+    raw_value = input_path or Prompt.ask(
+        "Local image file or folder to predict",
+        default=default_path,
+    )
+    resolved = Path(raw_value).expanduser().resolve()
+    if not resolved.exists():
+        raise typer.BadParameter(f"Input path does not exist: {resolved}")
+    if resolved.is_file() and resolved.suffix.lower() not in IMAGE_EXTENSIONS:
+        raise typer.BadParameter(
+            f"Unsupported image file type: {resolved.suffix}. "
+            f"Supported: {', '.join(sorted(IMAGE_EXTENSIONS))}"
+        )
+    if not resolved.is_file() and not resolved.is_dir():
+        raise typer.BadParameter("Input path must be a file or directory.")
+    return resolved
+
+
+def _collect_local_images(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    return sorted(
+        [
+            image_path
+            for image_path in path.rglob("*")
+            if image_path.is_file() and image_path.suffix.lower() in IMAGE_EXTENSIONS
+        ]
+    )
+
+
+def _build_prediction_input_addition(input_path: Path) -> tuple[str, str, str]:
+    if input_path.is_file():
+        remote_file = f"/inputs/{input_path.name}"
+        addition = (
+            f'.add_local_file({repr(input_path.as_posix())}, '
+            f'remote_path={repr(remote_file)})'
+        )
+        return addition, remote_file, "single"
+
+    addition = (
+        f'.add_local_dir({repr(input_path.as_posix())}, '
+        f'remote_path={repr("/inputs")}, ignore={repr(DEFAULT_DATASET_IGNORES)})'
+    )
+    return addition, "/inputs", "directory"
+
+
+def _normalize_volume_path(raw_path: str) -> str:
+    return raw_path.strip().lstrip("/").replace("\\", "/")
+
+
+def _ensure_positive_int(value: int, label: str) -> int:
+    if value < 1:
+        raise typer.BadParameter(f"{label} must be >= 1.")
+    return value
+
+
+def _ensure_non_negative_int(value: int, label: str) -> int:
+    if value < 0:
+        raise typer.BadParameter(f"{label} must be >= 0.")
+    return value
+
+
+def _ensure_positive_float(value: float, label: str) -> float:
+    if value <= 0:
+        raise typer.BadParameter(f"{label} must be > 0.")
+    return value
+
+
+def _ensure_non_negative_float(value: float, label: str) -> float:
+    if value < 0:
+        raise typer.BadParameter(f"{label} must be >= 0.")
+    return value
+
+
+def _ensure_probability(value: float, label: str) -> float:
+    if value < 0 or value >= 1:
+        raise typer.BadParameter(f"{label} must be between 0 and < 1.")
+    return value
+
+
+def _resolve_checkpoint_reference(
+    run_name: Optional[str],
+    checkpoint_path: Optional[str],
+    *,
+    prompt_label: str = "Experiment / run name",
+    default_run_name: str = "imgclf-run",
+) -> tuple[str, str]:
+    if checkpoint_path:
+        resolved_checkpoint_path = _normalize_volume_path(checkpoint_path)
+        path_parts = Path(resolved_checkpoint_path).parts
+        inferred_run_name = path_parts[0] if path_parts else default_run_name
+        return resolved_checkpoint_path, inferred_run_name
+
+    resolved_run_name = _slugify(
+        (run_name or Prompt.ask(prompt_label, default=default_run_name)).strip()
+    )
+    return f"{resolved_run_name}/checkpoints/best_model.pt", resolved_run_name
+
+
+def _resolve_evaluation_split(layout: dict, requested_split: Optional[str]) -> str:
+    if layout["mode"] == "pre_split":
+        options = [("auto", "Prefer test, then val, then train"), ("train", "Evaluate training split"), ("val", "Evaluate validation split")]
+        if layout["test_count"] > 0:
+            options.append(("test", "Evaluate test split"))
+    else:
+        options = [("auto", "Use validation subset"), ("train", "Evaluate training subset"), ("val", "Evaluate validation subset")]
+
+    valid_values = [item[0] for item in options]
+    if requested_split:
+        if requested_split not in valid_values:
+            raise typer.BadParameter(
+                f"Unsupported split '{requested_split}'. Choose one of: {', '.join(valid_values)}"
+            )
+        return requested_split
+
+    console.print("\n[bold cyan]Step 2: Choose evaluation split[/bold cyan]")
+    selected_index = arrow_select(options, title="Select split", default=0)
+    return options[selected_index][0]
+
+
+def _resolve_export_formats(format_name: Optional[str]) -> list[str]:
+    format_options = [
+        ("all", "Export both ONNX and TorchScript"),
+        ("onnx", "Export only ONNX"),
+        ("torchscript", "Export only TorchScript"),
+    ]
+    valid_values = [item[0] for item in format_options]
+
+    if format_name:
+        if format_name not in valid_values:
+            raise typer.BadParameter(
+                f"Unsupported export format '{format_name}'. Choose one of: {', '.join(valid_values)}"
+            )
+        resolved = format_name
+    else:
+        console.print("\n[bold cyan]Step 2: Choose export format[/bold cyan]")
+        selected_index = arrow_select(format_options, title="Select export format", default=0)
+        resolved = format_options[selected_index][0]
+
+    if resolved == "all":
+        return ["onnx", "torchscript"]
+    return [resolved]
 
 
 def _clamp_channel(value: float) -> int:
@@ -1810,151 +1997,6 @@ def _generate_sample_dataset(
                 filename = f"{class_name}-{index:03d}.png"
                 pixels = _sample_shape_pixels(class_name, image_size, image_rng)
                 _write_png_rgb(class_dir / filename, image_size, image_size, pixels)
-
-
-def _resolve_image_input_path(input_path: Optional[str]) -> Path:
-    default_path = "samples" if Path("samples").exists() else "."
-    raw_value = input_path or Prompt.ask(
-        "Local image file or folder to predict",
-        default=default_path,
-    )
-    resolved = Path(raw_value).expanduser().resolve()
-    if not resolved.exists():
-        raise typer.BadParameter(f"Input path does not exist: {resolved}")
-    if resolved.is_file() and resolved.suffix.lower() not in IMAGE_EXTENSIONS:
-        raise typer.BadParameter(
-            f"Unsupported image file type: {resolved.suffix}. "
-            f"Supported: {', '.join(sorted(IMAGE_EXTENSIONS))}"
-        )
-    if not resolved.is_file() and not resolved.is_dir():
-        raise typer.BadParameter("Input path must be a file or directory.")
-    return resolved
-
-
-def _collect_local_images(path: Path) -> list[Path]:
-    if path.is_file():
-        return [path]
-    return sorted(
-        [
-            image_path
-            for image_path in path.rglob("*")
-            if image_path.is_file() and image_path.suffix.lower() in IMAGE_EXTENSIONS
-        ]
-    )
-
-
-def _build_prediction_input_addition(input_path: Path) -> tuple[str, str, str]:
-    if input_path.is_file():
-        remote_file = f"/inputs/{input_path.name}"
-        addition = (
-            f'.add_local_file({repr(input_path.as_posix())}, '
-            f'remote_path={repr(remote_file)})'
-        )
-        return addition, remote_file, "single"
-
-    addition = (
-        f'.add_local_dir({repr(input_path.as_posix())}, '
-        f'remote_path={repr("/inputs")}, ignore={repr(DEFAULT_DATASET_IGNORES)})'
-    )
-    return addition, "/inputs", "directory"
-
-
-def _normalize_volume_path(raw_path: str) -> str:
-    return raw_path.strip().lstrip("/").replace("\\", "/")
-
-
-def _ensure_positive_int(value: int, label: str) -> int:
-    if value < 1:
-        raise typer.BadParameter(f"{label} must be >= 1.")
-    return value
-
-
-def _ensure_non_negative_int(value: int, label: str) -> int:
-    if value < 0:
-        raise typer.BadParameter(f"{label} must be >= 0.")
-    return value
-
-
-def _ensure_positive_float(value: float, label: str) -> float:
-    if value <= 0:
-        raise typer.BadParameter(f"{label} must be > 0.")
-    return value
-
-
-def _ensure_non_negative_float(value: float, label: str) -> float:
-    if value < 0:
-        raise typer.BadParameter(f"{label} must be >= 0.")
-    return value
-
-
-def _ensure_probability(value: float, label: str) -> float:
-    if value < 0 or value >= 1:
-        raise typer.BadParameter(f"{label} must be between 0 and < 1.")
-    return value
-
-
-def _resolve_checkpoint_reference(
-    run_name: Optional[str],
-    checkpoint_path: Optional[str],
-    *,
-    prompt_label: str = "Experiment / run name",
-    default_run_name: str = "imgclf-run",
-) -> tuple[str, str]:
-    if checkpoint_path:
-        resolved_checkpoint_path = _normalize_volume_path(checkpoint_path)
-        path_parts = Path(resolved_checkpoint_path).parts
-        inferred_run_name = path_parts[0] if path_parts else default_run_name
-        return resolved_checkpoint_path, inferred_run_name
-
-    resolved_run_name = _slugify(
-        (run_name or Prompt.ask(prompt_label, default=default_run_name)).strip()
-    )
-    return f"{resolved_run_name}/checkpoints/best_model.pt", resolved_run_name
-
-
-def _resolve_evaluation_split(layout: dict, requested_split: Optional[str]) -> str:
-    if layout["mode"] == "pre_split":
-        options = [("auto", "Prefer test, then val, then train"), ("train", "Evaluate training split"), ("val", "Evaluate validation split")]
-        if layout["test_count"] > 0:
-            options.append(("test", "Evaluate test split"))
-    else:
-        options = [("auto", "Use validation subset"), ("train", "Evaluate training subset"), ("val", "Evaluate validation subset")]
-
-    valid_values = [item[0] for item in options]
-    if requested_split:
-        if requested_split not in valid_values:
-            raise typer.BadParameter(
-                f"Unsupported split '{requested_split}'. Choose one of: {', '.join(valid_values)}"
-            )
-        return requested_split
-
-    console.print("\n[bold cyan]Step 2: Choose evaluation split[/bold cyan]")
-    selected_index = arrow_select(options, title="Select split", default=0)
-    return options[selected_index][0]
-
-
-def _resolve_export_formats(format_name: Optional[str]) -> list[str]:
-    format_options = [
-        ("all", "Export both ONNX and TorchScript"),
-        ("onnx", "Export only ONNX"),
-        ("torchscript", "Export only TorchScript"),
-    ]
-    valid_values = [item[0] for item in format_options]
-
-    if format_name:
-        if format_name not in valid_values:
-            raise typer.BadParameter(
-                f"Unsupported export format '{format_name}'. Choose one of: {', '.join(valid_values)}"
-            )
-        resolved = format_name
-    else:
-        console.print("\n[bold cyan]Step 2: Choose export format[/bold cyan]")
-        selected_index = arrow_select(format_options, title="Select export format", default=0)
-        resolved = format_options[selected_index][0]
-
-    if resolved == "all":
-        return ["onnx", "torchscript"]
-    return [resolved]
 
 
 @app.command("sample-data")
@@ -2206,7 +2248,7 @@ def train(
     summary.add_column("Setting", style="cyan")
     summary.add_column("Value", style="white")
     summary.add_row("Profile", selected_profile)
-    summary.add_row("GPU", selected_gpu)
+    summary.add_row("Compute", _compute_label_from_gpu(selected_gpu))
     summary.add_row("Model", model_config["name"])
     summary.add_row("Dataset", str(dataset_root))
     summary.add_row("Dataset mode", dataset_layout["mode"])
@@ -2229,10 +2271,11 @@ def train(
     script = script.replace("__DATASET_IGNORE_PATTERNS__", repr(dataset_ignore_patterns))
     script = script.replace("__ARTIFACT_VOLUME_NAME__", repr(artifact_volume))
     script = script.replace("__TIMEOUT_SECONDS__", str(timeout_seconds))
+    script = script.replace("__COMPUTE_SPEC__", _compute_spec_from_gpu(selected_gpu))
 
     execute_modal_temp_script(
         script,
-        f"image classification training ({model_config['name']}) on {selected_gpu}",
+        f"image classification training ({model_config['name']}) on {_compute_label_from_gpu(selected_gpu)}",
         detach=False,
     )
 
@@ -2332,7 +2375,7 @@ def predict(
     summary.add_column("Setting", style="cyan")
     summary.add_column("Value", style="white")
     summary.add_row("Profile", selected_profile)
-    summary.add_row("GPU", selected_gpu)
+    summary.add_row("Compute", _compute_label_from_gpu(selected_gpu))
     summary.add_row("Input", str(resolved_input_path))
     summary.add_row("Images", str(len(local_images) if max_images is None else min(len(local_images), max_images)))
     summary.add_row("Checkpoint", resolved_checkpoint_path)
@@ -2363,10 +2406,11 @@ def predict(
     script = script.replace("__TOP_K__", str(resolved_top_k))
     script = script.replace("__MAX_IMAGES__", "None" if max_images is None else str(max_images))
     script = script.replace("__INPUT_ADDITION__", input_addition)
+    script = script.replace("__COMPUTE_SPEC__", _compute_spec_from_gpu(selected_gpu))
 
     execute_modal_temp_script(
         script,
-        f"image classification prediction on {selected_gpu}",
+        f"image classification prediction on {_compute_label_from_gpu(selected_gpu)}",
         detach=False,
     )
 
@@ -2471,7 +2515,7 @@ def evaluate(
     summary.add_column("Setting", style="cyan")
     summary.add_column("Value", style="white")
     summary.add_row("Profile", selected_profile)
-    summary.add_row("GPU", selected_gpu)
+    summary.add_row("Compute", _compute_label_from_gpu(selected_gpu))
     summary.add_row("Dataset", str(dataset_root))
     summary.add_row("Dataset mode", dataset_layout["mode"])
     summary.add_row("Requested split", resolved_split)
@@ -2507,10 +2551,11 @@ def evaluate(
     script = script.replace("__OUTPUT_JSON_PATH__", repr(output_json_path))
     script = script.replace("__TIMEOUT_SECONDS__", str(timeout_seconds))
     script = script.replace("__TOP_K__", str(resolved_top_k))
+    script = script.replace("__COMPUTE_SPEC__", _compute_spec_from_gpu(selected_gpu))
 
     execute_modal_temp_script(
         script,
-        f"image classification evaluation on {selected_gpu}",
+        f"image classification evaluation on {_compute_label_from_gpu(selected_gpu)}",
         detach=False,
     )
 
@@ -2606,3 +2651,21 @@ def export(
         "image classification export",
         detach=False,
     )
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class VisionPlugin(_PluginBase):
+    name = "vision"
+    help = "Train computer vision models on Modal GPUs with local datasets."
+    rich_help_panel = "Compute Engine"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

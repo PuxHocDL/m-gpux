@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>M-GPUX Static Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 M-GPUX Static Site</h1>
+            <p class="subtitle">Deployed on Modal via <code>m-gpux host static</code></p>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>⚡ How It Works</h2>
+                <p>This site is served by a Python HTTP server running inside a Modal container.
+                   It auto-scales to zero when idle and spins back up on the first request.</p>
+            </section>
+
+            <section class="card">
+                <h2>📁 Project Structure</h2>
+                <pre><code>examples/host-static/
+├── index.html      ← you are here
+├── style.css       ← styles
+└── app.js          ← interactive demo</code></pre>
+            </section>
+
+            <section class="card">
+                <h2>🎮 Live Counter</h2>
+                <p>Click the button to prove JavaScript works on this deployment:</p>
+                <div class="counter-area">
+                    <button id="btn" onclick="increment()">Clicks: <span id="count">0</span></button>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>🛠️ Deploy Command</h2>
+                <pre><code>cd examples/host-static
+m-gpux host static --dir .</code></pre>
+            </section>
+        </main>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/PuxHocDL/m-gpux">m-gpux</a> &amp; <a href="https://modal.com">Modal</a></p>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

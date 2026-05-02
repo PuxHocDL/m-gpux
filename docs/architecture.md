@@ -53,6 +53,8 @@ The `hub`, `video generate`, `vision train`, and `serve deploy` flows follow the
 3. **Show the script** for review (syntax-highlighted with Rich)
 4. **Execute** via `modal run` (hub / video / vision) or `modal deploy` (serve)
 
+For Web Bash sessions, the hub now prefers a direct `bash --login` process behind `ttyd` instead of wrapping the default shell in `tmux`. This keeps rendering close to VS Code's integrated terminal, reduces repaint artifacts, and lowers heartbeat churn via a longer WebSocket ping interval. `tmux` is still installed and configured for users who want to start detachable sessions manually.
+
 The generated script is fully transparent — users can edit it before execution.
 
 ### Vision Training Architecture

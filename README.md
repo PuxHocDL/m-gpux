@@ -17,6 +17,7 @@
 
 - **🧠 LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
 - **⚡ Interactive GPU Hub** — Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
+- **🌐 Web Hosting** — Deploy FastAPI / Flask / static sites as persistent URLs with auto-scaling.
 - **🖼️ Vision Workflows** — Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
 - **👥 Multi-Account Management** — Seamlessly manage multiple profiles in one unified command namespace.
 - **💸 Unified Cost Visibility** — Inspect billing per profile or get a comprehensive view across all configured accounts.
@@ -29,9 +30,11 @@
 - [Core Commands](#%EF%B8%8F-core-commands)
   - [Profile Management](#-profile-management)
   - [Interactive Hub](#-interactive-hub)
+  - [Web Hosting](#-web-hosting)
   - [Computer Vision](#%EF%B8%8F-computer-vision)
   - [LLM API Server](#-llm-api-server)
   - [Billing](#-billing)
+- [Examples](#-examples)
 - [Architecture](#%EF%B8%8F-architecture)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
@@ -82,10 +85,13 @@ m-gpux hub
 m-gpux vision sample-data
 m-gpux vision train --dataset ./data/m-gpux-vision-sample
 
-# 5) Deploy an LLM as an OpenAI-compatible API
+# 5) Host a FastAPI app as a persistent URL
+m-gpux host asgi --entry main:app
+
+# 6) Deploy an LLM as an OpenAI-compatible API
 m-gpux serve deploy
 
-# 6) Inspect 30-day usage across all accounts
+# 7) Inspect 30-day usage across all accounts
 m-gpux billing usage --days 30 --all
 ```
 
@@ -112,10 +118,28 @@ Your control center for remote execution.
 ```bash
 m-gpux hub
 ```
+The Bash Shell action now starts a VS Code-like direct `bash` session in the browser. It uses a clean prompt, reduced WebSocket heartbeat traffic, and keeps `tmux` available as an optional manual command when you need detachable sessions.
+
 **Actions included:**
 - 🪐 Launch Jupyter Lab on your selected GPU.
 - 📜 Run local Python scripts natively on remote GPUs.
 - 💻 Initiate an interactive web Bash shell session.
+
+### 🌐 Web Hosting
+Deploy web apps and static sites as persistent public URLs on Modal.
+
+```bash
+m-gpux host asgi --entry main:app     # FastAPI / Starlette
+m-gpux host wsgi --entry app:app      # Flask / Django
+m-gpux host static --dir ./site       # HTML/CSS/JS folder
+```
+
+**Features:**
+- Persistent URL that stays live until you `m-gpux stop`.
+- Auto-scales to zero when idle (pay only for actual requests).
+- Optional warm replicas (`min_containers`) for zero cold-start.
+- GPU support for ML inference endpoints (e.g. FastAPI + PyTorch).
+- Auto-detects `requirements.txt` and uploads your project folder.
 
 ### 🖼️ Computer Vision
 Train and predict image classifiers on Modal GPUs directly from local folders.
@@ -180,7 +204,25 @@ m-gpux stop --all    # Stop apps across ALL profiles
 
 ---
 
-## 📚 Documentation
+## � Examples
+
+Ready-to-deploy sample projects in [`examples/`](examples/):
+
+| Example | Command | Description |
+|---------|---------|-------------|
+| [`host-static`](examples/host-static/) | `m-gpux host static --dir .` | Catppuccin-themed HTML/CSS/JS site |
+| [`host-asgi`](examples/host-asgi/) | `m-gpux host asgi --entry main:app` | FastAPI with Swagger UI, health check, Fibonacci |
+| [`host-wsgi`](examples/host-wsgi/) | `m-gpux host wsgi --entry app:app` | Flask task-board with REST CRUD API |
+
+```bash
+# Quick test — deploy the static example
+cd examples/host-static
+m-gpux host static --dir .
+```
+
+---
+
+## �📚 Documentation
 
 Dive deeper into our extensive guides:
 - 🌐 **Website:** [puxhocdl.github.io/m-gpux](https://puxhocdl.github.io/m-gpux/)
@@ -200,11 +242,13 @@ Under the hood, `m-gpux` is built for modularity:
 | `m_gpux/main.py` | CLI entrypoint and command registration |
 | `m_gpux/commands/account.py` | Profile CRUD operations and switching |
 | `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
-| `m_gpux/commands/hub.py` | Guided GPU runtime execution launcher |
-| `m_gpux/commands/video.py` | Text-to-video generation workflow on Modal GPUs |
-| `m_gpux/commands/vision.py` | Image classification training workflow for local datasets |
-| `m_gpux/commands/serve.py` | LLM API deployment, proxy, and auth management |
-| `m_gpux/commands/load.py` | Live hardware metrics probe |
+| `m_gpux/plugins/hub/` | Guided GPU runtime execution launcher |
+| `m_gpux/plugins/host/` | Web hosting (ASGI / WSGI / static) |
+| `m_gpux/plugins/video/` | Text-to-video generation workflow on Modal GPUs |
+| `m_gpux/plugins/vision/` | Image classification training workflow for local datasets |
+| `m_gpux/plugins/serve/` | LLM API deployment, proxy, and auth management |
+| `m_gpux/plugins/load/` | Live hardware metrics probe |
+| `m_gpux/core/` | Shared infra: runner, metrics, UI, profiles, plugins |
 
 ---
 
@@ -235,10 +279,10 @@ python -m m_gpux.main --help
 
 Automated with GitHub Actions. Maintainers can release instantly:
 1. Ensure the PyPI Trusted Publisher is configured (`pypi` environment, `PuxHocDL/m-gpux`).
-2. Update the `version` inside `pyproject.toml`.
+2. Update the package versions inside `pyproject.toml`, `m_gpux/__init__.py`, and `m-gpux-vscode/package.json`.
 3. Tag the release:
 ```bash
-git tag v1.0.8 && git push origin v1.0.8
+git tag v2.2.0 && git push origin v2.2.0
 ```
 The *Publish Python Package* workflow will build and upload.
 

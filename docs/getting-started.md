@@ -78,6 +78,9 @@ The interactive hub walks you through:
 !!! info "What happens under the hood"
     The hub generates a Modal deployment script (`modal_runner.py`) with your chosen GPU and action, then runs `modal run modal_runner.py`. The script is fully editable — you can add pip packages, change timeouts, or customize the container image before launching.
 
+!!! tip "Smooth browser terminal"
+    The Web Bash shell now uses direct `bash` by default for smoother interaction, cleaner rendering, and fewer WebSocket heartbeat interruptions. `tmux` is still installed; run `tmux` manually when you want detachable sessions.
+
 ## Step 4: Check your costs
 
 ```bash

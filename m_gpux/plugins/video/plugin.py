@@ -1,4 +1,4 @@
-import typer
+﻿import typer
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
@@ -9,9 +9,9 @@ import subprocess
 import random
 import json
 import base64
-from m_gpux.commands._metrics_snippet import FUNCTIONS as _METRICS_FUNCTIONS
-from m_gpux.commands.hub import _select_profile, _activate_profile, AVAILABLE_GPUS
-from m_gpux.commands._ui import arrow_select
+from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
+from m_gpux.core import _select_profile, _activate_profile, AVAILABLE_GPUS, AVAILABLE_CPUS
+from m_gpux.core.ui import arrow_select
 
 app = typer.Typer(
     help="Generate videos from text prompts using LTX-2.3 on Modal GPUs.",
@@ -79,7 +79,7 @@ PROMPT_B64 = "PROMPT_B64_PLACEHOLDER"
 
 @app.function(
     image=video_image,
-    gpu="GPU_TYPE_PLACEHOLDER",
+    COMPUTE_SPEC_PLACEHOLDER,
     timeout=86400,
     volumes={"/models": model_cache, "/output": output_vol},
 )
@@ -215,20 +215,38 @@ def generate():
     pipeline_module, _, ckpt_file, needs_lora = PIPELINES[key]
     console.print(f"  [green]Pipeline:[/green] [bold]{pipeline_options[pipeline_idx][1]}[/bold]")
 
-    # ── Step 2: GPU ──
-    console.print(f"\n[bold cyan]Step 2: Choose GPU[/bold cyan]  [dim](recommended: H100 or A100-80GB for 22B model)[/dim]")
-    gpu_keys = list(AVAILABLE_GPUS.keys())
-    gpu_options = []
-    default_gpu_idx = 8  # fallback
-    for i, k in enumerate(gpu_keys):
-        gpu, desc = AVAILABLE_GPUS[k]
-        rec = " <- recommended" if gpu in ("H100", "A100-80GB") else ""
-        gpu_options.append((gpu, f"{desc}{rec}"))
-        if gpu == "H100":
-            default_gpu_idx = i
-    gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
-    selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
-    console.print(f"  [green]GPU:[/green] [bold]{selected_gpu}[/bold]")
+    # ── Step 2: Compute ──
+    console.print(f"\n[bold cyan]Step 2: Choose Compute[/bold cyan]  [dim](recommended: H100 or A100-80GB for 22B model)[/dim]")
+    compute_type_options = [
+        ("GPU", "GPU acceleration (recommended for video generation)"),
+        ("CPU", "CPU-only (very slow for video, use only for testing)"),
+    ]
+    compute_type_idx = arrow_select(compute_type_options, title="Compute Type", default=0)
+    if compute_type_idx == 1:
+        cpu_keys = list(AVAILABLE_CPUS.keys())
+        cpu_options = []
+        for k in cpu_keys:
+            cores, mem, desc = AVAILABLE_CPUS[k]
+            cpu_options.append((f"{cores} cores", desc))
+        cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
+        selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
+        compute_spec = f'cpu={selected_cores}, memory={selected_memory}'
+        compute_label = f"CPU ({selected_cores} cores)"
+    else:
+        gpu_keys = list(AVAILABLE_GPUS.keys())
+        gpu_options = []
+        default_gpu_idx = 8  # fallback
+        for i, k in enumerate(gpu_keys):
+            gpu, desc = AVAILABLE_GPUS[k]
+            rec = " <- recommended" if gpu in ("H100", "A100-80GB") else ""
+            gpu_options.append((gpu, f"{desc}{rec}"))
+            if gpu == "H100":
+                default_gpu_idx = i
+        gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
+        selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
+        compute_spec = f'gpu="{selected_gpu}"'
+        compute_label = selected_gpu
+    console.print(f"  [green]Compute:[/green] [bold]{compute_label}[/bold]")
 
     # ── Step 3: Prompt ──
     console.print("\n[bold cyan]Step 3: Enter Prompt[/bold cyan]")
@@ -325,7 +343,7 @@ def generate():
 
     script = (VIDEO_TEMPLATE
         .replace("PROMPT_B64_PLACEHOLDER", prompt_b64)
-        .replace("GPU_TYPE_PLACEHOLDER", selected_gpu)
+        .replace("COMPUTE_SPEC_PLACEHOLDER", compute_spec)
         .replace("CKPT_FILE_PLACEHOLDER", ckpt_file)
         .replace("PIPELINE_MODULE_PLACEHOLDER", pipeline_module)
         .replace("HEIGHT_PLACEHOLDER", str(height))
@@ -383,7 +401,7 @@ def generate():
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    console.print(f"\n[bold green]Starting video generation on {selected_gpu}...[/bold green]")
+    console.print(f"\n[bold green]Starting video generation on {compute_label}...[/bold green]")
     console.print("[dim]First run: image build (~10 min) + model download (~50GB) + inference.[/dim]")
     console.print("[dim]Subsequent runs: cached image + cached models = much faster.[/dim]\n")
 
@@ -505,7 +523,7 @@ def _download_models():
 
 @app.function(
     image=video_image,
-    gpu="GPU_TYPE_PLACEHOLDER",
+    COMPUTE_SPEC_PLACEHOLDER,
     timeout=86400,
     volumes={"/models": model_cache, "/output": output_vol},
 )
@@ -579,7 +597,7 @@ def generate_scene(scene_data: str) -> str:
 
 @app.function(
     image=video_image,
-    gpu="GPU_TYPE_PLACEHOLDER",
+    COMPUTE_SPEC_PLACEHOLDER,
     timeout=86400,
     volumes={"/models": model_cache, "/output": output_vol},
 )
@@ -591,7 +609,7 @@ def download_models_task():
 
 @app.function(
     image=video_image,
-    gpu="GPU_TYPE_PLACEHOLDER",
+    COMPUTE_SPEC_PLACEHOLDER,
     timeout=86400,
     volumes={"/models": model_cache, "/output": output_vol},
 )
@@ -866,20 +884,38 @@ def storyboard():
     pipeline_module, _, ckpt_file, needs_lora = PIPELINES[key]
     console.print(f"  [green]Pipeline:[/green] [bold]{pipeline_options[pipeline_idx][1]}[/bold]")
 
-    # ── Step 2: GPU ──
-    console.print(f"\n[bold cyan]Step 2: Choose GPU[/bold cyan]  [dim](recommended: H100 for storyboard)[/dim]")
-    gpu_keys = list(AVAILABLE_GPUS.keys())
-    gpu_options = []
-    default_gpu_idx = 8
-    for i, k in enumerate(gpu_keys):
-        gpu, desc = AVAILABLE_GPUS[k]
-        rec = " <- recommended" if gpu == "H100" else ""
-        gpu_options.append((gpu, f"{desc}{rec}"))
-        if gpu == "H100":
-            default_gpu_idx = i
-    gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
-    selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
-    console.print(f"  [green]GPU:[/green] [bold]{selected_gpu}[/bold]")
+    # ── Step 2: Compute ──
+    console.print(f"\n[bold cyan]Step 2: Choose Compute[/bold cyan]  [dim](recommended: H100 for storyboard)[/dim]")
+    compute_type_options = [
+        ("GPU", "GPU acceleration (recommended for video generation)"),
+        ("CPU", "CPU-only (very slow for video, use only for testing)"),
+    ]
+    compute_type_idx = arrow_select(compute_type_options, title="Compute Type", default=0)
+    if compute_type_idx == 1:
+        cpu_keys = list(AVAILABLE_CPUS.keys())
+        cpu_options = []
+        for k in cpu_keys:
+            cores, mem, desc = AVAILABLE_CPUS[k]
+            cpu_options.append((f"{cores} cores", desc))
+        cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
+        selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
+        compute_spec = f'cpu={selected_cores}, memory={selected_memory}'
+        compute_label = f"CPU ({selected_cores} cores)"
+    else:
+        gpu_keys = list(AVAILABLE_GPUS.keys())
+        gpu_options = []
+        default_gpu_idx = 8
+        for i, k in enumerate(gpu_keys):
+            gpu, desc = AVAILABLE_GPUS[k]
+            rec = " <- recommended" if gpu == "H100" else ""
+            gpu_options.append((gpu, f"{desc}{rec}"))
+            if gpu == "H100":
+                default_gpu_idx = i
+        gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
+        selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
+        compute_spec = f'gpu="{selected_gpu}"'
+        compute_label = selected_gpu
+    console.print(f"  [green]Compute:[/green] [bold]{compute_label}[/bold]")
 
     # ── Step 3: Resolution ──
     console.print("\n[bold cyan]Step 3: Resolution[/bold cyan]")
@@ -1198,7 +1234,7 @@ def storyboard():
         .replace("SCENES_B64_PLACEHOLDER", scenes_b64)
         .replace("ANCHOR_PROMPT_B64_PLACEHOLDER", anchor_prompt_b64)
         .replace("ANCHOR_STRENGTH_PLACEHOLDER", str(anchor_strength))
-        .replace("GPU_TYPE_PLACEHOLDER", selected_gpu)
+        .replace("COMPUTE_SPEC_PLACEHOLDER", compute_spec)
         .replace("CKPT_FILE_PLACEHOLDER", ckpt_file)
         .replace("PIPELINE_MODULE_PLACEHOLDER", pipeline_module)
         .replace("HEIGHT_PLACEHOLDER", str(height))
@@ -1229,7 +1265,7 @@ def storyboard():
         f"  [green]Scenes:[/green]      {len(scenes)}\n"
         f"  [green]Total:[/green]       ~{total_duration:.0f}s ({total_duration / 60:.1f} min)\n"
         f"  [green]Per scene:[/green]   {scene_duration:.1f}s @ {frame_rate}fps\n"
-        f"  [green]GPU:[/green]         {selected_gpu}\n"
+        f"  [green]Compute:[/green]     {compute_label}\n"
         f"  [green]Pipeline:[/green]    {pipeline_module}\n"
         f"  [green]FP8:[/green]         {'Yes' if use_fp8 else 'No'}\n"
         f"  [green]Mode:[/green]        [bold yellow]PARALLEL[/bold yellow] ({len(scenes)} containers)\n"
@@ -1248,7 +1284,7 @@ def storyboard():
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    console.print(f"\n[bold green]Starting PARALLEL storyboard generation ({len(scenes)} scenes) on {selected_gpu}...[/bold green]")
+    console.print(f"\n[bold green]Starting PARALLEL storyboard generation ({len(scenes)} scenes) on {compute_label}...[/bold green]")
     console.print(f"[dim]Each scene runs on its own Modal container. All generate simultaneously.[/dim]\n")
 
     try:
@@ -1278,3 +1314,21 @@ def storyboard():
             console.print("[dim]Cleaned up.[/dim]")
         except OSError:
             pass
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class VideoPlugin(_PluginBase):
+    name = "video"
+    help = "Generate videos from text prompts using LTX-2.3."
+    rich_help_panel = "Compute Engine"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

@@ -1,4 +1,4 @@
-import typer
+﻿import typer
 from rich.console import Console
 from rich.table import Table
 import webbrowser
@@ -22,7 +22,7 @@ def check_usage(
     all_accounts: bool = typer.Option(False, "--all", help="Check all configured profiles")
 ):
     """Aggregate billing reports. Support querying across all local Modal profiles."""
-    from .account import load_config
+    from m_gpux.core.profiles import load_config
     from modal.client import Client
     from rich.prompt import Prompt
     
@@ -95,3 +95,21 @@ def check_usage(
     console.print(table)
     console.print(f"\\n[bold green]Total Global Accumulated Cost: ${global_total:.4f}[/bold green]")
     console.print("[dim]Note: Each Modal Starter Tier account provides $30/month in credits.[/dim]")
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class BillingPlugin(_PluginBase):
+    name = "billing"
+    help = "Track infrastructure costs across workspaces."
+    rich_help_panel = "Identity & Finance"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

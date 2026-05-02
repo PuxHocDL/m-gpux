@@ -66,6 +66,10 @@ Ensure you run `m-gpux hub` from the folder containing your script, or provide t
 
 Modal has a configurable timeout (default 24 hours). For long-running sessions, you can edit the generated `modal_runner.py` and increase the `timeout` parameter before pressing Enter.
 
+### Web Bash terminal feels jittery
+
+The Web Bash shell is tuned for a VS Code-like experience: direct `bash`, a simple prompt, no default `tmux` wrapper, and a longer `ttyd` WebSocket ping interval. If you need detachable sessions, run `tmux` manually from inside the shell.
+
 ### Can I install custom pip packages?
 
 Yes. Before pressing Enter, edit the generated `modal_runner.py` and add packages to the `.pip_install()` call:

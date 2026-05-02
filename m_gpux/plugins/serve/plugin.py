@@ -1,4 +1,4 @@
-import typer
+﻿import typer
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -11,9 +11,9 @@ import subprocess
 import time
 import threading
 from datetime import datetime
-from m_gpux.commands._metrics_snippet import FUNCTIONS as _METRICS_FUNCTIONS
-from m_gpux.commands.hub import _select_profile, _activate_profile, AVAILABLE_GPUS
-from m_gpux.commands._ui import arrow_select
+from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
+from m_gpux.core import _select_profile, _activate_profile, AVAILABLE_GPUS, AVAILABLE_CPUS
+from m_gpux.core.ui import arrow_select
 
 app = typer.Typer(
     help="Deploy LLMs as OpenAI-compatible APIs with API key authentication.",
@@ -147,7 +147,7 @@ MODEL_NAME = "{model_name}"
 API_KEY = "{api_key}"
 
 vllm_image = (
-    modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="3.12")
+    modal.Image.from_registry("nvidia/cuda:12.9.0-devel-ubuntu22.04", add_python="3.12")
     .entrypoint([])
     .pip_install("vllm", "transformers", "hf-transfer", "httpx", "fastapi", "uvicorn[standard]")
     .env(ENV_DICT_PLACEHOLDER)
@@ -444,91 +444,6 @@ async def _proxy_with_retry(method, url, content, headers, is_stream):
     resp = JSONResponse(status_code=503, content={"error": {"message": f"vLLM not responding after {RETRY_ATTEMPTS} attempts. Model may still be loading.", "type": "server_error"}, "retry_after": 30})
     return resp, 503, retries_used, 0, 0
 
-# ── Force-stream reassembly for non-streaming completion requests ──
-# Modal web_server ASGI proxy has ~120s request timeout.
-# Non-streaming requests that take longer get killed (ServerDisconnectedError).
-# Fix: force stream=true to vLLM, collect SSE chunks, reassemble into JSON.
-# StreamingResponse sends keepalive whitespace every 15s to keep connection alive.
-async def _reassemble_stream(method, url, content, headers):
-    NL = chr(10)
-    async def _gen():
-        chunks_data = []
-        usage_data = {}
-        last_ka = _time.time()
-        try:
-            async with http_client.stream(method, url, content=content, headers=headers) as r:
-                if r.status_code != 200:
-                    yield await r.aread()
-                    return
-                buf = ""
-                async for raw in r.aiter_text():
-                    buf += raw
-                    if _time.time() - last_ka > 15:
-                        yield b" "
-                        last_ka = _time.time()
-                    while NL in buf:
-                        line, buf = buf.split(NL, 1)
-                        line = line.strip()
-                        if not line.startswith("data: "):
-                            continue
-                        d = line[6:].strip()
-                        if d == "[DONE]":
-                            continue
-                        try:
-                            chunks_data.append(json.loads(d))
-                        except Exception:
-                            pass
-        except Exception as e:
-            yield json.dumps({"error": {"message": str(e), "type": "server_error"}}).encode()
-            return
-        if not chunks_data:
-            yield json.dumps({"error": {"message": "Empty response from model", "type": "server_error"}}).encode()
-            return
-        first = chunks_data[0]
-        parts_c, parts_r, tc_acc, fr = [], [], {}, None
-        for c in chunks_data:
-            chs = c.get("choices", [])
-            if not chs:
-                if c.get("usage"):
-                    usage_data = c["usage"]
-                continue
-            cho = chs[0]
-            dl = cho.get("delta", {})
-            if dl.get("content"):
-                parts_c.append(dl["content"])
-            if dl.get("reasoning_content"):
-                parts_r.append(dl["reasoning_content"])
-            for tc in dl.get("tool_calls", []):
-                ix = tc.get("index", 0)
-                if ix not in tc_acc:
-                    tc_acc[ix] = {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
-                if tc.get("id"):
-                    tc_acc[ix]["id"] = tc["id"]
-                fn = tc.get("function", {})
-                if fn.get("name"):
-                    tc_acc[ix]["function"]["name"] += fn["name"]
-                if fn.get("arguments"):
-                    tc_acc[ix]["function"]["arguments"] += fn["arguments"]
-            if cho.get("finish_reason"):
-                fr = cho["finish_reason"]
-            if c.get("usage"):
-                usage_data = c["usage"]
-        msg = {"role": "assistant", "content": "".join(parts_c) or None}
-        if parts_r:
-            msg["reasoning_content"] = "".join(parts_r)
-        if tc_acc:
-            msg["tool_calls"] = [tc_acc[i] for i in sorted(tc_acc)]
-        assembled = {
-            "id": first.get("id", ""),
-            "object": "chat.completion",
-            "created": first.get("created", 0),
-            "model": first.get("model", ""),
-            "choices": [{"index": 0, "message": msg, "finish_reason": fr or "stop"}],
-            "usage": usage_data or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-        }
-        yield json.dumps(assembled).encode()
-    return StreamingResponse(_gen(), media_type="application/json")
-
 @app.api_route("/v1/{path:path}", methods=["GET","POST"])
 async def proxy(request: Request, path: str):
     global _inflight
@@ -545,25 +460,9 @@ async def proxy(request: Request, path: str):
         body = await request.body()
         headers = {k:v for k,v in request.headers.items() if k.lower() not in ("host","authorization","content-length")}
         is_stream = False
-        force_streamed = False
         if body:
-            try:
-                body_json = json.loads(body)
-                is_stream = body_json.get("stream", False)
-                # Force streaming for completion endpoints to prevent Modal ~120s proxy timeout.
-                # vLLM returns SSE; proxy reassembles into normal JSON for the client.
-                if not is_stream and path in ("chat/completions", "completions"):
-                    body_json["stream"] = True
-                    body_json.setdefault("stream_options", {})["include_usage"] = True
-                    body = json.dumps(body_json).encode()
-                    force_streamed = True
-            except Exception:
-                pass
-        if force_streamed:
-            resp = await _reassemble_stream(request.method, f"/v1/{path}", body, headers)
-            latency = _time.time() - t0
-            _record_request(latency, 200)
-            return resp
+            try: is_stream = json.loads(body).get("stream", False)
+            except: pass
         result = await _proxy_with_retry(request.method, f"/v1/{path}", body, headers, is_stream)
         latency = _time.time() - t0
         if is_stream:
@@ -592,7 +491,7 @@ if __name__ == "__main__":
     min_containers={keep_warm},
     volumes=VOLUMES_PLACEHOLDER,
 )
-@modal.concurrent(max_inputs=80)
+@modal.concurrent(max_inputs=64)
 @modal.web_server(port=8000, startup_timeout=20 * MINUTES)
 def serve():
     _print_metrics()
@@ -612,13 +511,26 @@ def serve():
         "--max-num-seqs", "{max_num_seqs}",
         "--enable-chunked-prefill",
         "--max-num-batched-tokens", "{max_num_batched_tokens}",
-        "--reasoning-parser", "qwen3",
-        "--enable-auto-tool-choice",
-        "--tool-call-parser", "qwen3_coder",
         "--trust-remote-code",
-    ]
+    ]{vllm_extra_args}
+    import threading, time as _time
+
     print("[M-GPUX] Starting vLLM on :8001:", " ".join(vllm_cmd))
-    subprocess.Popen(vllm_cmd)
+
+    def _watch_vllm():
+        backoff = 2
+        while True:
+            proc = subprocess.Popen(vllm_cmd)
+            print(f"[M-GPUX] vLLM started (pid={proc.pid})")
+            proc.wait()
+            code = proc.returncode
+            if code == 0:
+                print("[M-GPUX] vLLM exited cleanly (code 0), not restarting")
+                break
+            print(f"[M-GPUX] vLLM crashed (exit code {code}), restarting in {backoff}s...")
+            _time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+    threading.Thread(target=_watch_vllm, daemon=True).start()
 
     # Start auth proxy on port 8000 (Modal detects this immediately)
     os.environ["MGPUX_API_KEY"] = API_KEY
@@ -626,7 +538,6 @@ def serve():
         f.write(PROXY_CODE)
     print("[M-GPUX] Starting auth proxy on :8000")
 
-    import threading, time as _time
     def _watch_proxy():
         while True:
             proc = subprocess.Popen([sys.executable, "/tmp/_proxy.py"])
@@ -637,20 +548,109 @@ def serve():
     threading.Thread(target=_watch_proxy, daemon=True).start()
 '''
 
+# ─── CPU deployment template ─────────────────────────────────
+
+SERVE_TEMPLATE_CPU = '''import modal
+import subprocess
+import os
+import sys
+
+# __METRICS__
+
+app = modal.App("m-gpux-llm-api")
+
+MODEL_NAME = "{model_name}"
+API_KEY = "{api_key}"
+
+cpu_image = (
+    modal.Image.debian_slim(python_version="3.12")
+    .pip_install("vllm", "transformers", "hf-transfer", "httpx", "fastapi", "uvicorn[standard]")
+    .env(ENV_DICT_PLACEHOLDER)
+)
+
+hf_cache = modal.Volume.from_name("m-gpux-hf-cache", create_if_missing=True)
+vllm_cache = modal.Volume.from_name("m-gpux-vllm-cache", create_if_missing=True)
+
+MINUTES = 60
+
+PROXY_CODE_PLACEHOLDER
+
+
+@app.function(
+    image=cpu_image,
+    cpu={cpu_cores},
+    memory={memory_mb},
+    timeout=24 * 60 * MINUTES,
+    scaledown_window=5 * MINUTES,
+    min_containers={keep_warm},
+    volumes=VOLUMES_PLACEHOLDER,
+)
+@modal.concurrent(max_inputs=64)
+@modal.web_server(port=8000, startup_timeout=20 * MINUTES)
+def serve():
+    _print_metrics()
+    _monitor_metrics()
+
+    # Start vLLM on port 8001 (background) — CPU mode
+    vllm_cmd = [
+        "vllm", "serve", MODEL_NAME,
+        "--served-model-name", MODEL_NAME,
+        "--host", "0.0.0.0",
+        "--port", "8001",
+        "--device", "cpu",
+        "--max-model-len", "{max_model_len}",
+        "--max-num-seqs", "{max_num_seqs}",
+        "--trust-remote-code",
+    ]{vllm_extra_args}
+    import threading, time as _time
+
+    print("[M-GPUX] Starting vLLM (CPU mode) on :8001:", " ".join(vllm_cmd))
+
+    def _watch_vllm():
+        backoff = 2
+        while True:
+            proc = subprocess.Popen(vllm_cmd)
+            print(f"[M-GPUX] vLLM started (pid={{proc.pid}})")
+            proc.wait()
+            code = proc.returncode
+            if code == 0:
+                print("[M-GPUX] vLLM exited cleanly (code 0), not restarting")
+                break
+            print(f"[M-GPUX] vLLM crashed (exit code {{code}}), restarting in {{backoff}}s...")
+            _time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+    threading.Thread(target=_watch_vllm, daemon=True).start()
+
+    # Start auth proxy on port 8000 (Modal detects this immediately)
+    os.environ["MGPUX_API_KEY"] = API_KEY
+    with open("/tmp/_proxy.py", "w") as f:
+        f.write(PROXY_CODE)
+    print("[M-GPUX] Starting auth proxy on :8000")
+
+    def _watch_proxy():
+        while True:
+            proc = subprocess.Popen([sys.executable, "/tmp/_proxy.py"])
+            print(f"[M-GPUX] Proxy started (pid={{proc.pid}})")
+            proc.wait()
+            print(f"[M-GPUX] Proxy exited with code {{proc.returncode}}, restarting in 1s...")
+            _time.sleep(1)
+    threading.Thread(target=_watch_proxy, daemon=True).start()
+'''
+
 # ─── Model presets ────────────────────────────────────────────
 
 SERVE_MODELS = {
-    "1":  ("Qwen/Qwen2.5-1.5B-Instruct",          "1.5B — T4/L4 friendly, fast",       "T4"),
-    "2":  ("Qwen/Qwen2.5-7B-Instruct",             "7B — A10G/A100",                    "A10G"),
-    "3":  ("Qwen/Qwen3-8B",                         "Qwen3 8B — A10G/A100",             "A10G"),
-    "4":  ("Qwen/Qwen3.5-35B-A3B",                  "Qwen3.5 35B MoE — A100-80GB/H100", "A100-80GB"),
-    "5":  ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B — A10G/A100",         "A10G"),
-    "6":  ("google/gemma-2-9b-it",                   "Gemma 2 9B — A10G/A100",           "A10G"),
-    "7":  ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B — A10G/A100",           "A10G"),
-    "8":  ("Qwen/Qwen2.5-72B-Instruct-AWQ",        "72B AWQ quant — H100/A100-80GB",   "A100-80GB"),
-    "9":  ("meta-llama/Llama-3.1-70B-Instruct",     "Llama 70B — H100/A100-80GB",       "H100"),
-    "10": ("deepseek-ai/DeepSeek-V2-Lite-Chat",     "DeepSeek V2 Lite 16B — A100",      "A100"),
-    "11": ("microsoft/Phi-3-medium-4k-instruct",    "Phi-3 Medium 14B — A10G/A100",     "A10G"),
+    "1":  ("Qwen/Qwen2.5-1.5B-Instruct",          "1.5B — T4/L4 friendly, fast",       "T4",        "4096"),
+    "2":  ("Qwen/Qwen2.5-7B-Instruct",             "7B — A10G/A100",                    "A10G",      "8192"),
+    "3":  ("Qwen/Qwen3-8B",                         "Qwen3 8B — A10G/A100",             "A10G",      "8192"),
+    "4":  ("Qwen/Qwen3.5-35B-A3B",                  "Qwen3.5 35B MoE — A100-80GB/H100", "A100-80GB", "32768"),
+    "5":  ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B — A10G/A100",         "A10G",      "8192"),
+    "6":  ("google/gemma-2-9b-it",                   "Gemma 2 9B — A10G/A100",           "A10G",      "8192"),
+    "7":  ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B — A10G/A100",           "A10G",      "8192"),
+    "8":  ("Qwen/Qwen2.5-72B-Instruct-AWQ",        "72B AWQ quant — H100/A100-80GB",   "A100-80GB", "16384"),
+    "9":  ("meta-llama/Llama-3.1-70B-Instruct",     "Llama 70B — H100/A100-80GB",       "H100",      "16384"),
+    "10": ("deepseek-ai/DeepSeek-V2-Lite-Chat",     "DeepSeek V2 Lite 16B — A100",      "A100",      "8192"),
+    "11": ("microsoft/Phi-3-medium-4k-instruct",    "Phi-3 Medium 14B — A10G/A100",     "A10G",      "4096"),
 }
 
 # ─── Deploy command ───────────────────────────────────────────
@@ -662,7 +662,7 @@ def deploy():
 
     console.print(Panel.fit(
         "[bold magenta]M-GPUX LLM API Server[/bold magenta]\n"
-        "Deploy a GPU-accelerated LLM with OpenAI-compatible API + auth keys.\n"
+        "Deploy a GPU/CPU-accelerated LLM with OpenAI-compatible API + auth keys.\n"
         "Works as a drop-in replacement for OpenRouter / OpenAI.",
         border_style="cyan",
     ))
@@ -676,7 +676,7 @@ def deploy():
     # ── Step 1: Model ──
     console.print("\n[bold cyan]Step 1: Select Model[/bold cyan]")
     model_options = []
-    for k, (name, desc, _) in SERVE_MODELS.items():
+    for k, (name, desc, _, _ctx) in SERVE_MODELS.items():
         model_options.append((name, desc))
     model_options.append(("(custom)", "Enter a HuggingFace model ID"))
 
@@ -685,65 +685,106 @@ def deploy():
     if model_idx == len(SERVE_MODELS):  # custom option (last)
         selected_model = Prompt.ask("HuggingFace model ID (e.g. org/model-name)")
         recommended_gpu = "A100"
+        recommended_ctx = "4096"
     else:
         key = list(SERVE_MODELS.keys())[model_idx]
-        selected_model, _, recommended_gpu = SERVE_MODELS[key]
+        selected_model, _, recommended_gpu, recommended_ctx = SERVE_MODELS[key]
 
     console.print(f"  [green]Model:[/green] [bold]{selected_model}[/bold]")
 
-    # ── Step 2: GPU ──
-    console.print(f"\n[bold cyan]Step 2: Choose GPU[/bold cyan]  [dim](recommended: {recommended_gpu})[/dim]")
-    gpu_keys = list(AVAILABLE_GPUS.keys())
-    gpu_options = []
-    default_gpu_idx = 4  # fallback to A100
-    for i, k in enumerate(gpu_keys):
-        gpu, desc = AVAILABLE_GPUS[k]
-        rec_marker = " <- recommended" if gpu == recommended_gpu else ""
-        gpu_options.append((gpu, f"{desc}{rec_marker}"))
-        if gpu == recommended_gpu:
-            default_gpu_idx = i
+    # ── Step 2: Compute Type (GPU or CPU) ──
+    console.print("\n[bold cyan]Step 2: Choose Compute Type[/bold cyan]")
+    compute_options = [
+        ("GPU", "GPU acceleration (recommended for LLMs)"),
+        ("CPU", "CPU-only (cheaper, slower inference, small models only)"),
+    ]
+    compute_idx = arrow_select(compute_options, title="Compute Type", default=0)
+    use_cpu = (compute_idx == 1)
 
-    gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
-    selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
-    console.print(f"  [green]GPU:[/green] [bold]{selected_gpu}[/bold]")
+    if use_cpu:
+        # ── CPU selection ──
+        console.print(f"\n[bold cyan]Step 2b: Choose CPU Cores[/bold cyan]")
+        console.print("  [dim]More cores = faster inference but higher cost. Memory scales with cores.[/dim]")
+        cpu_keys = list(AVAILABLE_CPUS.keys())
+        cpu_options = []
+        for k in cpu_keys:
+            cores, mem, desc = AVAILABLE_CPUS[k]
+            cpu_options.append((f"{cores} cores", desc))
+
+        cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
+        selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
+        console.print(f"  [green]CPU:[/green] [bold]{selected_cores} cores, {selected_memory} MB memory[/bold]")
+
+        selected_gpu = None  # no GPU
+    else:
+        # ── GPU selection (existing flow) ──
+        console.print(f"\n[bold cyan]Step 2b: Choose GPU[/bold cyan]  [dim](recommended: {recommended_gpu})[/dim]")
+        gpu_keys = list(AVAILABLE_GPUS.keys())
+        gpu_options = []
+        default_gpu_idx = 4  # fallback to A100
+        for i, k in enumerate(gpu_keys):
+            gpu, desc = AVAILABLE_GPUS[k]
+            rec_marker = " <- recommended" if gpu == recommended_gpu else ""
+            gpu_options.append((gpu, f"{desc}{rec_marker}"))
+            if gpu == recommended_gpu:
+                default_gpu_idx = i
+
+        gpu_idx = arrow_select(gpu_options, title="Select GPU", default=default_gpu_idx)
+        selected_gpu = AVAILABLE_GPUS[gpu_keys[gpu_idx]][0]
+        console.print(f"  [green]GPU:[/green] [bold]{selected_gpu}[/bold]")
 
     # ── Step 3: Max context length ──
     console.print("\n[bold cyan]Step 3: Max Context Length[/bold cyan]")
-    console.print("  [dim]Lower = faster startup + less VRAM. Increase for long inputs.[/dim]")
-    max_model_len = Prompt.ask("Max model length (tokens)", default="4096")
+    if use_cpu:
+        console.print(f"  [dim]Recommended for CPU mode: 2048-4096. Higher values use more RAM.[/dim]")
+        max_model_len = Prompt.ask("Max model length (tokens)", default="2048")
+    else:
+        console.print(f"  [dim]Recommended for this model: {recommended_ctx}. Lower = faster startup + less VRAM.[/dim]")
+        console.print("  [dim]WARNING: Setting this too high (e.g. 262144) can cause OOM crashes![/dim]")
+        max_model_len = Prompt.ask("Max model length (tokens)", default=recommended_ctx)
 
     # ── Step 3.5: vLLM Engine Hyperparameters ──
-    console.print("\n[bold cyan]Step 3.5: vLLM Engine Tuning[/bold cyan]  [dim](press Enter for defaults)[/dim]")
-
-    console.print("  [dim]gpu-memory-utilization: fraction of GPU VRAM for KV cache (lower = safer, higher = more throughput)[/dim]")
-    gpu_mem_util = Prompt.ask("  GPU memory utilization", default="0.92")
-    try:
-        gpu_mem_val = float(gpu_mem_util)
-        if not (0.1 <= gpu_mem_val <= 0.99):
-            console.print("  [yellow]Value out of range, using 0.92[/yellow]")
-            gpu_mem_util = "0.92"
-    except ValueError:
+    if use_cpu:
+        console.print("\n[bold cyan]Step 3.5: vLLM Engine Tuning (CPU)[/bold cyan]  [dim](press Enter for defaults)[/dim]")
+        console.print("  [dim]max-num-seqs: max concurrent sequences (lower for CPU to avoid OOM)[/dim]")
+        max_num_seqs = Prompt.ask("  Max concurrent sequences", default="4")
+        # CPU mode doesn't use these GPU-specific params
         gpu_mem_util = "0.92"
+        max_num_batched_tokens = "2048"
+        tensor_parallel = "1"
+        console.print(f"\n  [green]Engine config:[/green] seqs={max_num_seqs}, ctx={max_model_len}")
+    else:
+        console.print("\n[bold cyan]Step 3.5: vLLM Engine Tuning[/bold cyan]  [dim](press Enter for defaults)[/dim]")
 
-    console.print("  [dim]max-num-seqs: max concurrent sequences in the engine (higher = more throughput but more VRAM)[/dim]")
-    max_num_seqs = Prompt.ask("  Max concurrent sequences", default="48")
+        console.print("  [dim]gpu-memory-utilization: fraction of GPU VRAM for KV cache (lower = safer, higher = more throughput)[/dim]")
+        gpu_mem_util = Prompt.ask("  GPU memory utilization", default="0.92")
+        try:
+            gpu_mem_val = float(gpu_mem_util)
+            if not (0.1 <= gpu_mem_val <= 0.99):
+                console.print("  [yellow]Value out of range, using 0.92[/yellow]")
+                gpu_mem_util = "0.92"
+        except ValueError:
+            gpu_mem_util = "0.92"
 
-    console.print("  [dim]max-num-batched-tokens: max tokens processed per batch (controls prefill pressure)[/dim]")
-    max_num_batched_tokens = Prompt.ask("  Max batched tokens", default="8192")
+        console.print("  [dim]max-num-seqs: max concurrent sequences in the engine (higher = more throughput but more VRAM)[/dim]")
+        max_num_seqs = Prompt.ask("  Max concurrent sequences", default="48")
 
-    console.print("  [dim]tensor-parallel-size: number of GPUs for tensor parallelism (1 for single GPU)[/dim]")
-    tensor_parallel = Prompt.ask("  Tensor parallel size", default="1")
+        console.print("  [dim]max-num-batched-tokens: max tokens processed per batch (controls prefill pressure)[/dim]")
+        max_num_batched_tokens = Prompt.ask("  Max batched tokens", default="8192")
 
-    console.print("  [dim]Sampling defaults (applied when client does NOT send these per-request):[/dim]")
-    console.print("  [dim]  top-k: limits token choices to top K candidates (-1 = disabled, 50 = common)[/dim]")
-    console.print("  [dim]  top-p: nucleus sampling probability (0.9-1.0)[/dim]")
-    console.print("  [dim]  Note: clients can always override these per-request in the JSON body.[/dim]")
+        console.print("  [dim]tensor-parallel-size: number of GPUs for tensor parallelism (1 for single GPU)[/dim]")
+        tensor_parallel = Prompt.ask("  Tensor parallel size", default="1")
 
-    console.print(f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, batched_tok={max_num_batched_tokens}, tp={tensor_parallel}")
+        console.print("  [dim]Sampling defaults (applied when client does NOT send these per-request):[/dim]")
+        console.print("  [dim]  top-k: limits token choices to top K candidates (-1 = disabled, 50 = common)[/dim]")
+        console.print("  [dim]  top-p: nucleus sampling probability (0.9-1.0)[/dim]")
+        console.print("  [dim]  Note: clients can always override these per-request in the JSON body.[/dim]")
+
+        console.print(f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, batched_tok={max_num_batched_tokens}, tp={tensor_parallel}")
 
     # ── Step 4: Keep warm ──
     console.print("\n[bold cyan]Step 4: Keep Warm[/bold cyan]")
-    console.print("  [dim]1 = keeps 1 container always running (no cold start, but costs GPU $$).[/dim]")
+    console.print("  [dim]1 = keeps 1 container always running (no cold start, but costs $$).[/dim]")
     console.print("  [dim]0 = scales to zero when idle (cold start ~5 min, saves cost).[/dim]")
     keep_warm = Prompt.ask("Min containers", default="1")
     try:
@@ -799,22 +840,58 @@ def deploy():
         '        "/root/.cache/vllm": vllm_cache,\n'
         '    }'
     )
-    # ── Append GPU count for tensor parallelism ──
-    tp_int = int(tensor_parallel) if tensor_parallel.isdigit() else 1
-    gpu_spec = selected_gpu if tp_int <= 1 else f"{selected_gpu}:{tp_int}"
 
-    script = (SERVE_TEMPLATE
-        .replace("{model_name}", selected_model)
-        .replace("{gpu_type}", gpu_spec)
-        .replace("{api_key}", first_key)
-        .replace("{max_model_len}", max_model_len)
-        .replace("{gpu_mem_util}", gpu_mem_util)
-        .replace("{max_num_seqs}", max_num_seqs)
-        .replace("{max_num_batched_tokens}", max_num_batched_tokens)
-        .replace("{tensor_parallel}", tensor_parallel)
-        .replace("{keep_warm}", str(keep_warm_val))
-        .replace("ENV_DICT_PLACEHOLDER", env_dict)
-        .replace("VOLUMES_PLACEHOLDER", volumes_dict))
+    # ── Model-specific vLLM args (reasoning/tool parsers) ──
+    model_lower = selected_model.lower()
+    if "qwen3" in model_lower:
+        vllm_extra_args = '\n    vllm_cmd += ["--reasoning-parser", "qwen3", "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder"]'
+    elif "llama" in model_lower:
+        vllm_extra_args = '\n    vllm_cmd += ["--enable-auto-tool-choice", "--tool-call-parser", "llama3_json"]'
+    elif "deepseek" in model_lower:
+        vllm_extra_args = '\n    vllm_cmd += ["--enable-auto-tool-choice", "--tool-call-parser", "hermes"]'
+    elif "mistral" in model_lower:
+        vllm_extra_args = '\n    vllm_cmd += ["--enable-auto-tool-choice", "--tool-call-parser", "mistral_small"]'
+    else:
+        vllm_extra_args = ""
+
+    if use_cpu:
+        # ── CPU deployment script ──
+        # Extract PROXY_CODE from GPU template to reuse
+        proxy_code_start = SERVE_TEMPLATE.find('PROXY_CODE = """')
+        proxy_code_end = SERVE_TEMPLATE.find('"""', proxy_code_start + 16) + 3
+        proxy_code_block = SERVE_TEMPLATE[proxy_code_start:proxy_code_end]
+
+        script = (SERVE_TEMPLATE_CPU
+            .replace("{model_name}", selected_model)
+            .replace("{api_key}", first_key)
+            .replace("{cpu_cores}", str(selected_cores))
+            .replace("{memory_mb}", str(selected_memory))
+            .replace("{max_model_len}", max_model_len)
+            .replace("{max_num_seqs}", max_num_seqs)
+            .replace("{keep_warm}", str(keep_warm_val))
+            .replace("{vllm_extra_args}", vllm_extra_args)
+            .replace("ENV_DICT_PLACEHOLDER", env_dict)
+            .replace("VOLUMES_PLACEHOLDER", volumes_dict)
+            .replace("PROXY_CODE_PLACEHOLDER", proxy_code_block))
+    else:
+        # ── GPU deployment script ──
+        # ── Append GPU count for tensor parallelism ──
+        tp_int = int(tensor_parallel) if tensor_parallel.isdigit() else 1
+        gpu_spec = selected_gpu if tp_int <= 1 else f"{selected_gpu}:{tp_int}"
+
+        script = (SERVE_TEMPLATE
+            .replace("{model_name}", selected_model)
+            .replace("{gpu_type}", gpu_spec)
+            .replace("{api_key}", first_key)
+            .replace("{max_model_len}", max_model_len)
+            .replace("{gpu_mem_util}", gpu_mem_util)
+            .replace("{max_num_seqs}", max_num_seqs)
+            .replace("{max_num_batched_tokens}", max_num_batched_tokens)
+            .replace("{tensor_parallel}", tensor_parallel)
+            .replace("{keep_warm}", str(keep_warm_val))
+            .replace("{vllm_extra_args}", vllm_extra_args)
+            .replace("ENV_DICT_PLACEHOLDER", env_dict)
+            .replace("VOLUMES_PLACEHOLDER", volumes_dict))
 
     script = script.replace("# __METRICS__", _METRICS_FUNCTIONS)
 
@@ -844,10 +921,10 @@ def deploy():
     console.print(Panel(
         f"[bold green]Configuration file `{runner_file}` has been created.[/bold green]\n\n"
         f"You can open this file in your IDE to:\n"
-        f"  - Change the GPU type or timeout duration.\n"
+        f"  - Change the {'CPU cores / memory' if use_cpu else 'GPU type'} or timeout duration.\n"
         f"  - Adjust '--max-model-len' for context window.\n"
-        f"  - Adjust '--tensor-parallel-size' for multi-GPU.\n\n"
-        f"Your code is 100% transparent and editable.",
+        + (f"  - Adjust '--tensor-parallel-size' for multi-GPU.\n\n" if not use_cpu else "\n")
+        + f"Your code is 100% transparent and editable.",
         title="WAITING FOR CONFIGURATION", expand=False, border_style="cyan",
     ))
 
@@ -859,7 +936,8 @@ def deploy():
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    console.print(f"\n[bold green]Deploying {selected_model} on {selected_gpu}...[/bold green]")
+    compute_label = f"CPU ({selected_cores} cores)" if use_cpu else selected_gpu
+    console.print(f"\n[bold green]Deploying {selected_model} on {compute_label}...[/bold green]")
     console.print("[dim]First deploy may take 5-15 min (downloading model weights to cache).[/dim]")
     console.print("[dim]Subsequent cold starts will be faster (weights cached in Volume).[/dim]\n")
 
@@ -1330,3 +1408,21 @@ def _load_profiles_for_url():
     except Exception:
         pass
     return []
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class ServePlugin(_PluginBase):
+    name = "serve"
+    help = "Deploy LLMs as OpenAI-compatible APIs with API key auth."
+    rich_help_panel = "Compute Engine"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

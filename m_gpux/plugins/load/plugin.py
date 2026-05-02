@@ -1,4 +1,4 @@
-import typer
+﻿import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -27,7 +27,7 @@ import sys
 app = modal.App("m-gpux-load-monitor")
 image = modal.Image.debian_slim().pip_install("gputil", "psutil")
 
-@app.function(image=image, gpu="{gpu_type}", timeout=120)
+@app.function(image=image, {compute_spec}, timeout=120)
 def collect_metrics():
     import GPUtil
     import psutil
@@ -203,29 +203,62 @@ def _render_metrics(metrics: dict, gpu_type: str, elapsed: float) -> Panel:
     return Panel(grid, title=f"[bold cyan]m-gpux load — {gpu_type}[/bold cyan]", border_style="bright_cyan", expand=True)
 
 
-# Import the hub GPU list so we stay in sync
-from m_gpux.commands.hub import AVAILABLE_GPUS
+# Import the hub GPU/CPU lists so we stay in sync
+from m_gpux.core import AVAILABLE_GPUS, AVAILABLE_CPUS
 
 
 @app.command("probe")
 def load_probe(
     gpu: str = typer.Option(None, "--gpu", "-g", help="GPU type to probe (e.g. T4, A100, H100). If omitted, shows picker."),
+    cpu: int = typer.Option(None, "--cpu", "-c", help="CPU cores to probe (e.g. 2, 4, 8). If set, probes CPU-only."),
 ):
     """
     Spin up a short-lived Modal container and report GPU, CPU, memory, disk,
     and timing metrics back to the terminal.
     """
-    if gpu is None:
-        console.print("\n[bold cyan]Select GPU to probe:[/bold cyan]")
-        for k, (name, desc) in AVAILABLE_GPUS.items():
-            console.print(f"  [bold yellow]{k:>2}[/bold yellow]: {name:<14} — {desc}")
-        from rich.prompt import Prompt
-        gpu_choice = Prompt.ask("Select GPU", choices=list(AVAILABLE_GPUS.keys()), default="1")
-        gpu = AVAILABLE_GPUS[gpu_choice][0]
+    from rich.prompt import Prompt
+    from m_gpux.core.ui import arrow_select
 
-    console.print(f"\n[cyan]Probing [bold]{gpu}[/bold] — spinning up container...[/cyan]")
+    if gpu is None and cpu is None:
+        console.print("\n[bold cyan]Select compute type to probe:[/bold cyan]")
+        compute_options = [
+            ("GPU", "Probe a GPU container"),
+            ("CPU", "Probe a CPU-only container"),
+        ]
+        compute_idx = arrow_select(compute_options, title="Compute Type", default=0)
 
-    script_content = LOAD_SCRIPT.replace("{gpu_type}", gpu)
+        if compute_idx == 1:
+            # CPU mode
+            cpu_keys = list(AVAILABLE_CPUS.keys())
+            cpu_options = []
+            for k in cpu_keys:
+                cores, mem, desc = AVAILABLE_CPUS[k]
+                cpu_options.append((f"{cores} cores", desc))
+            cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
+            selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
+            compute_spec = f'cpu={selected_cores}, memory={selected_memory}'
+            compute_label = f"CPU ({selected_cores} cores, {selected_memory} MB)"
+        else:
+            # GPU mode
+            console.print("\n[bold cyan]Select GPU to probe:[/bold cyan]")
+            gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
+            gpu_idx = arrow_select(gpu_options, title="Select GPU", default=1)
+            gpu = list(AVAILABLE_GPUS.values())[gpu_idx][0]
+            compute_spec = f'gpu="{gpu}"'
+            compute_label = gpu
+    elif cpu is not None:
+        # CPU specified via CLI flag
+        memory = cpu * 512  # scale memory with cores
+        compute_spec = f'cpu={cpu}, memory={memory}'
+        compute_label = f"CPU ({cpu} cores, {memory} MB)"
+    else:
+        # GPU specified via CLI flag
+        compute_spec = f'gpu="{gpu}"'
+        compute_label = gpu
+
+    console.print(f"\n[cyan]Probing [bold]{compute_label}[/bold] — spinning up container...[/cyan]")
+
+    script_content = LOAD_SCRIPT.replace("{compute_spec}", compute_spec)
     runner_file = "_m_gpux_load_probe.py"
 
     with open(runner_file, "w", encoding="utf-8") as f:
@@ -244,7 +277,7 @@ def load_probe(
         if "__METRICS_JSON_START__" in output:
             json_str = output.split("__METRICS_JSON_START__")[1].split("__METRICS_JSON_END__")[0].strip()
             metrics = json.loads(json_str)
-            panel = _render_metrics(metrics, gpu, elapsed)
+            panel = _render_metrics(metrics, compute_label, elapsed)
             console.print()
             console.print(panel)
         else:
@@ -266,3 +299,21 @@ def load_probe(
             os.remove(runner_file)
         except OSError:
             pass
+
+
+# ─── Plugin registration ──────────────────────────────────────
+from m_gpux.core.plugin import PluginBase as _PluginBase
+
+
+class LoadPlugin(_PluginBase):
+    name = "load"
+    help = "Probe a GPU container and display live hardware metrics."
+    rich_help_panel = "Compute Engine"
+
+    def register(self, root_app):
+        root_app.add_typer(
+            app,
+            name=self.name,
+            help=self.help,
+            rich_help_panel=self.rich_help_panel,
+        )

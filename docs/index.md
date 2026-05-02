@@ -56,6 +56,9 @@ m-gpux hub                  # pick GPU → pick Jupyter → launch
 
 The hub generates a `modal_runner.py` script, shows it for review, then executes `modal run` to start a GPU-backed Jupyter Lab with a public URL.
 
+!!! note "Hub terminal update"
+    The hub can launch Jupyter, Python scripts, vLLM serving, or a clean VS Code-like Web Bash terminal. The terminal uses direct `bash` by default, keeps `tmux` optional, and reduces WebSocket heartbeat noise for smoother interaction.
+
 ### 2. Deploy an LLM as an OpenAI-compatible API
 
 ```bash

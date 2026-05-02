@@ -1,0 +1,133 @@
+:root {
+    --bg: #1e1e2e;
+    --surface: #313244;
+    --text: #cdd6f4;
+    --subtext: #a6adc8;
+    --mauve: #cba6f7;
+    --green: #a6e3a1;
+    --peach: #fab387;
+    --blue: #89b4fa;
+    --pink: #f5c2e7;
+    --border: #45475a;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+header h1 {
+    font-size: 2.2rem;
+    background: linear-gradient(135deg, var(--mauve), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subtitle {
+    color: var(--subtext);
+    margin-top: 0.5rem;
+}
+
+.subtitle code {
+    background: var(--surface);
+    padding: 0.2em 0.5em;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.card h2 {
+    color: var(--mauve);
+    font-size: 1.2rem;
+    margin-bottom: 0.75rem;
+}
+
+.card pre {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.85rem;
+}
+
+.card code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    color: var(--green);
+}
+
+.counter-area {
+    text-align: center;
+    margin-top: 1rem;
+}
+
+#btn {
+    background: linear-gradient(135deg, var(--mauve), var(--blue));
+    color: var(--bg);
+    border: none;
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+#btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 16px rgba(203, 166, 247, 0.4);
+}
+
+#btn:active {
+    transform: scale(0.97);
+}
+
+footer {
+    text-align: center;
+    margin-top: 3rem;
+    color: var(--subtext);
+    font-size: 0.85rem;
+}
+
+footer a {
+    color: var(--blue);
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}

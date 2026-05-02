@@ -145,7 +145,7 @@ The hub is a step-by-step wizard:
 |---|---|
 | 1. Profile | Select which Modal profile to use (if multiple exist) |
 | 2. GPU | Pick from 13 GPU types (T4 → B200) |
-| 3. Action | Choose: **Jupyter Lab**, **Run Python script**, or **Web Bash shell** |
+| 3. Action | Choose: **Jupyter Lab**, **Run Python script**, **Web Bash shell**, or **vLLM Inference** |
 | 4. Review | The generated `modal_runner.py` is displayed with syntax highlighting |
 | 5. Launch | Press Enter to execute, or edit the script first |
 
@@ -161,7 +161,15 @@ Prompts for a local `.py` filename. The script is uploaded and executed on the s
 
 #### Web Bash shell
 
-Opens an interactive terminal session in the browser, running on the selected GPU.
+Opens a VS Code-like terminal session in the browser, running on the selected GPU. The shell starts as direct `bash` for smoother typing and cleaner rendering, with a compact prompt, reduced WebSocket heartbeat traffic, and optional `tmux` if you want detachable sessions.
+
+#### Interactive terminal for `input()` scripts
+
+When a Python script contains `input()` calls, the hub can open the same low-latency browser terminal and show the command to run, for example `python main.py`.
+
+#### vLLM Inference
+
+Starts an OpenAI-compatible API server for a selected HuggingFace model. Choose deploy mode for persistent serving, or run mode for one-off testing.
 
 !!! tip "Editing before launch"
     The hub shows the full `modal_runner.py` before executing. You can modify pip packages, timeouts, environment variables, or the container image before pressing Enter.

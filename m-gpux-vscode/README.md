@@ -29,7 +29,7 @@
 
 ```bash
 # From VSIX file
-code --install-extension m-gpux-1.0.7.vsix
+code --install-extension m-gpux-2.2.0.vsix
 ```
 
 Or in VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**
@@ -93,7 +93,7 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 |-------------|-------------|
 | **Jupyter Lab** | Interactive notebook server with auto-tunneling. Your workspace files are mounted at `/workspace`. |
 | **Run Python Script** | Pick a `.py` file from your workspace and execute it remotely on the selected GPU. |
-| **Bash Shell** | Web-based terminal (ttyd + tmux). Survives browser disconnects — just reopen the URL. |
+| **Bash Shell** | VS Code-like web terminal using direct `bash`, a clean prompt, reduced heartbeat noise, and optional `tmux`. |
 | **vLLM Inference Server** | Deploy an OpenAI-compatible LLM API. Models: Qwen 1.5B/7B, Llama 3.1 8B, Gemma 9B, Mistral 7B. |
 
 #### Step 4 — Configure & Launch
