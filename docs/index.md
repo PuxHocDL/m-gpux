@@ -58,11 +58,6 @@ m-gpux hub
 
 The hub generates a `modal_runner.py` script, shows it for review, then executes `modal run` to start a GPU-backed Jupyter Lab with a public URL.
 
-<figure class="doc-figure" markdown="span">
-  ![Interactive Hub Preview](assets/interactive_hub.png)
-  <figcaption>Interactive Hub: Jupyter Lab and Web Shell</figcaption>
-</figure>
-
 !!! note "Hub terminal update"
     The hub can launch Jupyter, Python scripts, vLLM serving, or a clean VS Code-like Web Bash terminal. The terminal uses direct `bash` by default, keeps `tmux` optional, and reduces WebSocket heartbeat noise for smoother interaction.
 
@@ -102,11 +97,6 @@ The vision wizard walks through:
 3. **Training knobs**  GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
 4. **Artifacts**  checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
 
-<figure class="doc-figure" markdown="span">
-  ![Vision Training Preview](assets/vision_training.png)
-  <figcaption>Vision Training Metrics and Inference Dashboard</figcaption>
-</figure>
-
 After training, run inference on fresh local images:
 
 ```bash
@@ -137,11 +127,6 @@ During the wizard, `m-gpux` asks for:
 !!! note "Full web guide"
     The complete walkthrough lives in [Web Hosting](web-hosting.md), including project layouts, generated Modal patterns, scaling behavior, and troubleshooting.
 
-<figure class="doc-figure" markdown="span">
-  ![Web Hosting Preview](assets/web_hosting.png)
-  <figcaption>Modern Web Dashboard for Deployed Applications</figcaption>
-</figure>
-
 ### 5. Check costs across all accounts
 
 ```bash
@@ -149,11 +134,6 @@ m-gpux billing usage --days 7 --all
 ```
 
 Aggregates compute spend from every configured profile into a single Rich table.
-
-<figure class="doc-figure" markdown="span">
-  ![Billing Dashboard Preview](assets/billing_dashboard.png)
-  <figcaption>Unified Billing Dashboard across all Profiles</figcaption>
-</figure>
 
 ### 6. Stop running apps and release GPUs
 
