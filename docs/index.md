@@ -8,11 +8,6 @@ Welcome to the official docs for **m-gpux**, a production-focused CLI toolkit fo
 
 `m-gpux` turns Modal's serverless GPU platform into a streamlined developer experience:
 
-<figure class="doc-figure" markdown="span">
-  ![m-gpux system overview](assets/mgpux-overview.svg)
-  <figcaption>One CLI coordinates local profiles, generated Modal scripts, GPU runtimes, hosted apps, and lifecycle cleanup.</figcaption>
-</figure>
-
 | Capability | Description |
 |---|---|
 | **Multi-profile management** | Add, switch, and remove Modal identities, all stored in `~/.modal.toml` |
@@ -71,11 +66,6 @@ The hub generates a `modal_runner.py` script, shows it for review, then executes
 !!! note "Hub terminal update"
     The hub can launch Jupyter, Python scripts, vLLM serving, or a clean VS Code-like Web Bash terminal. The terminal uses direct `bash` by default, keeps `tmux` optional, and reduces WebSocket heartbeat noise for smoother interaction.
 
-<figure class="doc-figure" markdown="span">
-  ![VS Code-like Web Bash terminal architecture](assets/hub-terminal.svg)
-  <figcaption>The Web Bash shell now favors a direct bash path for cleaner browser rendering.</figcaption>
-</figure>
-
 ### 2. Deploy an LLM as an OpenAI-compatible API
 
 ```bash
@@ -97,16 +87,6 @@ After deploy, monitor your server with the live dashboard:
 ```bash
 m-gpux serve dashboard
 ```
-
-<figure class="doc-figure" markdown="span">
-  ![LLM API Server Preview](assets/llm_api.png)
-  <figcaption>LLM API Server Dashboard with real-time metrics</figcaption>
-</figure>
-
-<figure class="doc-figure" markdown="span">
-  ![LLM API server architecture](assets/llm-api-architecture.svg)
-  <figcaption>The LLM server exposes a FastAPI auth proxy and keeps vLLM private inside the Modal container.</figcaption>
-</figure>
 
 ### 3. Train an image classification model
 

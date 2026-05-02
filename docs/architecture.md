@@ -2,11 +2,6 @@
 
 This page explains how `m-gpux` is put together: the CLI/plugin system, the generated Modal scripts, the Web Bash terminal path, and the LLM API server proxy layer.
 
-<figure class="doc-figure" markdown="span">
-  ![m-gpux system overview](assets/mgpux-overview.svg)
-  <figcaption>High-level flow from local CLI intent to Modal GPU workloads.</figcaption>
-</figure>
-
 ## Project Structure
 
 `m-gpux` is organized around a small core plus feature plugins. The CLI entrypoint discovers plugins and attaches their Typer commands to the root app.
@@ -83,11 +78,6 @@ This pattern is used by `hub`, `host`, `vision`, `video`, and `serve`. The gener
 
 The Web Bash shell uses `ttyd` as the browser terminal bridge. The default path is deliberately close to VS Code's integrated terminal:
 
-<figure class="doc-figure" markdown="span">
-  ![Web Bash terminal architecture](assets/hub-terminal.svg)
-  <figcaption>The default shell path is direct bash for clean rendering; tmux is installed but opt-in.</figcaption>
-</figure>
-
 The important choices are:
 
 - `ttyd` launches `bash --login` directly by default.
@@ -118,11 +108,6 @@ Downstream commands reuse the same artifacts:
 
 `serve deploy` creates a two-process architecture inside one Modal GPU container. The proxy starts quickly on port `8000`, which satisfies Modal's web server startup probe. vLLM starts in the background on port `8001` and can take longer to load model weights.
 
-<figure class="doc-figure" markdown="span">
-  ![LLM API server architecture](assets/llm-api-architecture.svg)
-  <figcaption>Only the FastAPI auth proxy is exposed publicly; vLLM stays internal on localhost.</figcaption>
-</figure>
-
 ## Why Two Processes?
 
 Large models may take minutes to load. Modal's `@modal.web_server(port=8000)` expects a listening web server within the startup timeout. If vLLM owned the public port directly, slow model loading could look like a failed startup.
@@ -135,11 +120,6 @@ The split solves that:
 - The public API gets auth, metrics, and backpressure before GPU inference work begins.
 
 ## Auth Flow
-
-<figure class="doc-figure" markdown="span">
-  ![Auth proxy request flow](assets/auth-flow.svg)
-  <figcaption>Invalid or overloaded requests exit before hitting the GPU-heavy vLLM backend.</figcaption>
-</figure>
 
 The proxy applies these gates before forwarding a request:
 

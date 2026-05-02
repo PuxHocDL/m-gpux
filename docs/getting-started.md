@@ -62,11 +62,6 @@ You will see a table of all configured profiles, with the active one marked.
 m-gpux hub
 ```
 
-<figure class="doc-figure" markdown="span">
-  ![Web Bash terminal rendering path](assets/hub-terminal.svg)
-  <figcaption>The browser terminal is intentionally close to VS Code's direct-shell model.</figcaption>
-</figure>
-
 The interactive hub walks you through:
 
 1. Select a profile
@@ -101,11 +96,6 @@ For a static site:
 m-gpux host static --dir ./site
 ```
 
-<figure class="doc-figure" markdown="span">
-  ![Web hosting deployment flow](assets/host-deploy-flow.svg)
-  <figcaption>The host wizard turns a local ASGI, WSGI, or static app into a reviewable Modal deployment.</figcaption>
-</figure>
-
 The hosting wizard asks for:
 
 1. Modal profile
@@ -136,11 +126,6 @@ m-gpux billing open
 ## Step 6: Deploy an LLM API
 
 Turn any HuggingFace model into a production OpenAI-compatible API with authentication.
-
-<figure class="doc-figure" markdown="span">
-  ![LLM API server architecture](assets/llm-api-architecture.svg)
-  <figcaption>The public endpoint is the auth proxy; vLLM stays behind it on localhost.</figcaption>
-</figure>
 
 ### 1. Create an API key
 
