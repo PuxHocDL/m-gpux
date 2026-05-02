@@ -42,8 +42,8 @@ Each subcommand opens a guided flow that asks for:
 6. Warm replica strategy
 7. Deploy mode: persistent `deploy` or one-off `run`
 
-<figure class="doc-figure">
-  <img src="assets/host-deploy-flow.svg" alt="m-gpux host deployment flow">
+<figure class="doc-figure" markdown="span">
+  ![m-gpux host deployment flow](assets/host-deploy-flow.svg)
   <figcaption>All hosting targets share the same generate, review, and deploy path.</figcaption>
 </figure>
 

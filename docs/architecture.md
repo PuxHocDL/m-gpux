@@ -2,8 +2,8 @@
 
 This page explains how `m-gpux` is put together: the CLI/plugin system, the generated Modal scripts, the Web Bash terminal path, and the LLM API server proxy layer.
 
-<figure class="doc-figure">
-  <img src="assets/mgpux-overview.svg" alt="m-gpux system overview">
+<figure class="doc-figure" markdown="span">
+  ![m-gpux system overview](assets/mgpux-overview.svg)
   <figcaption>High-level flow from local CLI intent to Modal GPU workloads.</figcaption>
 </figure>
 
@@ -83,8 +83,8 @@ This pattern is used by `hub`, `host`, `vision`, `video`, and `serve`. The gener
 
 The Web Bash shell uses `ttyd` as the browser terminal bridge. The default path is deliberately close to VS Code's integrated terminal:
 
-<figure class="doc-figure">
-  <img src="assets/hub-terminal.svg" alt="Web Bash terminal architecture">
+<figure class="doc-figure" markdown="span">
+  ![Web Bash terminal architecture](assets/hub-terminal.svg)
   <figcaption>The default shell path is direct bash for clean rendering; tmux is installed but opt-in.</figcaption>
 </figure>
 
@@ -118,8 +118,8 @@ Downstream commands reuse the same artifacts:
 
 `serve deploy` creates a two-process architecture inside one Modal GPU container. The proxy starts quickly on port `8000`, which satisfies Modal's web server startup probe. vLLM starts in the background on port `8001` and can take longer to load model weights.
 
-<figure class="doc-figure">
-  <img src="assets/llm-api-architecture.svg" alt="LLM API server architecture">
+<figure class="doc-figure" markdown="span">
+  ![LLM API server architecture](assets/llm-api-architecture.svg)
   <figcaption>Only the FastAPI auth proxy is exposed publicly; vLLM stays internal on localhost.</figcaption>
 </figure>
 
@@ -136,8 +136,8 @@ The split solves that:
 
 ## Auth Flow
 
-<figure class="doc-figure">
-  <img src="assets/auth-flow.svg" alt="Auth proxy request flow">
+<figure class="doc-figure" markdown="span">
+  ![Auth proxy request flow](assets/auth-flow.svg)
   <figcaption>Invalid or overloaded requests exit before hitting the GPU-heavy vLLM backend.</figcaption>
 </figure>
 

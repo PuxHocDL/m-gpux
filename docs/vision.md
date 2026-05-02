@@ -13,8 +13,8 @@ The workflow:
 5. Runs the job on Modal
 6. Saves checkpoints and metrics to a Modal Volume
 
-<figure class="doc-figure">
-  <img src="assets/vision-workflow.svg" alt="m-gpux vision workflow">
+<figure class="doc-figure" markdown="span">
+  ![m-gpux vision workflow](assets/vision-workflow.svg)
   <figcaption>Training artifacts become the shared handoff point for prediction, evaluation, and export.</figcaption>
 </figure>
 

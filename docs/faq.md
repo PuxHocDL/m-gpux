@@ -88,8 +88,8 @@ image = modal.Image.debian_slim().pip_install(
 
 This is normal for scale-to-zero deployments. Two solutions:
 
-1. **Keep warm** — set `min_containers=1` during deploy (Step 4). This keeps one container always running (~0.9s response time), but costs GPU time even when idle.
-2. **Pre-warm** — run `m-gpux serve warmup` before sending real traffic.
+1. **Keep warm** - set `min_containers=1` during deploy (Step 4). This keeps one container always running (~0.9s response time), but costs GPU time even when idle.
+2. **Pre-warm** - run `m-gpux serve warmup` before sending real traffic.
 
 ### First deploy is very slow (10-15 min)
 

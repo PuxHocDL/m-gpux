@@ -15,13 +15,13 @@
 
 ## ✨ Highlights
 
-- **🧠 LLM API Server** — Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
-- **⚡ Interactive GPU Hub** — Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
-- **🌐 Web Hosting** — Deploy FastAPI / Flask / static sites as persistent URLs with auto-scaling.
-- **🖼️ Vision Workflows** — Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
-- **👥 Multi-Account Management** — Seamlessly manage multiple profiles in one unified command namespace.
-- **💸 Unified Cost Visibility** — Inspect billing per profile or get a comprehensive view across all configured accounts.
-- **🎨 Friendly Terminal UX** — Enjoy rich tables, intuitive prompts, and interactive guided flows right in your terminal.
+- **🧠 LLM API Server** - Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
+- **⚡ Interactive GPU Hub** - Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
+- **🌐 Web Hosting** - Deploy FastAPI / Flask / static sites as persistent URLs with auto-scaling.
+- **🖼️ Vision Workflows** - Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
+- **👥 Multi-Account Management** - Seamlessly manage multiple profiles in one unified command namespace.
+- **💸 Unified Cost Visibility** - Inspect billing per profile or get a comprehensive view across all configured accounts.
+- **🎨 Friendly Terminal UX** - Enjoy rich tables, intuitive prompts, and interactive guided flows right in your terminal.
 
 ## 📖 Table of Contents
 
@@ -179,8 +179,8 @@ m-gpux serve keys revoke <name> # Revoke access
 **Key Features:**
 - Bearer token authentication (401/403).
 - Full support for streaming & non-streaming chat completions.
-- **Live dashboard** — GPU/CPU/RAM metrics, latency percentiles, traffic, and token counts with progress bars.
-- **Resilient proxy** — automatic retry with backoff, backpressure (429), internal streaming to prevent timeouts on long inference.
+- **Live dashboard** - GPU/CPU/RAM metrics, latency percentiles, traffic, and token counts with progress bars.
+- **Resilient proxy** - automatic retry with backoff, backpressure (429), internal streaming to prevent timeouts on long inference.
 - Configurable vLLM hyperparameters (GPU memory utilization, tensor parallelism, max sequences).
 - 11 built-in popular model presets (Qwen, Llama, Gemma, Phi, etc.).
 
@@ -215,7 +215,7 @@ Ready-to-deploy sample projects in [`examples/`](examples/):
 | [`host-wsgi`](examples/host-wsgi/) | `m-gpux host wsgi --entry app:app` | Flask task-board with REST CRUD API |
 
 ```bash
-# Quick test — deploy the static example
+# Quick test - deploy the static example
 cd examples/host-static
 m-gpux host static --dir .
 ```
