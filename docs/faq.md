@@ -68,7 +68,11 @@ Modal has a configurable timeout (default 24 hours). For long-running sessions, 
 
 ### Web Bash terminal feels jittery
 
-The Web Bash shell is tuned for a VS Code-like experience: direct `bash`, a simple prompt, no default `tmux` wrapper, and a longer `ttyd` WebSocket ping interval. If you need detachable sessions, run `tmux` manually from inside the shell.
+The Web Bash shell is tuned for a VS Code-like experience: direct `bash`, a simple prompt, no default `tmux` wrapper, a longer `ttyd` WebSocket ping interval, and a 10,000-line browser scrollback. If you need detachable sessions, run `tmux` manually from inside the shell.
+
+### I cannot scroll in the Web Bash terminal
+
+Use the mouse wheel or trackpad inside the terminal area. The terminal keeps 10,000 lines of browser scrollback and uses smooth wheel scrolling. If you start `tmux`, scrolling changes to tmux copy-mode behavior; press `Ctrl+b` then `[` or use tmux mouse mode to browse older output.
 
 ### Can I install custom pip packages?
 
