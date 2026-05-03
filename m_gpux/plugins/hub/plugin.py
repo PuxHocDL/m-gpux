@@ -438,7 +438,7 @@ def _session_metadata(
     workspace_volume: str,
     local_dir: str,
     app_name: str,
-    preset: str | None = None,
+    preset: Optional[str] = None,
 ) -> dict:
     return {
         "id": new_session_id(),
@@ -460,7 +460,7 @@ def _maybe_save_workload_preset(
     compute_label: str,
     pip_section: str,
     exclude_patterns: list[str],
-) -> str | None:
+) -> Optional[str]:
     save_choice = Prompt.ask(
         "[bold cyan]Save this workload as a preset?[/bold cyan]",
         choices=["y", "n"],

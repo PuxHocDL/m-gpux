@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m-gpux"
-version = "2.3.0"
+version = "2.3.1"
 description = "Professional CLI toolkit for Modal GPU workflows, account management, and billing visibility"
 readme = "README.md"
 requires-python = ">=3.10"

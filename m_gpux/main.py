@@ -9,9 +9,15 @@ is no need to modify this file.
 
 from __future__ import annotations
 
+import os
+import time
+
 import typer
+from rich.align import Align
+from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from m_gpux import __version__
 from m_gpux.core import PluginRegistry, discover_plugins
@@ -48,7 +54,34 @@ HERO_LOGO = """
 """
 
 
+def _render_intro_animation() -> None:
+    if os.environ.get("MGPUX_NO_ANIMATION") or not console.is_terminal:
+        return
+
+    frames = [
+        ("booting Modal control plane", "[cyan]>>>[/cyan]"),
+        ("warming GPU workflows", "[bright_cyan]>>>>>>[/bright_cyan]"),
+        ("syncing sessions and presets", "[green]>>>>>>>>>>[/green]"),
+        ("ready", "[bold yellow]>>>>>>>>>>>>[/bold yellow]"),
+    ]
+    with Live(console=console, transient=True, refresh_per_second=12) as live:
+        for label, bar in frames:
+            text = Text()
+            text.append("M-GPUX ", style="bold bright_cyan")
+            text.append(label, style="white")
+            live.update(
+                Panel(
+                    Align.center(f"{bar}\n{text}", vertical="middle"),
+                    border_style="cyan",
+                    title="Starting",
+                    expand=False,
+                )
+            )
+            time.sleep(0.12)
+
+
 def render_welcome() -> None:
+    _render_intro_animation()
     quick_actions = Table.grid(padding=(0, 2))
     quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
     quick_actions.add_row("[bold yellow]m-gpux dev[/bold yellow]", "Open a persistent Modal dev container for this folder")
