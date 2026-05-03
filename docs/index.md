@@ -11,7 +11,10 @@ Welcome to the official docs for **m-gpux**, a production-focused CLI toolkit fo
 | Capability | Description |
 |---|---|
 | **Multi-profile management** | Add, switch, and remove Modal identities, all stored in `~/.modal.toml` |
+| **Dev Container Mode** | Turn the current folder into a persistent Modal CPU/GPU devbox with Volume-backed `/workspace` |
 | **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU |
+| **Session Manager** | Track running Hub/dev sessions, pull remote workspaces, view logs, and stop apps |
+| **Workload Presets** | Save repeatable compute, dependency, and exclude settings for common workloads |
 | **Web Hosting** | Deploy ASGI apps, WSGI apps, and static sites with generated Modal templates, dependency prompts, and deploy/run modes |
 | **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
@@ -42,6 +45,10 @@ cd m-gpux && pip install -e .
 |---|---|
 | [Getting Started](getting-started.md) | Install, add your first profile, and launch a GPU session in 5 minutes |
 | [Command Reference](commands.md) | Every command, flag, and option with examples |
+| [Dev Container Mode](dev-container.md) | Use `m-gpux dev` as a persistent Modal-powered project workspace |
+| [Session Manager](sessions.md) | Manage tracked dev and Hub sessions |
+| [Workload Presets](presets.md) | Save and rerun common launch configs |
+| [Recipes](recipes.md) | Practical flows for devboxes, RL training, hosting, and file recovery |
 | [Web Hosting](web-hosting.md) | Host FastAPI, Flask, Django, or static sites on Modal with `m-gpux host` |
 | [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
 | [Architecture](architecture.md) | How m-gpux works internally: proxy layer, template generation, profile resolution |
@@ -49,7 +56,21 @@ cd m-gpux && pip install -e .
 
 ## Common Workflows
 
-### 1. Launch Jupyter on a GPU
+### 1. Open A Modal Dev Container
+
+```bash
+cd my-project
+m-gpux dev
+```
+
+`m-gpux dev` launches a browser terminal backed by a Modal Volume. Local files refresh into `/workspace` every launch, while remote-only outputs stay available until you pull or clean them.
+
+```bash
+m-gpux sessions list
+m-gpux sessions pull <session-id> --to ./m-gpux-workspace
+```
+
+### 2. Launch Jupyter on a GPU
 
 ```bash
 m-gpux account add
@@ -61,7 +82,7 @@ The hub generates a `modal_runner.py` script, shows it for review, then executes
 !!! note "Hub terminal update"
     The hub can launch Jupyter, Python scripts, vLLM serving, or a clean VS Code-like Web Bash terminal. The terminal uses direct `bash` by default, keeps `tmux` optional, and reduces WebSocket heartbeat noise for smoother interaction.
 
-### 2. Deploy an LLM as an OpenAI-compatible API
+### 3. Deploy an LLM as an OpenAI-compatible API
 
 ```bash
 m-gpux serve keys create --name prod
@@ -83,7 +104,7 @@ After deploy, monitor your server with the live dashboard:
 m-gpux serve dashboard
 ```
 
-### 3. Train an image classification model
+### 4. Train an image classification model
 
 ```bash
 m-gpux vision sample-data
@@ -103,7 +124,7 @@ After training, run inference on fresh local images:
 m-gpux vision predict
 ```
 
-### 4. Host a web app on Modal
+### 5. Host a web app on Modal
 
 ```bash
 m-gpux host asgi --entry main:app
@@ -127,7 +148,16 @@ During the wizard, `m-gpux` asks for:
 !!! note "Full web guide"
     The complete walkthrough lives in [Web Hosting](web-hosting.md), including project layouts, generated Modal patterns, scaling behavior, and troubleshooting.
 
-### 5. Check costs across all accounts
+### 6. Save A Reusable Workload Preset
+
+```bash
+m-gpux preset create
+m-gpux preset run rl-a100
+```
+
+Hub and dev mode can also ask whether you want to save a preset after you configure a workload.
+
+### 7. Check costs across all accounts
 
 ```bash
 m-gpux billing usage --days 7 --all
@@ -135,7 +165,7 @@ m-gpux billing usage --days 7 --all
 
 Aggregates compute spend from every configured profile into a single Rich table.
 
-### 6. Stop running apps and release GPUs
+### 8. Stop running apps and release GPUs
 
 ```bash
 m-gpux stop --all

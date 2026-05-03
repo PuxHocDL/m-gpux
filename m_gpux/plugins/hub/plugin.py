@@ -12,6 +12,7 @@ from typing import Optional
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.ui import arrow_select
 from m_gpux.core.runner import execute_modal_temp_script
+from m_gpux.core.state import new_session_id, save_preset
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -428,6 +429,60 @@ def _workspace_volume_name(local_dir: str) -> str:
     digest = hashlib.sha1(root.encode("utf-8")).hexdigest()[:10]
     return f"m-gpux-workspace-{slug}-{digest}"
 
+
+def _session_metadata(
+    *,
+    kind: str,
+    profile: str,
+    compute_label: str,
+    workspace_volume: str,
+    local_dir: str,
+    app_name: str,
+    preset: str | None = None,
+) -> dict:
+    return {
+        "id": new_session_id(),
+        "kind": kind,
+        "profile": profile,
+        "compute": compute_label,
+        "workspace_volume": workspace_volume,
+        "local_dir": os.path.abspath(local_dir),
+        "app_name": app_name,
+        "preset": preset,
+    }
+
+
+def _maybe_save_workload_preset(
+    *,
+    action: str,
+    profile: str,
+    compute_spec: str,
+    compute_label: str,
+    pip_section: str,
+    exclude_patterns: list[str],
+) -> str | None:
+    save_choice = Prompt.ask(
+        "[bold cyan]Save this workload as a preset?[/bold cyan]",
+        choices=["y", "n"],
+        default="n",
+    )
+    if save_choice.lower() != "y":
+        return None
+    name = Prompt.ask("Preset name", default=f"{action}-{compute_label}".lower().replace(" ", "-"))
+    save_preset(
+        name,
+        {
+            "action": action,
+            "profile": profile,
+            "compute_spec": compute_spec,
+            "compute_label": compute_label,
+            "pip_section": pip_section,
+            "exclude_patterns": exclude_patterns,
+        },
+    )
+    console.print(f"[green]Saved preset:[/green] [bold]{name}[/bold]")
+    return name
+
 INTERACTIVE_SCRIPT = """
 import base64
 import modal
@@ -742,13 +797,34 @@ def hub_main():
 
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
         workspace_volume = _workspace_volume_name(".")
+        preset_name = _maybe_save_workload_preset(
+            action="jupyter",
+            profile=selected_profile,
+            compute_spec=compute_spec,
+            compute_label=compute_label,
+            pip_section=pip_section,
+            exclude_patterns=exclude_patterns,
+        )
         script = (JUPYTER_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
             .replace("{pip_section}", pip_section))
-        execute_modal_temp_script(script, f"Jupyter Lab on {compute_label}", detach=True)
+        execute_modal_temp_script(
+            script,
+            f"Jupyter Lab on {compute_label}",
+            detach=True,
+            session_metadata=_session_metadata(
+                kind="jupyter",
+                profile=selected_profile,
+                compute_label=compute_label,
+                workspace_volume=workspace_volume,
+                local_dir=".",
+                app_name="m-gpux-jupyter",
+                preset=preset_name,
+            ),
+        )
         
     elif action_choice == "2":
         # Scan current dir for .py files
@@ -844,7 +920,28 @@ def hub_main():
                     .replace("{tmux_b64}", _b64(_TMUX_CONF))
                     .replace("{starship_b64}", _b64(_STARSHIP_TOML))
                     .replace("{ttyd_flags}", repr(_TTYD_FLAGS)))
-                execute_modal_temp_script(script, f"Interactive terminal for {script_path} on {compute_label}", detach=True)
+                preset_name = _maybe_save_workload_preset(
+                    action="interactive",
+                    profile=selected_profile,
+                    compute_spec=compute_spec,
+                    compute_label=compute_label,
+                    pip_section=pip_section,
+                    exclude_patterns=exclude_patterns,
+                )
+                execute_modal_temp_script(
+                    script,
+                    f"Interactive terminal for {script_path} on {compute_label}",
+                    detach=True,
+                    session_metadata=_session_metadata(
+                        kind="interactive",
+                        profile=selected_profile,
+                        compute_label=compute_label,
+                        workspace_volume=workspace_volume,
+                        local_dir=".",
+                        app_name="m-gpux-interactive",
+                        preset=preset_name,
+                    ),
+                )
                 return
             elif handle_choice == "2":
                 console.print(f"[dim]Enter {len(input_matches)} response(s), one per input() call. Press Enter after each.[/dim]")
@@ -925,6 +1022,14 @@ def hub_main():
 
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
         workspace_volume = _workspace_volume_name(".")
+        preset_name = _maybe_save_workload_preset(
+            action="bash",
+            profile=selected_profile,
+            compute_spec=compute_spec,
+            compute_label=compute_label,
+            pip_section=pip_section,
+            exclude_patterns=exclude_patterns,
+        )
         script = (BASH_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{local_dir}", local_dir_escaped)
@@ -935,7 +1040,20 @@ def hub_main():
             .replace("{tmux_b64}", _b64(_TMUX_CONF))
             .replace("{starship_b64}", _b64(_STARSHIP_TOML))
             .replace("{ttyd_flags}", repr(_TTYD_FLAGS)))
-        execute_modal_temp_script(script, f"Web Bash Shell on {compute_label}", detach=True)
+        execute_modal_temp_script(
+            script,
+            f"Web Bash Shell on {compute_label}",
+            detach=True,
+            session_metadata=_session_metadata(
+                kind="bash",
+                profile=selected_profile,
+                compute_label=compute_label,
+                workspace_volume=workspace_volume,
+                local_dir=".",
+                app_name="m-gpux-shell",
+                preset=preset_name,
+            ),
+        )
         
     elif action_choice == "4":
         models = {

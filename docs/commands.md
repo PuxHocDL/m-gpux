@@ -10,7 +10,10 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 |---|---|
 | `m-gpux` | Show welcome screen with quick actions |
 | `m-gpux info` | Print version and framework metadata |
+| `m-gpux dev` | Launch a persistent Modal dev container for the current folder |
 | `m-gpux hub` | Interactive GPU session launcher |
+| `m-gpux sessions` | List, stop, inspect, and pull Hub/dev sessions |
+| `m-gpux preset` | Save and rerun common workload presets |
 | `m-gpux host` | Deploy ASGI, WSGI, or static web apps |
 | `m-gpux vision` | Train computer vision models on Modal GPUs |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
@@ -55,14 +58,10 @@ Displays a table of all configured profiles. The active profile is marked.
 
 **Example output:**
 
-```text
-┌──────────┬────────────┬──────────┐
-│ Profile  │ Workspace  │ Active   │
-├──────────┼────────────┼──────────┤
-│ personal │ puxpuxx    │ ✓        │
-│ work     │ team-ai    │          │
-└──────────┴────────────┴──────────┘
-```
+| Profile | Workspace | Active |
+|---|---|---|
+| personal | puxpuxx | yes |
+| work | team-ai |  |
 
 ### add
 
@@ -128,6 +127,80 @@ m-gpux billing usage --all
 ```bash
 m-gpux billing usage --days 7 --all
 ```
+
+---
+
+## dev
+
+Launch a persistent Modal dev container for the current folder.
+
+```bash
+m-gpux dev
+m-gpux dev --preset rl-a100
+```
+
+The dev container uses the same Web Bash terminal as Hub, but optimizes the flow for day-to-day remote development:
+
+- selects a Modal profile
+- selects CPU or GPU compute
+- installs `requirements.txt` or extra packages
+- uploads the current folder into `/workspace_seed`
+- mounts `/workspace` on a Modal Volume
+- copies local files into `/workspace` on every launch, overwriting matching paths
+- auto-commits remote changes roughly every 20 seconds
+- tracks the session locally for `m-gpux sessions`
+
+At the end of the wizard, `m-gpux` asks whether you want to save the workload as a preset.
+
+---
+
+## sessions
+
+Manage Hub/dev sessions tracked in `~/.m-gpux/sessions.json`.
+
+```bash
+m-gpux sessions list
+m-gpux sessions show <session-id>
+m-gpux sessions logs <session-id>
+m-gpux sessions open <session-id>
+m-gpux sessions pull <session-id> --to ./remote-workspace
+m-gpux sessions stop <session-id>
+m-gpux sessions forget <session-id>
+```
+
+The most common workflow is:
+
+```bash
+m-gpux sessions list
+m-gpux sessions pull sess-1234abcd --to ./m-gpux-workspace
+m-gpux sessions stop sess-1234abcd
+```
+
+Sessions are recorded as soon as a detached Hub/dev app starts successfully. If you stop it at the final prompt, the tracked state changes to `stopped`.
+
+---
+
+## preset
+
+Save and rerun common workload choices.
+
+```bash
+m-gpux preset create
+m-gpux preset list
+m-gpux preset show rl-a100
+m-gpux preset run rl-a100
+m-gpux preset delete rl-a100
+```
+
+Presets store:
+
+- action (`bash`, `dev`, `jupyter`, or `interactive`)
+- selected profile
+- compute settings
+- pip dependency setup
+- upload exclude patterns
+
+Hub and `m-gpux dev` ask whether you want to save a preset after you configure a workload.
 
 ---
 
@@ -514,14 +587,12 @@ How it works:
 
 **Example interaction:**
 
-```text
-┌───┬──────────┬────────────────────┬──────────────────┬──────────┐
-│ # │ Profile  │ App ID             │ Name             │ State    │
-├───┼──────────┼────────────────────┼──────────────────┼──────────┤
-│ 1 │ personal │ ap-abc123...       │ m-gpux-llm-api   │ deployed │
-│ 2 │ work     │ ap-def456...       │ m-gpux-jupyter   │ running  │
-└───┴──────────┴────────────────────┴──────────────────┴──────────┘
+| # | Profile | App ID | Name | State |
+|---|---|---|---|---|
+| 1 | personal | ap-abc123... | m-gpux-llm-api | deployed |
+| 2 | work | ap-def456... | m-gpux-jupyter | running |
 
+```text
   0: Stop ALL (2 apps)
   1: m-gpux-llm-api (personal)
   2: m-gpux-jupyter (work)

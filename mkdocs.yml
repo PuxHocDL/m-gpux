@@ -34,6 +34,10 @@ nav:
   - Guide:
       - Getting Started: getting-started.md
       - Command Reference: commands.md
+      - Dev Container Mode: dev-container.md
+      - Session Manager: sessions.md
+      - Workload Presets: presets.md
+      - Recipes: recipes.md
       - Web Hosting: web-hosting.md
       - Vision Training: vision.md
       - Architecture: architecture.md

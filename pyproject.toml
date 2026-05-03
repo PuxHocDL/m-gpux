@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m-gpux"
-version = "2.2.1"
+version = "2.3.0"
 description = "Professional CLI toolkit for Modal GPU workflows, account management, and billing visibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -50,10 +50,13 @@ include = ["m_gpux*"]
 [project.entry-points."m_gpux.plugins"]
 account = "m_gpux.plugins.account.plugin:AccountPlugin"
 billing = "m_gpux.plugins.billing.plugin:BillingPlugin"
+dev = "m_gpux.plugins.dev.plugin:DevPlugin"
 hub = "m_gpux.plugins.hub.plugin:HubPlugin"
 host = "m_gpux.plugins.host.plugin:HostPlugin"
 load = "m_gpux.plugins.load.plugin:LoadPlugin"
+preset = "m_gpux.plugins.preset.plugin:PresetPlugin"
 serve = "m_gpux.plugins.serve.plugin:ServePlugin"
+sessions = "m_gpux.plugins.sessions.plugin:SessionsPlugin"
 video = "m_gpux.plugins.video.plugin:VideoPlugin"
 vision = "m_gpux.plugins.vision.plugin:VisionPlugin"
 info = "m_gpux.plugins.info.plugin:InfoPlugin"

@@ -26,6 +26,7 @@ from rich.table import Table
 from m_gpux.core.console import console
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.profiles import get_all_profiles
+from m_gpux.core.state import save_session, update_session
 
 
 def _summarize_runner(content: str, runner_file: str) -> Panel:
@@ -73,7 +74,12 @@ def _summarize_runner(content: str, runner_file: str) -> Panel:
     return Panel(grid, title="Generated Modal Runner", border_style="cyan", expand=False)
 
 
-def execute_modal_temp_script(content: str, description: str, detach: bool = False) -> None:
+def execute_modal_temp_script(
+    content: str,
+    description: str,
+    detach: bool = False,
+    session_metadata: dict | None = None,
+) -> None:
     """Materialise *content* as ``modal_runner.py``, summarise it, then execute.
 
     The string ``# __METRICS__`` inside *content* is replaced with the metrics
@@ -133,36 +139,60 @@ def execute_modal_temp_script(content: str, description: str, detach: bool = Fal
             "Reopen the tunnel URL to reconnect.[/dim]"
         )
 
+    result = None
     try:
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.setdefault("PYTHONUTF8", "1")
-        subprocess.run(cmd, env=env)
+        result = subprocess.run(cmd, env=env)
     except KeyboardInterrupt:
         if detach:
             console.print("\n[green]Disconnected locally. The remote container is still running.[/green]")
         else:
             console.print(f"\n[yellow]Execution of {description} interrupted.[/yellow]")
 
-    stop_choice = Prompt.ask(
-        "[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
-        choices=["y", "n"], default="y",
-    )
-    if stop_choice.lower() == "y":
-        app_name: Optional[str] = None
+    def _read_app_name() -> Optional[str]:
         try:
             with open(runner_file, "r", encoding="utf-8") as rf:
                 for line in rf:
                     if 'modal.App(' in line:
                         m = re.search(r'modal\.App\(["\']([^"\']+)', line)
                         if m:
-                            app_name = m.group(1)
+                            return m.group(1)
                         break
         except Exception:
-            pass
+            return None
+        return None
+
+    tracked_session_id: str | None = None
+    if detach and session_metadata and (result is None or result.returncode == 0):
+        app_name = _read_app_name()
+        session = {
+            **session_metadata,
+            "description": description,
+            "app_name": app_name or session_metadata.get("app_name"),
+            "state": "running",
+        }
+        saved = save_session(session)
+        tracked_session_id = str(saved["id"])
+        console.print(
+            f"[green]Tracked session:[/green] [bold]{tracked_session_id}[/bold] "
+            f"([cyan]{saved.get('app_name', 'unknown')}[/cyan])"
+        )
+
+    stop_choice = Prompt.ask(
+        "[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
+        choices=["y", "n"], default="n" if detach else "y",
+    )
+    if stop_choice.lower() == "y":
+        app_name = _read_app_name()
         if app_name:
             subprocess.run(["modal", "app", "stop", app_name], capture_output=True)
             console.print(f"[green]App '{app_name}' stopped. GPU released.[/green]")
+            if tracked_session_id:
+                update_session(tracked_session_id, state="stopped")
+            elif session_metadata and session_metadata.get("id"):
+                update_session(str(session_metadata["id"]), state="stopped")
         else:
             console.print("[yellow]Could not determine app name. Stop manually: modal app stop <name>[/yellow]")
 

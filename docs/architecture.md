@@ -17,15 +17,19 @@ m_gpux/
     plugin.py                # PluginBase, registry, entry-point discovery
     profiles.py              # Modal profile loading, switching, selection
     runner.py                # generated script execution helpers
+    state.py                 # local sessions, presets, and other state files
     ui.py                    # interactive arrow-key menu
   plugins/
     account/                 # profile CRUD
     billing/                 # usage reports and billing links
+    dev/                     # persistent Modal dev container command
     host/                    # ASGI, WSGI, and static hosting
     hub/                     # Jupyter, scripts, Web Bash, vLLM launchers
     info/                    # CLI/package diagnostics
     load/                    # GPU hardware probe
+    preset/                  # reusable workload presets
     serve/                   # LLM API deployment and API key management
+    sessions/                # local session tracking and workspace pull
     stop/                    # discover and stop running apps
     video/                   # text-to-video workflows
     vision/                  # image-classification workflows
@@ -39,6 +43,7 @@ This keeps the feature surface easy to extend:
 
 - Core modules own shared behavior such as profiles, generated-script execution, GPU catalogs, and UI helpers.
 - Plugins own user-facing workflows such as `hub`, `serve`, `vision`, `host`, and `billing`.
+- Local state in `~/.m-gpux` tracks sessions, API keys, and workload presets.
 - Third-party packages can add commands without editing the root CLI.
 
 ## Profile Management

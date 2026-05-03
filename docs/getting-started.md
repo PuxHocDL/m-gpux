@@ -58,6 +58,14 @@ You will see a table of all configured profiles, with the active one marked.
 
 ## Step 3: Launch a GPU session
 
+For a persistent remote devbox:
+
+```bash
+m-gpux dev
+```
+
+For the full wizard:
+
 ```bash
 m-gpux hub
 ```
@@ -75,6 +83,9 @@ The interactive hub walks you through:
 
 !!! tip "Smooth browser terminal"
     The Web Bash shell uses direct `bash` by default for smoother interaction and cleaner rendering. `tmux` is still installed; run `tmux` manually when you want detachable sessions.
+
+!!! tip "Tracked sessions"
+    Detached dev and Hub sessions are tracked locally. Use `m-gpux sessions list` to find them, `m-gpux sessions pull <id>` to recover files, and `m-gpux sessions stop <id>` to release compute.
 
 ## Step 4: Host your first web app
 

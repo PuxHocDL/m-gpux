@@ -51,7 +51,10 @@ HERO_LOGO = """
 def render_welcome() -> None:
     quick_actions = Table.grid(padding=(0, 2))
     quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
+    quick_actions.add_row("[bold yellow]m-gpux dev[/bold yellow]", "Open a persistent Modal dev container for this folder")
     quick_actions.add_row("[bold yellow]m-gpux hub[/bold yellow]", "Launch Jupyter, script runner, or web shell")
+    quick_actions.add_row("[bold yellow]m-gpux sessions list[/bold yellow]", "See running/tracked Hub and dev sessions")
+    quick_actions.add_row("[bold yellow]m-gpux preset list[/bold yellow]", "Save and rerun common workload presets")
     quick_actions.add_row("[bold yellow]m-gpux vision train[/bold yellow]", "Train an image classifier from a local dataset")
     quick_actions.add_row("[bold yellow]m-gpux serve deploy[/bold yellow]", "Deploy LLM as OpenAI-compatible API")
     quick_actions.add_row("[bold yellow]m-gpux video generate[/bold yellow]", "Generate video from text prompt (LTX-2.3)")
