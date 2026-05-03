@@ -29,7 +29,7 @@
 
 ```bash
 # From VSIX file
-code --install-extension m-gpux-2.2.0.vsix
+code --install-extension m-gpux-2.2.1.vsix
 ```
 
 Or in VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**

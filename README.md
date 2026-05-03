@@ -282,7 +282,7 @@ Automated with GitHub Actions. Maintainers can release instantly:
 2. Update the package versions inside `pyproject.toml`, `m_gpux/__init__.py`, and `m-gpux-vscode/package.json`.
 3. Tag the release:
 ```bash
-git tag v2.2.0 && git push origin v2.2.0
+git tag v2.2.1 && git push origin v2.2.1
 ```
 The *Publish Python Package* workflow will build and upload.
 
