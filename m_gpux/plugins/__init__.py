@@ -11,6 +11,7 @@ themselves through the ``m_gpux.plugins`` Python entry-point group. See
 BUILTIN_PLUGINS: list[str] = [
     "m_gpux.plugins.account.plugin:AccountPlugin",
     "m_gpux.plugins.billing.plugin:BillingPlugin",
+    "m_gpux.plugins.compose.plugin:ComposePlugin",
     "m_gpux.plugins.dev.plugin:DevPlugin",
     "m_gpux.plugins.hub.plugin:HubPlugin",
     "m_gpux.plugins.host.plugin:HostPlugin",

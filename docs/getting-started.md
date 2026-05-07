@@ -120,7 +120,26 @@ The hosting wizard asks for:
 !!! note "Recommended next read"
     The complete walkthrough is in [Web Hosting](web-hosting.md), including project layout examples, generated Modal decorators, and troubleshooting tips.
 
-## Step 5: Check your costs
+## Step 5: Deploy a Compose stack
+
+If you already have a `docker-compose.yml`, you can lift it onto Modal directly:
+
+```bash
+m-gpux compose check
+m-gpux compose up
+```
+
+For heavier Docker-native stacks, use VM mode:
+
+```bash
+m-gpux compose vm check
+m-gpux compose vm up
+```
+
+!!! note "Compose guide"
+    The dedicated walkthrough is in [compose.md](compose.md), including deployment modes, file discovery, sync, and `x-mgpux` overrides.
+
+## Step 6: Check your costs
 
 ```bash
 m-gpux billing usage --days 30 --all
@@ -134,7 +153,7 @@ To open the Modal billing dashboard in your browser:
 m-gpux billing open
 ```
 
-## Step 6: Deploy an LLM API
+## Step 7: Deploy an LLM API
 
 Turn any HuggingFace model into a production OpenAI-compatible API with authentication.
 

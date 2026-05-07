@@ -45,6 +45,27 @@ m-gpux host asgi --entry main:app
 
 Use `host` for FastAPI, Flask, Django, or static sites when you want a stable Modal URL.
 
+## Compose Stack On Modal
+
+```bash
+cd my-compose-project
+m-gpux compose check
+m-gpux compose up
+```
+
+When the stack needs fuller image semantics or multiple tunneled ports:
+
+```bash
+m-gpux compose vm check
+m-gpux compose vm up
+```
+
+If you keep iterating on the code after launch:
+
+```bash
+m-gpux compose sync
+```
+
 ## Recover Remote Files
 
 If you created files inside a Hub/dev terminal:

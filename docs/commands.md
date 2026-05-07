@@ -15,6 +15,7 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 | `m-gpux sessions` | List, stop, inspect, and pull Hub/dev sessions |
 | `m-gpux preset` | Save and rerun common workload presets |
 | `m-gpux host` | Deploy ASGI, WSGI, or static web apps |
+| `m-gpux compose` | Analyze and deploy Docker Compose stacks on Modal |
 | `m-gpux vision` | Train computer vision models on Modal GPUs |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
 | `m-gpux stop` | Stop running m-gpux apps |
@@ -366,6 +367,74 @@ Generated templates use:
     Choose `deploy` for a stable public URL that should stay online. Choose `run` for quick validation when you only want a temporary session.
 
 For the full walkthrough, see [Web Hosting](web-hosting.md).
+
+---
+
+## compose
+
+Analyze and deploy Compose projects from the current folder.
+
+```bash
+m-gpux compose --help
+```
+
+### check
+
+```bash
+m-gpux compose check
+m-gpux compose check --file ./deploy/compose.prod.yml
+```
+
+Parses the Compose file and shows detected services, ports, and deployment hints without launching anything.
+
+### up
+
+```bash
+m-gpux compose up
+m-gpux compose up --file ./docker-compose.yml
+```
+
+Runs the standard single-container deployment flow.
+
+Typical flow:
+
+1. Choose or auto-pick a Modal profile
+2. Analyze the Compose services
+3. Collect environment values and exclude patterns
+4. Generate a Modal script for review
+5. Launch a detached Modal app and track it as a session
+
+### sync
+
+```bash
+m-gpux compose sync
+```
+
+Watches local files and syncs changes into the workspace volume used by the running compose deployment.
+
+### vm check
+
+```bash
+m-gpux compose vm check
+```
+
+Analyzes the stack for the VM-oriented deployment path.
+
+### vm up
+
+```bash
+m-gpux compose vm up
+```
+
+Uses the VM-oriented generator for workloads that need fuller image behavior, tunneled ports, or custom Dockerfile semantics.
+
+### Compose notes
+
+- Supported file discovery: `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
+- Local environment references are surfaced during the flow so missing values can be filled in
+- `x-mgpux` metadata can override base image, apt packages, and related generation details
+
+For the full workflow, see [Docker Compose](compose.md).
 
 ---
 

@@ -16,6 +16,7 @@ Welcome to the official docs for **m-gpux**, a production-focused CLI toolkit fo
 | **Session Manager** | Track running Hub/dev sessions, pull remote workspaces, view logs, and stop apps |
 | **Workload Presets** | Save repeatable compute, dependency, and exclude settings for common workloads |
 | **Web Hosting** | Deploy ASGI apps, WSGI apps, and static sites with generated Modal templates, dependency prompts, and deploy/run modes |
+| **Docker Compose Lift-and-Shift** | Analyze local Compose files, generate Modal deployments, and sync app code into running stacks |
 | **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
 | **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys stored locally in `~/.m-gpux/api_keys.json` |
@@ -50,6 +51,7 @@ cd m-gpux && pip install -e .
 | [Workload Presets](presets.md) | Save and rerun common launch configs |
 | [Recipes](recipes.md) | Practical flows for devboxes, RL training, hosting, and file recovery |
 | [Web Hosting](web-hosting.md) | Host FastAPI, Flask, Django, or static sites on Modal with `m-gpux host` |
+| [Docker Compose](compose.md) | Analyze, deploy, and sync Compose stacks on Modal |
 | [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
 | [Architecture](architecture.md) | How m-gpux works internally: proxy layer, template generation, profile resolution |
 | [FAQ & Troubleshooting](faq.md) | Common errors and how to fix them |
@@ -148,7 +150,24 @@ During the wizard, `m-gpux` asks for:
 !!! note "Full web guide"
     The complete walkthrough lives in [Web Hosting](web-hosting.md), including project layouts, generated Modal patterns, scaling behavior, and troubleshooting.
 
-### 6. Save A Reusable Workload Preset
+### 6. Lift a Docker Compose stack onto Modal
+
+```bash
+cd my-compose-project
+m-gpux compose check
+m-gpux compose up
+```
+
+Use VM mode when the stack needs fuller image behavior:
+
+```bash
+m-gpux compose vm check
+m-gpux compose vm up
+```
+
+If you keep editing local code after launch, `m-gpux compose sync` can stream changes into the running workspace volume.
+
+### 7. Save A Reusable Workload Preset
 
 ```bash
 m-gpux preset create
@@ -157,7 +176,7 @@ m-gpux preset run rl-a100
 
 Hub and dev mode can also ask whether you want to save a preset after you configure a workload.
 
-### 7. Check costs across all accounts
+### 8. Check costs across all accounts
 
 ```bash
 m-gpux billing usage --days 7 --all
@@ -165,7 +184,7 @@ m-gpux billing usage --days 7 --all
 
 Aggregates compute spend from every configured profile into a single Rich table.
 
-### 8. Stop running apps and release GPUs
+### 9. Stop running apps and release GPUs
 
 ```bash
 m-gpux stop --all

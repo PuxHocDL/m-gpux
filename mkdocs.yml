@@ -39,6 +39,7 @@ nav:
       - Workload Presets: presets.md
       - Recipes: recipes.md
       - Web Hosting: web-hosting.md
+      - Docker Compose: compose.md
       - Vision Training: vision.md
       - Architecture: architecture.md
   - Support:

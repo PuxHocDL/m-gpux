@@ -22,6 +22,7 @@ m_gpux/
   plugins/
     account/                 # profile CRUD
     billing/                 # usage reports and billing links
+    compose/                 # Docker Compose analysis, deployment, and sync
     dev/                     # persistent Modal dev container command
     host/                    # ASGI, WSGI, and static hosting
     hub/                     # Jupyter, scripts, Web Bash, vLLM launchers
@@ -77,7 +78,20 @@ Most workflows follow the same transparent execution pattern:
 3. Show the script for review before execution.
 4. Run it with `modal run`, or deploy it with `modal deploy`.
 
-This pattern is used by `hub`, `host`, `vision`, `video`, and `serve`. The generated script is intentionally editable so users can inspect Modal decorators, dependencies, timeout settings, volumes, and uploaded paths before committing to a run.
+This pattern is used by `hub`, `host`, `compose`, `vision`, `video`, and `serve`. The generated script is intentionally editable so users can inspect Modal decorators, dependencies, timeout settings, volumes, and uploaded paths before committing to a run.
+
+## Compose Deployment Architecture
+
+`compose` adds a bridge layer between Docker Compose and Modal.
+
+The workflow:
+
+1. Finds and parses a local Compose file.
+2. Detects services, commands, ports, environment references, and common infra images.
+3. Generates a temporary Modal app that either runs services as subprocesses in one container or provisions a VM-oriented container flow.
+4. Attaches a workspace volume so local project files and later sync operations can reuse the same working directory.
+
+This keeps Compose as the local source of truth while still giving users a reviewable Modal script before launch.
 
 ## Web Bash Terminal
 

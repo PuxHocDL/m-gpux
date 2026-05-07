@@ -18,6 +18,7 @@
 - **🧠 LLM API Server** - Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
 - **⚡ Interactive GPU Hub** - Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
 - **🌐 Web Hosting** - Deploy FastAPI / Flask / static sites as persistent URLs with auto-scaling.
+- **🐳 Docker Compose on Modal** - Lift `docker-compose.yml` stacks into Modal with guided analysis, sync, and VM mode for heavier images like Triton.
 - **🖼️ Vision Workflows** - Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
 - **👥 Multi-Account Management** - Seamlessly manage multiple profiles in one unified command namespace.
 - **💸 Unified Cost Visibility** - Inspect billing per profile or get a comprehensive view across all configured accounts.
@@ -31,6 +32,7 @@
   - [Profile Management](#-profile-management)
   - [Interactive Hub](#-interactive-hub)
   - [Web Hosting](#-web-hosting)
+  - [Docker Compose](#-docker-compose)
   - [Computer Vision](#%EF%B8%8F-computer-vision)
   - [LLM API Server](#-llm-api-server)
   - [Billing](#-billing)
@@ -88,10 +90,14 @@ m-gpux vision train --dataset ./data/m-gpux-vision-sample
 # 5) Host a FastAPI app as a persistent URL
 m-gpux host asgi --entry main:app
 
-# 6) Deploy an LLM as an OpenAI-compatible API
+# 6) Analyze and deploy a Docker Compose stack
+m-gpux compose check
+m-gpux compose up
+
+# 7) Deploy an LLM as an OpenAI-compatible API
 m-gpux serve deploy
 
-# 7) Inspect 30-day usage across all accounts
+# 8) Inspect 30-day usage across all accounts
 m-gpux billing usage --days 30 --all
 ```
 
@@ -140,6 +146,26 @@ m-gpux host static --dir ./site       # HTML/CSS/JS folder
 - Optional warm replicas (`min_containers`) for zero cold-start.
 - GPU support for ML inference endpoints (e.g. FastAPI + PyTorch).
 - Auto-detects `requirements.txt` and uploads your project folder.
+
+### 🐳 Docker Compose
+Translate local `docker-compose.yml` projects into Modal workloads without hand-writing the Modal app first.
+
+```bash
+m-gpux compose check
+m-gpux compose up
+m-gpux compose sync
+
+# For full-image / VM-style workloads such as Triton:
+m-gpux compose vm check
+m-gpux compose vm up
+```
+
+**What it handles:**
+- Detects compose files in the current folder and analyzes services, ports, commands, and environment references.
+- Generates a Modal deployment script for either subprocess mode or full VM mode.
+- Supports local file sync back into the running workspace volume with `m-gpux compose sync`.
+- Works well for app-plus-dependency stacks such as web app + Redis/Postgres, and offers VM mode for heavier images or custom Dockerfiles.
+- Lets you override base image, compute, pip packages, and apt packages through `x-mgpux` metadata in the compose file.
 
 ### 🖼️ Computer Vision
 Train and predict image classifiers on Modal GPUs directly from local folders.
@@ -229,6 +255,7 @@ Dive deeper into our extensive guides:
 - 🏠 **Local Index:** [`docs/index.md`](docs/index.md)
 - 🚀 **Getting Started:** [`docs/getting-started.md`](docs/getting-started.md)
 - 🧰 **Commands Reference:** [`docs/commands.md`](docs/commands.md)
+- 🐳 **Compose Guide:** [`docs/compose.md`](docs/compose.md)
 - ❓ **FAQ:** [`docs/faq.md`](docs/faq.md)
 
 ---
@@ -244,6 +271,7 @@ Under the hood, `m-gpux` is built for modularity:
 | `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
 | `m_gpux/plugins/hub/` | Guided GPU runtime execution launcher |
 | `m_gpux/plugins/host/` | Web hosting (ASGI / WSGI / static) |
+| `m_gpux/plugins/compose/` | Docker Compose analysis, deployment, and sync workflows |
 | `m_gpux/plugins/video/` | Text-to-video generation workflow on Modal GPUs |
 | `m_gpux/plugins/vision/` | Image classification training workflow for local datasets |
 | `m_gpux/plugins/serve/` | LLM API deployment, proxy, and auth management |
@@ -282,7 +310,7 @@ Automated with GitHub Actions. Maintainers can release instantly:
 2. Update the package versions inside `pyproject.toml`, `m_gpux/__init__.py`, and `m-gpux-vscode/package.json`.
 3. Tag the release:
 ```bash
-git tag v2.2.1 && git push origin v2.2.1
+git tag v<version> && git push origin main v<version>
 ```
 The *Publish Python Package* workflow will build and upload.
 
