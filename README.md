@@ -1,65 +1,39 @@
-<div align="center">
-  <h1>🚀 m-gpux</h1>
-  <p><em>A professional CLI toolkit for Modal power users. Need fast GPU access, multi-profile account control, and simple cost visibility? Look no further.</em></p>
+# m-gpux
 
-  <p>
-    <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python"></a>
-    <a href="https://pypi.org/project/m-gpux/"><img src="https://img.shields.io/badge/PyPI-m--gpux-f59e0b?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI"></a>
-    <a href="https://typer.tiangolo.com/"><img src="https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-0ea5e9?style=for-the-badge&logo=terminal&logoColor=white" alt="CLI"></a>
-    <a href="https://puxhocdl.github.io/m-gpux/"><img src="https://img.shields.io/badge/Docs-GitHub%20Pages-22c55e?style=for-the-badge&logo=github&logoColor=white" alt="Docs"></a>
-    <a href="https://github.com/PuxHocDL/m-gpux/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-gray?style=for-the-badge" alt="License"></a>
-  </p>
-</div>
+Professional CLI tooling for Modal GPU workflows: account profiles, interactive runtimes, web hosting, Docker Compose deployments, model serving, vision training, sessions, and billing visibility.
 
-<hr/>
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![PyPI](https://img.shields.io/badge/PyPI-m--gpux-f59e0b?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/m-gpux/)
+[![CLI](https://img.shields.io/badge/CLI-Typer%20%2B%20Rich-0ea5e9?style=for-the-badge&logo=terminal&logoColor=white)](https://typer.tiangolo.com/)
+[![Docs](https://img.shields.io/badge/Docs-GitHub%20Pages-22c55e?style=for-the-badge&logo=github&logoColor=white)](https://puxhocdl.github.io/m-gpux/)
+[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](https://github.com/PuxHocDL/m-gpux/blob/main/LICENSE)
 
-## ✨ Highlights
+## Highlights
 
-- **🧠 LLM API Server** - Deploy any HuggingFace model as an OpenAI-compatible endpoint with API key auth.
-- **⚡ Interactive GPU Hub** - Spin up Jupyter, execute scripts, and establish web shell sessions instantly.
-- **🌐 Web Hosting** - Deploy FastAPI / Flask / static sites as persistent URLs with auto-scaling.
-- **🐳 Docker Compose on Modal** - Lift `docker-compose.yml` stacks into Modal with guided analysis, sync, and VM mode for heavier images like Triton.
-- **🖼️ Vision Workflows** - Train and predict image classification models from local datasets with configurable model, GPU, and hyperparameters.
-- **👥 Multi-Account Management** - Seamlessly manage multiple profiles in one unified command namespace.
-- **💸 Unified Cost Visibility** - Inspect billing per profile or get a comprehensive view across all configured accounts.
-- **🎨 Friendly Terminal UX** - Enjoy rich tables, intuitive prompts, and interactive guided flows right in your terminal.
+- Interactive GPU Hub for Jupyter, Python scripts, browser Bash sessions, and vLLM inference.
+- Runtime selection for Modal images, including Python 3.10, 3.11, 3.12, 3.13, 3.14, or a custom supported version.
+- Docker Compose deployment on Modal with subprocess, VM, and sandbox multi-container modes.
+- VS Code extension support for launching Hub workflows from the editor.
+- Web hosting for ASGI, WSGI, and static sites with persistent Modal URLs.
+- OpenAI-compatible LLM API serving with auth, streaming, warmup, logs, and metrics.
+- Vision workflows for sample data generation, training, prediction, evaluation, and export.
+- Multi-profile Modal account management, sessions tracking, stop commands, and billing reports.
 
-## 📖 Table of Contents
+## Installation
 
-- [Installation](#%EF%B8%8F-installation)
-- [Quick Start](#-quick-start)
-- [Core Commands](#%EF%B8%8F-core-commands)
-  - [Profile Management](#-profile-management)
-  - [Interactive Hub](#-interactive-hub)
-  - [Web Hosting](#-web-hosting)
-  - [Docker Compose](#-docker-compose)
-  - [Computer Vision](#%EF%B8%8F-computer-vision)
-  - [LLM API Server](#-llm-api-server)
-  - [Billing](#-billing)
-- [Examples](#-examples)
-- [Architecture](#%EF%B8%8F-architecture)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
+Requirements:
 
----
+- Python 3.10 or newer.
+- Modal credentials configured through `modal setup` or `m-gpux account add`.
+- The `modal` CLI available on your PATH.
 
-## ⚙️ Installation
-
-### Prerequisites
-
-- **Python**: 3.10 or higher.
-- **Credentials**: Modal account credentials (`token_id`, `token_secret`).
-- **Modal CLI**: Ensure the `modal` CLI is installed and in your PATH.
-
-### PyPI (Recommended)
-The fastest way to get started is by installing directly from PyPI.
+Install from PyPI:
 
 ```bash
 pip install m-gpux
 ```
 
-### From Source
-Great for contributors or users who want the bleeding edge.
+Install from source:
 
 ```bash
 git clone https://github.com/PuxHocDL/m-gpux.git
@@ -67,108 +41,130 @@ cd m-gpux
 pip install -e .
 ```
 
----
-
-## 🚀 Quick Start
-
-Get up and running in 6 easy steps:
+## Quick Start
 
 ```bash
-# 1) Add your first profile
+# Add and inspect Modal profiles
 m-gpux account add
-
-# 2) Check configured profiles
 m-gpux account list
 
-# 3) Launch the interactive GPU hub
+# Launch the guided GPU hub
 m-gpux hub
 
-# 4) Generate a tiny sample vision dataset, then train on it
+# Train a tiny vision demo
 m-gpux vision sample-data
 m-gpux vision train --dataset ./data/m-gpux-vision-sample
 
-# 5) Host a FastAPI app as a persistent URL
+# Host a FastAPI app
 m-gpux host asgi --entry main:app
 
-# 6) Analyze and deploy a Docker Compose stack
+# Analyze and deploy Docker Compose
 m-gpux compose check
 m-gpux compose up
 
-# 7) Deploy an LLM as an OpenAI-compatible API
+# Deploy an OpenAI-compatible model endpoint
 m-gpux serve deploy
 
-# 8) Inspect 30-day usage across all accounts
+# Review cost usage
 m-gpux billing usage --days 30 --all
 ```
 
----
+## Core Commands
 
-## 🛠️ Core Commands
-
-Whether you need to manage your accounts, deploy APIs, or check your billing, we've got you covered. Check out our global commands with `m-gpux --help` and `m-gpux info`.
-
-### 👥 Profile Management
-Seamlessly hop between different Modal environments.
+### Accounts
 
 ```bash
-m-gpux account list                    # View all active profiles
-m-gpux account add                     # Interactively add a new profile
-m-gpux account switch <profile_name>   # Switch active profile
-m-gpux account remove <profile_name>   # Remove an existing profile
+m-gpux account list
+m-gpux account add
+m-gpux account switch <profile_name>
+m-gpux account remove <profile_name>
 ```
-> **Note**: Modal profiles are safely persisted in `~/.modal.toml`. If the active profile is removed, another existing profile is automatically promoted.
 
-### ⚡ Interactive Hub
-Your control center for remote execution.
+Profiles are stored in `~/.modal.toml`. If the active profile is removed, another existing profile is promoted automatically.
+
+### Interactive Hub
 
 ```bash
 m-gpux hub
 ```
-The Bash Shell action now starts a VS Code-like direct `bash` session in the browser. It uses a clean prompt, reduced WebSocket heartbeat traffic, and keeps `tmux` available as an optional manual command when you need detachable sessions.
 
-**Actions included:**
-- 🪐 Launch Jupyter Lab on your selected GPU.
-- 📜 Run local Python scripts natively on remote GPUs.
-- 💻 Initiate an interactive web Bash shell session.
+Hub guides you through profile selection, GPU or CPU selection, action selection, Python runtime selection, environment setup, file upload rules, generated script review, and launch.
 
-### 🌐 Web Hosting
-Deploy web apps and static sites as persistent public URLs on Modal.
+Actions include:
 
-```bash
-m-gpux host asgi --entry main:app     # FastAPI / Starlette
-m-gpux host wsgi --entry app:app      # Flask / Django
-m-gpux host static --dir ./site       # HTML/CSS/JS folder
-```
+- Jupyter Lab on selected Modal compute.
+- Local Python script execution on remote GPUs.
+- Browser Bash shell with a clean direct `bash` session and optional manual `tmux`.
+- vLLM inference using a CUDA base image and the selected Python runtime.
 
-**Features:**
-- Persistent URL that stays live until you `m-gpux stop`.
-- Auto-scales to zero when idle (pay only for actual requests).
-- Optional warm replicas (`min_containers`) for zero cold-start.
-- GPU support for ML inference endpoints (e.g. FastAPI + PyTorch).
-- Auto-detects `requirements.txt` and uploads your project folder.
+The same Python runtime choice is preserved in generated scripts, session metadata, workload presets, and the VS Code Hub wizard.
 
-### 🐳 Docker Compose
-Translate local `docker-compose.yml` projects into Modal workloads without hand-writing the Modal app first.
+### Docker Compose
 
 ```bash
 m-gpux compose check
 m-gpux compose up
 m-gpux compose sync
-
-# For full-image / VM-style workloads such as Triton:
-m-gpux compose vm check
-m-gpux compose vm up
 ```
 
-**What it handles:**
-- Detects compose files in the current folder and analyzes services, ports, commands, and environment references.
-- Generates a Modal deployment script for either subprocess mode or full VM mode.
-- Supports local file sync back into the running workspace volume with `m-gpux compose sync`.
-- Works well for app-plus-dependency stacks such as web app + Redis/Postgres, and offers VM mode for heavier images or custom Dockerfiles.
-- Lets you override base image, compute, pip packages, and apt packages through `x-mgpux` metadata in the compose file.
+Compose support can analyze services, ports, commands, environment variables, volumes, Dockerfiles, and `x-mgpux` metadata before generating Modal deployment code.
 
-### 🖼️ Computer Vision
-Train and predict image classifiers on Modal GPUs directly from local folders.
+Deployment modes:
+
+- `compose up`: runs supported services in a generated Modal app using subprocess orchestration.
+- `compose vm up`: provisions a Modal GPU container for full-image or VM-style workloads such as Triton.
+- `compose sandbox up`: runs Compose services as isolated Modal Sandboxes for true multi-container separation.
+
+Sandbox commands:
+
+```bash
+m-gpux compose sandbox check
+m-gpux compose sandbox up
+m-gpux compose sandbox ps
+m-gpux compose sandbox logs
+m-gpux compose sandbox exec <service>
+m-gpux compose sandbox down
+```
+
+Recent Compose improvements include Dockerfile `WORKDIR` detection, target-stage handling, BuildKit mount preprocessing for Modal builders, specialized Triton defaults, minimal image detection, dependency readiness checks, tunnel support, and service lifecycle helpers.
+
+### Presets And Dev Shells
+
+```bash
+m-gpux dev
+m-gpux preset create
+m-gpux preset run <name>
+```
+
+Dev and preset flows now carry the selected Python runtime through saved workload metadata and regenerated Modal scripts. Existing presets default to Python 3.12 when no runtime has been saved.
+
+### Web Hosting
+
+```bash
+m-gpux host asgi --entry main:app
+m-gpux host wsgi --entry app:app
+m-gpux host static --dir ./site
+```
+
+Hosting creates persistent Modal URLs for FastAPI, Starlette, Flask, Django, and static folders. Projects can auto-detect dependencies, upload local files, scale to zero, and optionally keep warm replicas.
+
+### Model Serving
+
+```bash
+m-gpux serve deploy
+m-gpux serve dashboard
+m-gpux serve logs
+m-gpux serve warmup
+m-gpux serve stop
+m-gpux serve keys create
+m-gpux serve keys list
+m-gpux serve keys show <name>
+m-gpux serve keys revoke <name>
+```
+
+`serve` deploys Hugging Face models behind an OpenAI-compatible API with bearer-token auth, streaming and non-streaming chat completions, warmup, resilient proxying, logs, and a live metrics dashboard.
+
+### Vision
 
 ```bash
 m-gpux vision sample-data
@@ -176,146 +172,100 @@ m-gpux vision train
 m-gpux vision predict
 ```
 
-**Workflow highlights:**
-- Includes a tiny synthetic shape dataset for demos and can regenerate/customize it locally with no external downloads.
-- Validates common dataset layouts such as `dataset/train/<class>` + `dataset/val/<class>` or a single root folder with class subdirectories.
-- Lets you choose from many TorchVision models including ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more.
-- Configures GPU, epochs, batch size, image size, optimizer, scheduler, augmentation strength, mixed precision, and other training knobs.
-- Saves checkpoints, metrics, and run summaries into a persistent Modal Volume for later download.
-- Reloads saved checkpoints for inference so users can classify new local images without rebuilding the model config by hand.
-- Supports evaluation reports plus `onnx` / `torchscript` exports from the same saved checkpoints.
+Vision workflows support local image-folder datasets, configurable TorchVision backbones, GPU selection, training knobs, checkpoints, metrics, evaluation reports, and ONNX or TorchScript export.
 
-### 🧠 LLM API Server
-Turn your HuggingFace models into live endpoints.
+### Sessions, Billing, And Stop
 
 ```bash
-m-gpux serve deploy             # Deploy a model (interactive wizard)
-m-gpux serve dashboard          # Live metrics dashboard in terminal
-m-gpux serve logs               # Stream server logs
-m-gpux serve warmup             # Trigger cold start and warm up engine
-m-gpux serve stop               # Stop the server
-
-# Secure your endpoints
-m-gpux serve keys create        # Generate a new API key
-m-gpux serve keys list          # List all keys (masked for security)
-m-gpux serve keys show <name>   # Reveal the full key value
-m-gpux serve keys revoke <name> # Revoke access
+m-gpux sessions list
+m-gpux sessions open <id>
+m-gpux billing open
+m-gpux billing usage --days 7 --all
+m-gpux stop
+m-gpux stop --all
 ```
 
-**Key Features:**
-- Bearer token authentication (401/403).
-- Full support for streaming & non-streaming chat completions.
-- **Live dashboard** - GPU/CPU/RAM metrics, latency percentiles, traffic, and token counts with progress bars.
-- **Resilient proxy** - automatic retry with backoff, backpressure (429), internal streaming to prevent timeouts on long inference.
-- Configurable vLLM hyperparameters (GPU memory utilization, tensor parallelism, max sequences).
-- 11 built-in popular model presets (Qwen, Llama, Gemma, Phi, etc.).
+Use sessions to reopen generated app URLs, billing to inspect Modal usage, and stop to clean up running apps on one or all profiles.
 
-### 💸 Billing
-Keep unexpected costs at bay.
+## VS Code Extension
+
+The `m-gpux-vscode` extension mirrors the Hub wizard in VS Code. It can launch Hub actions, inspect accounts, show billing usage, and generate Modal scripts from the current workspace. The Hub wizard now includes the same Python runtime picker as the CLI.
 
 ```bash
-m-gpux billing open                    # Open billing dashboard in browser
-m-gpux billing usage --days 7          # Review last 7 days of usage
-m-gpux billing usage --account dev     # Target specific accounts
-m-gpux billing usage --all             # Aggregate cross-account usage
+cd m-gpux-vscode
+npm install
+npm run compile
 ```
 
-### 🛑 Stop Processes
-Clean up your workspace quickly.
+## Examples
 
-```bash
-m-gpux stop          # Stop apps on the current profile
-m-gpux stop --all    # Stop apps across ALL profiles
-```
-
----
-
-## � Examples
-
-Ready-to-deploy sample projects in [`examples/`](examples/):
+Ready-to-deploy sample projects live in `examples/`:
 
 | Example | Command | Description |
-|---------|---------|-------------|
-| [`host-static`](examples/host-static/) | `m-gpux host static --dir .` | Catppuccin-themed HTML/CSS/JS site |
-| [`host-asgi`](examples/host-asgi/) | `m-gpux host asgi --entry main:app` | FastAPI with Swagger UI, health check, Fibonacci |
-| [`host-wsgi`](examples/host-wsgi/) | `m-gpux host wsgi --entry app:app` | Flask task-board with REST CRUD API |
+| --- | --- | --- |
+| `examples/host-static` | `m-gpux host static --dir .` | Static HTML/CSS/JS site |
+| `examples/host-asgi` | `m-gpux host asgi --entry main:app` | FastAPI app with health and demo endpoints |
+| `examples/host-wsgi` | `m-gpux host wsgi --entry app:app` | Flask task board with REST CRUD API |
 
-```bash
-# Quick test - deploy the static example
-cd examples/host-static
-m-gpux host static --dir .
-```
+## Documentation
 
----
+- Website: https://puxhocdl.github.io/m-gpux/
+- Getting started: `docs/getting-started.md`
+- Commands reference: `docs/commands.md`
+- Compose guide: `docs/compose.md`
+- Presets guide: `docs/presets.md`
+- Sessions guide: `docs/sessions.md`
+- FAQ: `docs/faq.md`
 
-## �📚 Documentation
-
-Dive deeper into our extensive guides:
-- 🌐 **Website:** [puxhocdl.github.io/m-gpux](https://puxhocdl.github.io/m-gpux/)
-- 🏠 **Local Index:** [`docs/index.md`](docs/index.md)
-- 🚀 **Getting Started:** [`docs/getting-started.md`](docs/getting-started.md)
-- 🧰 **Commands Reference:** [`docs/commands.md`](docs/commands.md)
-- 🐳 **Compose Guide:** [`docs/compose.md`](docs/compose.md)
-- ❓ **FAQ:** [`docs/faq.md`](docs/faq.md)
-
----
-
-## 🏗️ Architecture
-
-Under the hood, `m-gpux` is built for modularity:
+## Architecture
 
 | Component | Responsibility |
-| :--- | :--- |
-| `m_gpux/main.py` | CLI entrypoint and command registration |
-| `m_gpux/commands/account.py` | Profile CRUD operations and switching |
-| `m_gpux/commands/billing.py` | Usage aggregation and dashboard linking |
-| `m_gpux/plugins/hub/` | Guided GPU runtime execution launcher |
-| `m_gpux/plugins/host/` | Web hosting (ASGI / WSGI / static) |
-| `m_gpux/plugins/compose/` | Docker Compose analysis, deployment, and sync workflows |
-| `m_gpux/plugins/video/` | Text-to-video generation workflow on Modal GPUs |
-| `m_gpux/plugins/vision/` | Image classification training workflow for local datasets |
-| `m_gpux/plugins/serve/` | LLM API deployment, proxy, and auth management |
-| `m_gpux/plugins/load/` | Live hardware metrics probe |
-| `m_gpux/core/` | Shared infra: runner, metrics, UI, profiles, plugins |
+| --- | --- |
+| `m_gpux/main.py` | CLI entrypoint and plugin registration |
+| `m_gpux/core/` | Shared console, UI, runner, metrics, state, profiles, and plugin helpers |
+| `m_gpux/plugins/account/` | Modal profile CRUD and switching |
+| `m_gpux/plugins/hub/` | Guided GPU runtime launcher |
+| `m_gpux/plugins/compose/` | Compose analysis, subprocess mode, VM mode, sandbox mode, and sync |
+| `m_gpux/plugins/dev/` | Browser shell development workflow |
+| `m_gpux/plugins/preset/` | Workload preset creation and replay |
+| `m_gpux/plugins/host/` | ASGI, WSGI, and static hosting |
+| `m_gpux/plugins/serve/` | LLM serving, keys, logs, warmup, dashboard |
+| `m_gpux/plugins/vision/` | Image classification data, training, prediction, and export |
+| `m-gpux-vscode/` | VS Code extension |
 
----
+## Troubleshooting
 
-## 🔧 Troubleshooting
+- `No configured Modal profiles found`: run `m-gpux account add`.
+- `modal: command not found`: install Modal and make sure the CLI is on your PATH.
+- `Script file does not exist in hub mode`: run from the script directory or pass the correct path.
+- Compose deployment fails on a custom image: run `m-gpux compose check` or `m-gpux compose sandbox check` to inspect image, Dockerfile, ports, volumes, and command detection.
 
-Have issues? Here's how to fix common hiccups:
+## Contributing
 
-- **`No configured Modal profiles found`**
-  - **Fix:** Run `m-gpux account add` to set one up.
-- **`modal: command not found`**
-  - **Fix:** Make sure the Modal CLI is installed and your PATH is set correctly.
-- **`Script file does not exist in hub mode`**
-  - **Fix:** Ensure you run the command from the script's directory, or double-check the path you provided.
-
----
-
-## 🤝 Contributing
-
-We welcome your PRs! Help us polish the UX, refine commands, and expand the documentation.
-
-**Local Setup:**
 ```bash
 pip install -e .
 python -m m_gpux.main --help
 ```
 
-### 📦 PyPI Publishing
+For VS Code changes:
 
-Automated with GitHub Actions. Maintainers can release instantly:
-1. Ensure the PyPI Trusted Publisher is configured (`pypi` environment, `PuxHocDL/m-gpux`).
-2. Update the package versions inside `pyproject.toml`, `m_gpux/__init__.py`, and `m-gpux-vscode/package.json`.
-3. Tag the release:
 ```bash
-git tag v<version> && git push origin main v<version>
+cd m-gpux-vscode
+npm install
+npm run compile
 ```
-The *Publish Python Package* workflow will build and upload.
 
----
+## Release
 
-<div align="center">
-  <p>Available under the <strong>MIT License</strong>.</p>
-</div>
+Update versions in `pyproject.toml`, `m_gpux/__init__.py`, `m-gpux-vscode/package.json`, and `m-gpux-vscode/package-lock.json`, then tag and push:
+
+```bash
+git tag v<version>
+git push origin main v<version>
+```
+
+The GitHub Actions publishing workflow builds and uploads the Python package from release tags.
+
+## License
+
+MIT

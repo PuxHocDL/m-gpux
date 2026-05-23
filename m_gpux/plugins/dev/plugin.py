@@ -91,6 +91,7 @@ def dev_command(
     _activate_profile(profile)
 
     compute_spec, compute_label = _choose_compute()
+    python_version = "3.12"
     pip_section = _prompt_pip_section()
     exclude_patterns = _prompt_excludes()
     preset_name = _maybe_save_workload_preset(
@@ -98,6 +99,7 @@ def dev_command(
         profile=profile,
         compute_spec=compute_spec,
         compute_label=compute_label,
+        python_version=python_version,
         pip_section=pip_section,
         exclude_patterns=exclude_patterns,
     )
@@ -106,6 +108,7 @@ def dev_command(
     workspace_volume = _workspace_volume_name(".")
     script = (
         BASH_SCRIPT.replace("{compute_spec}", compute_spec)
+        .replace("{python_version}", python_version)
         .replace("{local_dir}", local_dir_escaped)
         .replace("{workspace_volume}", workspace_volume)
         .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -123,6 +126,7 @@ def dev_command(
             kind="dev",
             profile=profile,
             compute_label=compute_label,
+            python_version=python_version,
             workspace_volume=workspace_volume,
             local_dir=".",
             app_name="m-gpux-shell",

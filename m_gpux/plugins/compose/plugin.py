@@ -225,6 +225,77 @@ def _command_to_shell(command) -> str:
     return str(command)
 
 
+def _extract_dockerfile_workdir(service_config: dict, compose_dir: str = ".") -> str:
+    """Extract WORKDIR from Dockerfile for the target build stage.
+
+    Returns the last WORKDIR found in the target stage (or final stage),
+    or empty string if not found.
+    """
+    import re
+
+    build = service_config.get("build", {})
+    if not build:
+        return ""
+
+    if isinstance(build, str):
+        context = build
+        dockerfile_path = "Dockerfile"
+        target = ""
+    elif isinstance(build, dict):
+        context = build.get("context", ".")
+        dockerfile_path = build.get("dockerfile", "Dockerfile")
+        target = build.get("target", "")
+    else:
+        return ""
+
+    full_path = os.path.join(compose_dir, context, dockerfile_path)
+    if not os.path.exists(full_path):
+        full_path = os.path.join(compose_dir, dockerfile_path)
+        if not os.path.exists(full_path):
+            return ""
+
+    try:
+        with open(full_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except Exception:
+        return ""
+
+    stages = {}
+    current_stage = "__default__"
+    last_workdir = ""
+
+    for line in lines:
+        stripped = line.strip()
+        from_match = re.match(r'^FROM\s+\S+(?:\s+AS\s+(\S+))?', stripped, re.IGNORECASE)
+        if from_match:
+            if last_workdir:
+                stages[current_stage] = last_workdir
+            current_stage = from_match.group(1) or f"__stage_{len(stages)}__"
+            # Inherit workdir from parent stage if it's a local stage reference
+            parent_ref = stripped.split()[1].lower()
+            for stage_name in stages:
+                if stage_name.lower() == parent_ref:
+                    last_workdir = stages[stage_name]
+                    break
+            else:
+                last_workdir = ""
+            continue
+
+        workdir_match = re.match(r'^WORKDIR\s+(.+)$', stripped, re.IGNORECASE)
+        if workdir_match:
+            last_workdir = workdir_match.group(1).strip()
+
+    if last_workdir:
+        stages[current_stage] = last_workdir
+
+    if target:
+        for stage_name, wd in stages.items():
+            if stage_name == target or stage_name.lower() == target.lower():
+                return wd
+    # No target: return last stage's workdir
+    return last_workdir
+
+
 def _extract_dockerfile_cmd(service_config: dict, compose_dir: str = ".") -> str:
     """Extract CMD from Dockerfile for a service with build config.
     
@@ -788,11 +859,15 @@ def _build_compose_script(
                         '    print("[COMPOSE] uv sync complete", flush=True)\n')
 
     # Determine image line — use base_image if provided (e.g. tritonserver)
-    if base_image and _image_has_python(base_image):
-        image_from_line = f'modal.Image.from_registry("{base_image}")'
-    elif base_image:
-        image_from_line = f'modal.Image.from_registry("{base_image}", add_python="{python_version}")'
+    if base_image:
+        # Nếu image gốc của service (như Triton) đã có sẵn Python, dùng nó luôn
+        if _image_has_python(base_image):
+            image_from_line = f'modal.Image.from_registry("{base_image}")'
+        else:
+            # Nếu chưa có (như bản Triton C++ thuần), mới thêm python vào
+            image_from_line = f'modal.Image.from_registry("{base_image}", add_python="{python_version}")'
     else:
+        # Mặc định của m-gpux
         image_from_line = f'modal.Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu22.04", add_python="{python_version}")'
 
     # Merge extra_apt_packages into apt_list
@@ -803,15 +878,19 @@ def _build_compose_script(
         apt_list = sorted(set(apt_list))
 
     # Build volume setup code for model_repository etc.
+    # --- ĐOẠN CHỈNH SỬA 2: Đảm bảo mount đúng model_repository ---
     volume_setup_code = ""
     if volume_mounts:
         volume_lines = []
         for local_path, container_path in volume_mounts:
-            if local_path.startswith("./"):
-                local_path = local_path[2:]
-            volume_lines.append(f'    os.makedirs("{container_path}", exist_ok=True)')
-            volume_lines.append(f'    subprocess.run(["cp", "-a", "/workspace_seed/{local_path}/.", "{container_path}/"], check=False)')
-            volume_lines.append(f'    print("[COMPOSE] Volume mount: /workspace_seed/{local_path} → {container_path}", flush=True)')
+            # Chuẩn hóa đường dẫn
+            clean_local = local_path.replace("./", "")
+            volume_lines.append(f'    print(f"[COMPOSE] Mounting /workspace_seed/{clean_local} to {container_path}")')
+            volume_lines.append(f'    os.makedirs(os.path.dirname("{container_path}"), exist_ok=True)')
+            # Dùng symlink để tiết kiệm dung lượng và thời gian thay vì copy (nếu Modal cho phép)
+            # Hoặc dùng cp -a như cũ nhưng phải chính xác
+            volume_lines.append(f'    if os.path.exists("/workspace_seed/{clean_local}"):')
+            volume_lines.append(f'        subprocess.run(["cp", "-a", "/workspace_seed/{clean_local}/.", "{container_path}/"], check=False)')
         volume_setup_code = "\n".join(volume_lines)
 
     script = f'''
@@ -1642,11 +1721,11 @@ def compose_sync(
 # Known specialized images and their properties
 _KNOWN_IMAGES = {
     "tritonserver": {
-        "patterns": ["nvcr.io/nvidia/tritonserver", "tritonserver"],
-        "has_python": True,
-        "default_cmd": "tritonserver --model-repository=/models --strict-model-config=false",
+        "patterns": ["nvcr.io/nvidia/tritonserver", "tritonserver", "nvidia/tritonserver"],
+        "has_python": True, # Các bản -py3 của NVIDIA đã có sẵn python
+        "default_cmd": "tritonserver --model-repository=/app/model_repository --log-verbose=1",
         "default_port": 8000,
-        "extra_ports": [8001, 8002],  # gRPC, metrics
+        "extra_ports": [8001, 8002],
     },
 }
 
@@ -1678,6 +1757,30 @@ def _image_has_python(base_image: Optional[str]) -> bool:
             if pattern in image_lower:
                 return info.get("has_python", False)
     return False
+
+
+# Images built FROM scratch or minimal distroless — no /bin/sh, can't add_python
+_MINIMAL_IMAGE_PATTERNS = [
+    "cloudflare/cloudflared",
+    "cloudflared",
+    "gcr.io/distroless/",
+    "busybox",
+    "traefik",
+    "haproxy",
+    "envoyproxy/envoy",
+    "hashicorp/consul",
+    "hashicorp/vault",
+    "quay.io/coreos/etcd",
+    "grafana/grafana",
+    "prom/prometheus",
+    "minio/minio",
+]
+
+
+def _is_minimal_image(image_name: str) -> bool:
+    """Check if an image is scratch/distroless-based (no shell, can't add Python)."""
+    name_lower = image_name.lower().split(":")[0]  # strip tag
+    return any(pat in name_lower for pat in _MINIMAL_IMAGE_PATTERNS)
 
 
 def _detect_infra_apt_packages(services: dict) -> list[str]:
@@ -2386,13 +2489,1578 @@ def compose_vm_check(
     console.print("[dim]Run `m-gpux compose vm up` to deploy on Modal.[/dim]")
 
 
+# ─── Sandbox Multi-Container Mode ─────────────────────────────
+# Each Docker Compose service runs in its own Modal Sandbox for true isolation.
+# Uses Image.from_dockerfile when available, Sandbox.exec for commands,
+# readiness probes for dependency ordering, and tunnels for networking.
+
+
+def _dockerfile_has_python(dockerfile_path: str) -> bool:
+    """Check if a Dockerfile already provides Python (so add_python is not needed)."""
+    import re
+
+    try:
+        with open(dockerfile_path, "r", encoding="utf-8") as f:
+            content = f.read().lower()
+    except OSError:
+        return False
+
+    # Check for uv (installs its own Python), pip, or python in base image
+    indicators = [
+        r"\buv\s+sync\b",
+        r"\buv\s+pip\b",
+        r"\bpip\s+install\b",
+        r"from\s+.*python:",
+        r"apt-get\s+install\s+.*python3?\b",
+        r"copy\s+--from=.*uv",
+    ]
+    return any(re.search(pat, content) for pat in indicators)
+
+
+def _preprocess_dockerfile_for_modal(dockerfile_path: str, output_path: str, target: str = "") -> bool:
+    """Preprocess a Dockerfile to work with Modal's builder.
+
+    Modal's from_dockerfile does NOT support BuildKit features:
+    - RUN --mount=type=bind,source=X,target=Y → converted to COPY X Y before the RUN
+    - RUN --mount=type=cache,... → mount flag stripped, RUN kept
+    - # syntax=docker/dockerfile:1 → removed
+
+    Also handles Docker build targets: if target is specified, truncates the
+    Dockerfile after the target stage (Modal doesn't support --target).
+
+    Returns True if preprocessing was needed, False if Dockerfile is compatible as-is.
+    """
+    import re
+
+    with open(dockerfile_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Check if preprocessing is needed
+    needs_mount_fix = "--mount=" in content
+    needs_syntax_fix = "# syntax=" in content.split("\n")[0]
+    needs_target_fix = bool(target)
+    if not needs_mount_fix and not needs_syntax_fix and not needs_target_fix:
+        return False
+
+    lines = content.split("\n")
+
+    # If target is specified, truncate after the target stage
+    if target:
+        truncated_lines = []
+        found_target = False
+        in_target_stage = False
+        for line in lines:
+            stripped = line.strip()
+            from_match = re.match(r'^FROM\s+\S+(?:\s+AS\s+(\S+))?', stripped, re.IGNORECASE)
+            if from_match:
+                stage_name = from_match.group(1) or ""
+                if in_target_stage:
+                    # We've reached the next FROM after target — stop here
+                    break
+                if stage_name.lower() == target.lower():
+                    found_target = True
+                    in_target_stage = True
+            truncated_lines.append(line)
+        if found_target:
+            lines = truncated_lines
+
+    output_lines = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+
+        # Remove syntax directive
+        if line.strip().startswith("# syntax="):
+            i += 1
+            continue
+
+        # Join backslash-continued lines for RUN commands
+        if line.strip().upper().startswith("RUN ") and "--mount=" in line:
+            # Collect the full multi-line RUN command
+            full_cmd = line.rstrip()
+            while full_cmd.endswith("\\") and i + 1 < len(lines):
+                i += 1
+                full_cmd = full_cmd[:-1] + " " + lines[i].strip()
+
+            # Extract all --mount options
+            bind_mounts = []  # (source, target) pairs to convert to COPY
+            # Parse --mount=type=bind,source=X,target=Y
+            mount_pattern = re.compile(
+                r'--mount=type=bind,([^,\s]+(?:,[^,\s]+)*)', re.IGNORECASE
+            )
+            for mount_match in mount_pattern.finditer(full_cmd):
+                mount_opts = mount_match.group(1)
+                source = ""
+                target = ""
+                for opt in mount_opts.split(","):
+                    if opt.startswith("source="):
+                        source = opt.split("=", 1)[1]
+                    elif opt.startswith("target="):
+                        target = opt.split("=", 1)[1]
+                if source and target:
+                    bind_mounts.append((source, target))
+
+            # Emit COPY for each bind mount
+            for source, target in bind_mounts:
+                # Determine the directory for the target
+                target_dir = os.path.dirname(target)
+                if target_dir and target_dir != "/" and target_dir != ".":
+                    output_lines.append(f"RUN mkdir -p {target_dir}")
+                output_lines.append(f"COPY {source} {target}")
+
+            # Strip all --mount=... flags from the RUN command
+            cleaned = re.sub(r'\s*--mount=\S+', '', full_cmd)
+            # Clean up extra whitespace
+            cleaned = re.sub(r'RUN\s+', 'RUN ', cleaned).strip()
+            if cleaned and cleaned != "RUN":
+                output_lines.append(cleaned)
+        else:
+            output_lines.append(line)
+
+        i += 1
+
+    with open(output_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(output_lines))
+
+    return True
+
+
+def _resolve_service_image(
+    svc_name: str,
+    svc_config: dict,
+    compose_dir: str,
+    exclude_patterns: list[str],
+    python_version: str = "3.12",
+) -> str:
+    """Generate a Modal Image expression string for a service.
+
+    Priority:
+    1. image: <registry> → Image.from_registry
+    2. build: with Dockerfile → Image.from_dockerfile
+    3. Known infra service → Image.debian_slim + apt_install
+    4. Fallback → debian_slim
+    """
+    image_name = svc_config.get("image", "")
+    build_cfg = svc_config.get("build", {})
+
+    # 1) Registry image
+    if image_name and not build_cfg:
+        # Check if image has python
+        if _image_has_python(image_name) or "python" in image_name.lower():
+            return f'modal.Image.from_registry("{image_name}").entrypoint([])'
+        # Minimal/scratch-based images have no shell — can't add_python
+        if _is_minimal_image(image_name):
+            return f'modal.Image.from_registry("{image_name}").entrypoint([])'
+        return f'modal.Image.from_registry("{image_name}", add_python="{python_version}").entrypoint([])'
+
+    # 2) Dockerfile build
+    if build_cfg:
+        if isinstance(build_cfg, str):
+            context = build_cfg
+            dockerfile = "Dockerfile"
+            target = ""
+        elif isinstance(build_cfg, dict):
+            context = build_cfg.get("context", ".")
+            dockerfile = build_cfg.get("dockerfile", "Dockerfile")
+            target = build_cfg.get("target", "")
+        else:
+            context = "."
+            dockerfile = "Dockerfile"
+            target = ""
+
+        dockerfile_full = os.path.join(compose_dir, context, dockerfile)
+        context_full = os.path.join(compose_dir, context)
+
+        if os.path.exists(dockerfile_full):
+            # Preprocess Dockerfile to handle BuildKit features Modal doesn't support
+            safe_name = svc_name.replace("-", "_").replace(".", "_")
+            preprocessed_name = f".modal_Dockerfile.{safe_name}"
+            preprocessed_path = os.path.join(compose_dir, context, preprocessed_name)
+
+            needs_preprocess = _preprocess_dockerfile_for_modal(dockerfile_full, preprocessed_path, target=target)
+            if needs_preprocess:
+                actual_dockerfile = os.path.relpath(preprocessed_path, compose_dir).replace("\\", "/")
+            else:
+                actual_dockerfile = os.path.relpath(dockerfile_full, compose_dir).replace("\\", "/")
+                # Remove preprocessed file if it wasn't needed
+                try:
+                    os.remove(preprocessed_path)
+                except OSError:
+                    pass
+
+            context_rel = os.path.relpath(context_full, compose_dir).replace("\\", "/")
+
+            # Check if Dockerfile already provides Python (uv, pip, python base image)
+            has_python = _dockerfile_has_python(dockerfile_full)
+
+            # Use from_dockerfile for proper multi-stage builds
+            lines = [f'modal.Image.from_dockerfile(']
+            lines.append(f'        "{actual_dockerfile}",')
+            lines.append(f'        context_dir="{context_rel}",')
+            if not has_python:
+                lines.append(f'        add_python="{python_version}",')
+            # Let Modal use AUTO_DOCKERIGNORE (reads .dockerignore automatically)
+            # Only add extra ignore patterns if no .dockerignore exists
+            dockerignore_path = os.path.join(context_full, ".dockerignore")
+            if exclude_patterns and not os.path.exists(dockerignore_path):
+                lines.append(f'        ignore={repr(exclude_patterns)},')
+            lines.append(f'    ).entrypoint([])')
+            return "\n    ".join(lines)
+
+    # 3) Known infra service
+    svc_type = _detect_service_type(svc_name, svc_config)
+    if svc_type and svc_type in SERVICE_INSTALLERS:
+        installer = SERVICE_INSTALLERS[svc_type]
+        apt_pkgs = repr(installer["apt"])
+        return f'modal.Image.debian_slim().apt_install({apt_pkgs}).entrypoint([])'
+
+    # 4) Fallback
+    return f'modal.Image.debian_slim(python_version="{python_version}").entrypoint([])'
+
+
+def _get_service_dependencies(svc_config: dict) -> list[str]:
+    """Extract depends_on with condition info."""
+    depends = svc_config.get("depends_on", [])
+    if isinstance(depends, list):
+        return [(d, "started") for d in depends]
+    if isinstance(depends, dict):
+        result = []
+        for name, cfg in depends.items():
+            if isinstance(cfg, dict):
+                condition = cfg.get("condition", "service_started")
+            else:
+                condition = "service_started"
+            result.append((name, condition))
+        return result
+    return []
+
+
+def _get_service_ports(svc_config: dict) -> list[int]:
+    """Extract all container-side ports from a service."""
+    ports = []
+    for port_spec in svc_config.get("ports", []):
+        port_str = str(port_spec)
+        if ":" in port_str:
+            container_port = port_str.split(":")[-1].split("/")[0]
+        else:
+            container_port = port_str.split("/")[0]
+        try:
+            ports.append(int(container_port))
+        except ValueError:
+            pass
+    # Also check expose
+    for port_spec in svc_config.get("expose", []):
+        try:
+            p = int(str(port_spec).split("/")[0])
+            if p not in ports:
+                ports.append(p)
+        except ValueError:
+            pass
+    return ports
+
+
+def _service_needs_gpu(svc_config: dict) -> bool:
+    """Check if a specific service requires GPU."""
+    deploy = svc_config.get("deploy", {})
+    if isinstance(deploy, dict):
+        resources = deploy.get("resources", {})
+        if isinstance(resources, dict):
+            reservations = resources.get("reservations", {})
+            if isinstance(reservations, dict):
+                devices = reservations.get("devices", [])
+                for dev in (devices if isinstance(devices, list) else []):
+                    if isinstance(dev, dict) and "gpu" in str(dev.get("capabilities", [])):
+                        return True
+    if svc_config.get("runtime") == "nvidia":
+        return True
+    return False
+
+
+def _build_sandbox_compose_script(
+    *,
+    services: dict,
+    compose_dir: str,
+    exclude_patterns: list[str],
+    user_env_values: dict[str, str],
+    python_version: str = "3.12",
+    gpu_spec: str = "T4",
+    cpu_spec: tuple[int, int] = None,
+    workspace_volume_name: str,
+    selected_services: list[str] = None,
+    gpu_override: dict[str, bool] = None,
+) -> str:
+    """Generate a Modal script that deploys each service as a separate Sandbox.
+
+    Key features:
+    - Each service runs in its own Sandbox (true isolation)
+    - Image.from_dockerfile for Dockerfile-based services
+    - Proper depends_on with wait()/wait_until_ready()
+    - Inter-service networking via Sandbox tunnels
+    - Shared volumes between sandboxes
+    """
+
+    # Determine which services to run (selected + transitive deps)
+    def _get_transitive_deps(svc_name, all_services, visited=None):
+        if visited is None:
+            visited = set()
+        if svc_name in visited:
+            return visited
+        visited.add(svc_name)
+        svc_config = all_services.get(svc_name, {})
+        depends = svc_config.get("depends_on", [])
+        if isinstance(depends, dict):
+            depends = list(depends.keys())
+        for dep in depends:
+            if dep in all_services:
+                _get_transitive_deps(dep, all_services, visited)
+        return visited
+
+    active_services = set()
+    targets = selected_services or list(services.keys())
+    for svc in targets:
+        if svc in services:
+            active_services.update(_get_transitive_deps(svc, services))
+    services = {k: v for k, v in services.items() if k in active_services}
+
+    # ─── Co-locate TCP infra services ─────────────────────────────
+    # TCP-only services (redis, postgres, memcached, mongodb) can't communicate
+    # across sandboxes via HTTP tunnels. Nginx also needs hostname resolution
+    # to its upstream. We embed these as sidecar processes in the sandboxes
+    # that depend on them.
+    COLOCATE_TYPES = {"redis", "postgres", "memcached", "mongodb", "nginx"}
+
+    # Identify which infra services to co-locate and where
+    colocated_infra = {}  # infra_svc_name → list of dependent svc names
+    colocate_svcs = set()
+    for svc_name, svc_config in services.items():
+        svc_type = _detect_service_type(svc_name, svc_config)
+        if svc_type in COLOCATE_TYPES:
+            colocate_svcs.add(svc_name)
+            # Find which services depend on this infra
+            dependents = []
+            for other_name, other_config in services.items():
+                if other_name == svc_name:
+                    continue
+                dep_list = other_config.get("depends_on", [])
+                if isinstance(dep_list, dict):
+                    dep_list = list(dep_list.keys())
+                if svc_name in dep_list:
+                    dependents.append(other_name)
+            colocated_infra[svc_name] = dependents
+
+    # Build sidecar info: for each dependent, what infra to embed
+    sidecar_map = {}  # svc_name → [(infra_type, start_cmd, port, apt_pkgs)]
+    for infra_svc, dependents in colocated_infra.items():
+        infra_config = services[infra_svc]
+        infra_type = _detect_service_type(infra_svc, infra_config)
+        if infra_type not in SERVICE_INSTALLERS:
+            continue
+        installer = SERVICE_INSTALLERS[infra_type]
+        port = _extract_port(infra_config) or installer["default_port"]
+        extra_args = ""
+        if infra_type == "redis":
+            env = _extract_env_vars(infra_config)
+            password = env.get("REDIS_PASSWORD", "")
+            if not password and user_env_values:
+                password = user_env_values.get("REDIS_PASSWORD", "")
+            if password:
+                extra_args = f" --requirepass {password}"
+        start_cmd = installer["start_cmd"].format(port=port, extra_args=extra_args)
+        apt_pkgs = installer["apt"]
+        for dep in dependents:
+            if dep not in sidecar_map:
+                sidecar_map[dep] = []
+            sidecar_map[dep].append((infra_type, start_cmd, port, apt_pkgs, infra_svc))
+
+    # Remove co-located infra services from the sandbox list — they run as sidecars
+    services = {k: v for k, v in services.items() if k not in colocate_svcs}
+
+    ordered = _topological_sort(services)
+
+    # Build image definitions for each service
+    image_defs = []
+    for svc_name in ordered:
+        svc_config = services[svc_name]
+        image_expr = _resolve_service_image(
+            svc_name, svc_config, compose_dir, exclude_patterns, python_version
+        )
+        # If this service has sidecars, add apt packages for them
+        if svc_name in sidecar_map:
+            sidecar_apt = []
+            for _, _, _, apt_pkgs, _ in sidecar_map[svc_name]:
+                sidecar_apt.extend(apt_pkgs)
+            if sidecar_apt:
+                image_expr += f'\n    .apt_install({repr(sorted(set(sidecar_apt)))})'
+        safe_name = svc_name.replace("-", "_").replace(".", "_")
+        image_defs.append(f'image_{safe_name} = (\n    {image_expr}\n)')
+
+    # Build service metadata registry
+    svc_meta_entries = []
+    for svc_name in ordered:
+        svc_config = services[svc_name]
+        safe_name = svc_name.replace("-", "_").replace(".", "_")
+        command = _command_to_shell(svc_config.get("command", ""))
+        if not command:
+            command = _extract_dockerfile_cmd(svc_config, compose_dir=compose_dir)
+        if not command:
+            svc_type = _detect_service_type(svc_name, svc_config)
+            if svc_type and svc_type in SERVICE_INSTALLERS:
+                port = _extract_port(svc_config) or SERVICE_INSTALLERS[svc_type]["default_port"]
+                extra_args = ""
+                if svc_type == "redis":
+                    password = _extract_env_vars(svc_config).get("REDIS_PASSWORD", "")
+                    if password:
+                        extra_args = f" --requirepass {password}"
+                command = SERVICE_INSTALLERS[svc_type]["start_cmd"].format(
+                    port=port, extra_args=extra_args
+                )
+
+        ports = _get_service_ports(svc_config)
+
+        # Sidecar infra ports are internal-only (localhost), no need to expose via tunnel
+
+        # Wrap command to start sidecars first
+        if svc_name in sidecar_map and command:
+            sidecar_cmds = []
+            for infra_type, start_cmd, infra_port, _, infra_name in sidecar_map[svc_name]:
+                if infra_type == "nginx":
+                    # Nginx needs config setup: copy user config, rewrite upstreams to localhost
+                    nginx_setup = (
+                        'NGINX_CONF=$(find /app -name "nginx.conf" 2>/dev/null | head -1); '
+                        'if [ -n "$NGINX_CONF" ]; then cp "$NGINX_CONF" /tmp/nginx_compose.conf; '
+                        'sed -i "s/server [a-zA-Z_-]*:/server 127.0.0.1:/g" /tmp/nginx_compose.conf; '
+                        'sed -i "s/^user nginx/user root/" /tmp/nginx_compose.conf; '
+                        'else echo "worker_processes auto; events { worker_connections 1024; } '
+                        f'http {{ server {{ listen {infra_port}; location / {{ proxy_pass http://127.0.0.1:8000; }} }} }}" '
+                        '> /tmp/nginx_compose.conf; fi'
+                    )
+                    sidecar_cmds.append(
+                        f'echo "[sidecar] Setting up {infra_name} (nginx)..." && '
+                        f'{nginx_setup}'
+                    )
+                # Start infra in background, wait for port
+                sidecar_cmds.append(
+                    f'echo "[sidecar] Starting {infra_name} ({infra_type})..."; '
+                    f'{start_cmd} & '
+                    f'for i in $(seq 1 30); do '
+                    f'(echo > /dev/tcp/127.0.0.1/{infra_port}) 2>/dev/null && break; '
+                    f'sleep 0.5; done; '
+                    f'echo "[sidecar] {infra_name} ready on port {infra_port}"'
+                )
+            # Combine: start sidecars, then run main command
+            sidecar_script = " && ".join(sidecar_cmds)
+            command = f'bash -c \'{sidecar_script} && {command}\''
+
+        # Use gpu_override if provided (user selected which services need GPU)
+        if gpu_override is not None:
+            needs_gpu = gpu_override.get(svc_name, False)
+        else:
+            needs_gpu = _service_needs_gpu(svc_config)
+        deps = _get_service_dependencies(svc_config)
+        # Remove co-located infra from deps (they run as sidecars, not separate sandboxes)
+        deps = [(d, c) for d, c in deps if d not in colocate_svcs]
+        env_vars = _extract_env_vars(svc_config)
+        workdir = svc_config.get("working_dir", "") or _extract_dockerfile_workdir(svc_config, compose_dir=compose_dir)
+
+        # Also extract Dockerfile ENVs
+        dockerfile_envs = _extract_dockerfile_envs(svc_config, compose_dir=compose_dir)
+        _skip_env_prefixes = ("UV_", "PYTHON_INSTALL", "PATH")
+        _skip_env_exact = {"PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED", "PYTHONPATH"}
+        for k, v in dockerfile_envs.items():
+            if k in _skip_env_exact or any(k.startswith(p) for p in _skip_env_prefixes):
+                continue
+            if k not in env_vars:
+                env_vars[k] = v
+
+        # Modal provisions GPU as device 0; override any fixed device assignment
+        if "CUDA_VISIBLE_DEVICES" in env_vars:
+            env_vars["CUDA_VISIBLE_DEVICES"] = "0"
+
+        # For services with co-located infra, rewrite hostname references to localhost
+        if svc_name in sidecar_map:
+            for infra_type, _, infra_port, _, infra_name in sidecar_map[svc_name]:
+                # Rewrite env vars that reference the infra service hostname
+                for k, v in list(env_vars.items()):
+                    if infra_name in str(v):
+                        env_vars[k] = v.replace(infra_name, "127.0.0.1")
+                # Inject common env vars for the infra type
+                if infra_type == "redis":
+                    env_vars.setdefault("REDIS_HOST", "127.0.0.1")
+                    env_vars.setdefault("REDIS_PORT", str(infra_port))
+                elif infra_type == "postgres":
+                    env_vars.setdefault("POSTGRES_HOST", "127.0.0.1")
+                    env_vars.setdefault("DATABASE_HOST", "127.0.0.1")
+
+        # Resolve env vars with user-provided values
+        env_vars = _resolve_env_vars(env_vars, user_provided=user_env_values)
+
+        svc_meta_entries.append({
+            "name": svc_name,
+            "safe_name": safe_name,
+            "command": command or "",
+            "ports": ports,
+            "needs_gpu": needs_gpu,
+            "deps": deps,
+            "env_vars": env_vars,
+            "workdir": workdir,
+        })
+
+    # Build the script
+    image_block = "\n\n".join(image_defs)
+
+    # Service metadata as a Python dict in the script
+    svc_meta_lines = []
+    for meta in svc_meta_entries:
+        deps_repr = repr(meta["deps"])
+        env_repr = repr(meta["env_vars"])
+        svc_meta_lines.append(
+            f'    "{meta["name"]}": {{\n'
+            f'        "image_var": "image_{meta["safe_name"]}",\n'
+            f'        "command": {repr(meta["command"])},\n'
+            f'        "ports": {repr(meta["ports"])},\n'
+            f'        "needs_gpu": {repr(meta["needs_gpu"])},\n'
+            f'        "deps": {deps_repr},\n'
+            f'        "env": {env_repr},\n'
+            f'        "workdir": {repr(meta["workdir"])},\n'
+            f'    }},'
+        )
+    svc_meta_block = "\n".join(svc_meta_lines)
+
+    # Image variable mapping
+    image_map_lines = []
+    for meta in svc_meta_entries:
+        image_map_lines.append(
+            f'    "image_{meta["safe_name"]}": image_{meta["safe_name"]},'
+        )
+    image_map_block = "\n".join(image_map_lines)
+
+    # GPU spec string for sandboxes
+    gpu_spec_str = gpu_spec
+
+    # The sandbox script runs LOCALLY (python, not modal run).
+    # Images are built locally with image.build(app), then passed to Sandbox.create().
+    # This is required because from_dockerfile needs local file access.
+
+    script = f'''#!/usr/bin/env python3
+"""m-gpux Compose Sandbox — local orchestrator.
+
+This script runs LOCALLY and creates Modal Sandboxes for each service.
+Images are built locally via image.build(app), then passed to Sandbox.create().
+"""
+import modal
+import modal.exception
+import os
+import sys
+import shlex
+import time
+import threading
+
+# ─── Service Images ───────────────────────────────────────────
+# Defined at module level so Modal SDK can read Dockerfiles locally.
+{image_block}
+
+# ─── Image registry (name → image object) ────────────────────
+IMAGE_REGISTRY = {{
+{image_map_block}
+}}
+
+# ─── Service metadata ────────────────────────────────────────
+SERVICE_META = {{
+{svc_meta_block}
+}}
+
+SERVICE_ORDER = {repr(ordered)}
+GPU_SPEC = "{gpu_spec_str}"
+VOLUME_NAME = "{workspace_volume_name}"
+
+IDLE_CMDS = ("sleep ", "sleep infinity", "tail -f", "cat")
+IDLE_CMDS_EXACT = ("bash", "/bin/bash", "sh", "/bin/sh")
+
+
+def _is_idle_command(cmd: str) -> bool:
+    cmd_lower = cmd.strip().lower()
+    if cmd_lower in IDLE_CMDS_EXACT:
+        return True
+    for pattern in IDLE_CMDS:
+        if cmd_lower.startswith(pattern):
+            return True
+    return False
+
+
+def _resolve_env(env_dict, tunnel_urls_map):
+    """Replace service hostname references with tunnel URLs."""
+    resolved = dict(env_dict)
+    for k, v in resolved.items():
+        if not v:
+            continue
+        for svc_name, urls in tunnel_urls_map.items():
+            if svc_name in v:
+                for port, url in urls.items():
+                    v = v.replace(f"http://{{svc_name}}:{{port}}", url)
+                    v = v.replace(f"{{svc_name}}:{{port}}", url.replace("http://", ""))
+                if svc_name in v:
+                    primary_url = list(urls.values())[0] if urls else ""
+                    if primary_url:
+                        v = v.replace(svc_name, primary_url.replace("http://", "").replace("https://", ""))
+        resolved[k] = v
+    return resolved
+
+
+def _create_sandbox(svc_name, meta, resolved_env, sb_app, workspace_vol):
+    """Create and return a Sandbox for a service."""
+    image = IMAGE_REGISTRY[meta["image_var"]]
+    ports = meta["ports"]
+    needs_gpu = meta["needs_gpu"]
+    command = meta["command"]
+    workdir = meta.get("workdir", "")
+
+    sb_kwargs = {{
+        "app": sb_app,
+        "image": image,
+        "timeout": 86400,
+        "volumes": {{"/workspace": workspace_vol}},
+    }}
+
+    if workdir:
+        sb_kwargs["workdir"] = workdir
+
+    if resolved_env:
+        sb_kwargs["secrets"] = [modal.Secret.from_dict(resolved_env)]
+
+    if needs_gpu:
+        sb_kwargs["gpu"] = GPU_SPEC
+
+    if ports:
+        sb_kwargs["unencrypted_ports"] = ports
+
+    if command and not _is_idle_command(command):
+        try:
+            cmd_parts = shlex.split(command)
+        except ValueError:
+            cmd_parts = command.split()
+        sb = modal.Sandbox.create(*cmd_parts, **sb_kwargs)
+    else:
+        sb = modal.Sandbox.create("sleep", "86400", **sb_kwargs)
+
+    return sb
+
+
+def _stream_logs(name, sandbox):
+    """Stream stdout and stderr from a sandbox."""
+    def _stream_out():
+        try:
+            for line in sandbox.stdout:
+                print(f"[{{name}}] {{line}}", end="", flush=True)
+        except Exception:
+            pass
+
+    def _stream_err():
+        try:
+            for line in sandbox.stderr:
+                print(f"[{{name}}:err] {{line}}", end="", flush=True)
+        except Exception:
+            pass
+
+    threading.Thread(target=_stream_out, daemon=True).start()
+    threading.Thread(target=_stream_err, daemon=True).start()
+
+
+def main():
+    print("=" * 60)
+    print("[SANDBOX COMPOSE] Initializing...")
+    print("=" * 60, flush=True)
+
+    # ─── Setup ────────────────────────────────────────────────────
+    sb_app = modal.App.lookup("m-gpux-compose-sandbox", create_if_missing=True)
+    workspace_vol = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
+
+    # ─── Build images locally ─────────────────────────────────────
+    print("[SANDBOX COMPOSE] Building images (this may take a while on first run)...", flush=True)
+    with modal.enable_output():
+        for img_key, img_obj in IMAGE_REGISTRY.items():
+            svc_name = img_key.replace("image_", "").replace("_", "-")
+            print(f"  Building image for {{svc_name}}...", flush=True)
+            try:
+                img_obj.build(sb_app)
+                print(f"  ✓ {{svc_name}} image ready", flush=True)
+            except Exception as e:
+                print(f"  ✗ {{svc_name}} image build failed: {{e}}", flush=True)
+                raise
+
+    sandboxes = {{}}
+    tunnel_urls = {{}}
+
+    try:
+        # ─── Phase 1: Create sandboxes in dependency order ────────────
+        print("\\n" + "=" * 60)
+        print("[SANDBOX COMPOSE] Starting services...")
+        print("=" * 60, flush=True)
+
+        for svc_name in SERVICE_ORDER:
+            meta = SERVICE_META[svc_name]
+            deps = meta["deps"]
+            ports = meta["ports"]
+
+            # Wait for dependencies
+            for dep_name, condition in deps:
+                if dep_name not in sandboxes:
+                    print(f"[{{svc_name}}] WARNING: dependency {{dep_name}} not found", flush=True)
+                    continue
+
+                dep_sb = sandboxes[dep_name]
+                dep_meta = SERVICE_META.get(dep_name, {{}})
+                dep_ports = dep_meta.get("ports", [])
+
+                if condition == "service_completed_successfully":
+                    print(f"[{{svc_name}}] Waiting for {{dep_name}} to complete...", flush=True)
+                    dep_sb.wait()
+                    rc = dep_sb.returncode
+                    if rc != 0:
+                        print(f"[{{svc_name}}] ERROR: {{dep_name}} exited with code {{rc}}", flush=True)
+                        raise SystemExit(1)
+                    print(f"[{{svc_name}}] {{dep_name}} completed successfully", flush=True)
+                elif condition in ("service_started", "service_healthy"):
+                    if dep_ports:
+                        print(f"[{{svc_name}}] Waiting for {{dep_name}} ports {{dep_ports}}...", flush=True)
+                        deadline = time.time() + 120
+                        ready = False
+                        while time.time() < deadline:
+                            try:
+                                check_cmd = " && ".join(
+                                    f"(echo > /dev/tcp/127.0.0.1/{{p}}) 2>/dev/null"
+                                    for p in dep_ports
+                                )
+                                p = dep_sb.exec("bash", "-c", check_cmd, timeout=5)
+                                p.wait()
+                                if p.returncode == 0:
+                                    ready = True
+                                    break
+                            except Exception:
+                                pass
+                            time.sleep(2)
+                        if ready:
+                            print(f"[{{svc_name}}] {{dep_name}} is ready", flush=True)
+                        else:
+                            print(f"[{{svc_name}}] WARNING: {{dep_name}} ports not ready after 120s", flush=True)
+                    else:
+                        time.sleep(3)
+
+            # Resolve env vars with known tunnel URLs
+            resolved_env = _resolve_env(meta["env"], tunnel_urls)
+
+            print(f"[{{svc_name}}] Creating sandbox...", flush=True)
+            sb = _create_sandbox(svc_name, meta, resolved_env, sb_app, workspace_vol)
+            sandboxes[svc_name] = sb
+            print(f"[{{svc_name}}] Sandbox created: {{sb.object_id}}", flush=True)
+
+            # Start streaming logs immediately
+            _stream_logs(svc_name, sb)
+
+            # Get tunnel URLs
+            if ports:
+                try:
+                    tunnels = sb.tunnels(timeout=60)
+                    svc_tunnels = {{}}
+                    for port_num, tunnel_obj in tunnels.items():
+                        svc_tunnels[port_num] = tunnel_obj.url
+                        print(f"[{{svc_name}}] Port {{port_num}} → {{tunnel_obj.url}}", flush=True)
+                    tunnel_urls[svc_name] = svc_tunnels
+                except Exception as e:
+                    print(f"[{{svc_name}}] WARNING: Could not get tunnels: {{e}}", flush=True)
+                    tunnel_urls[svc_name] = {{}}
+
+        # ─── Phase 2: Summary ────────────────────────────────────────
+        print("\\n" + "=" * 60)
+        print("[SANDBOX COMPOSE] All services running!")
+        print("-" * 60)
+        for svc_name, sb in sandboxes.items():
+            status = "running" if sb.poll() is None else f"exited ({{sb.returncode}})"
+            urls = tunnel_urls.get(svc_name, {{}})
+            url_str = ", ".join(f"{{p}}→{{u}}" for p, u in urls.items()) if urls else "no tunnels"
+            print(f"  {{svc_name}}: {{status}} | {{url_str}} | id={{sb.object_id}}")
+        print("-" * 60)
+        print(f"  Volume: {{VOLUME_NAME}}")
+        print("=" * 60 + "\\n", flush=True)
+
+        # Save sandbox IDs for later use (ps, exec, logs, down)
+        ids_file = ".m-gpux-sandbox-ids.json"
+        import json
+        sb_ids = {{name: sb.object_id for name, sb in sandboxes.items()}}
+        with open(ids_file, "w") as f:
+            json.dump({{"app_name": "m-gpux-compose-sandbox", "sandboxes": sb_ids}}, f, indent=2)
+        print(f"[SANDBOX COMPOSE] Sandbox IDs saved to {{ids_file}}", flush=True)
+
+        # ─── Phase 3: Stream logs and monitor ────────────────────────
+        for svc_name, sb in sandboxes.items():
+            t = threading.Thread(target=_stream_logs, args=(svc_name, sb), daemon=True)
+            t.start()
+
+        print("[SANDBOX COMPOSE] Streaming logs... Press Ctrl+C to detach.\\n", flush=True)
+
+        while True:
+            time.sleep(10)
+            all_done = True
+            for svc_name, sb in sandboxes.items():
+                rc = sb.poll()
+                if rc is None:
+                    all_done = False
+                elif rc is not None and rc != 0:
+                    meta = SERVICE_META[svc_name]
+                    if not _is_idle_command(meta.get("command", "")):
+                        print(f"[{{svc_name}}] Process exited with code {{rc}}", flush=True)
+            if all_done:
+                print("[SANDBOX COMPOSE] All services have stopped.", flush=True)
+                break
+
+    except KeyboardInterrupt:
+        print("\\n[SANDBOX COMPOSE] Detaching (sandboxes keep running on Modal)...", flush=True)
+        for sb in sandboxes.values():
+            try:
+                sb.detach()
+            except Exception:
+                pass
+        print("[SANDBOX COMPOSE] Detached. Use `m-gpux compose sandbox ps` to check status.", flush=True)
+        print("[SANDBOX COMPOSE] Use `m-gpux compose sandbox down` to stop all.", flush=True)
+        return
+
+    except SystemExit:
+        pass
+
+    finally:
+        # Detach all (don't terminate — user may want them running)
+        for sb in sandboxes.values():
+            try:
+                sb.detach()
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()
+'''
+    return script
+
+
+def compose_sandbox_check(
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to docker-compose.yml"),
+):
+    """
+    Analyze a compose file for Sandbox multi-container deployment.
+
+    Shows per-service isolation plan: image strategy, GPU assignment,
+    dependency ordering, port tunneling, and Dockerfile detection.
+    """
+    compose_path = file or _find_compose_file()
+    if compose_path is None:
+        console.print("[bold red]No compose file found.[/bold red]")
+        raise typer.Exit(1)
+
+    data = _parse_compose(compose_path)
+    services = data["services"]
+    compose_dir = os.path.dirname(os.path.abspath(compose_path)) or "."
+
+    console.print(Panel.fit(
+        f"[bold magenta]Compose Sandbox Analysis[/bold magenta] — {compose_path}\n"
+        "[dim]Each service → its own Modal Sandbox (true container isolation)[/dim]",
+        border_style="cyan",
+    ))
+
+    ordered = _topological_sort(services)
+
+    svc_table = Table(show_header=True, header_style="bold cyan")
+    svc_table.add_column("Order")
+    svc_table.add_column("Service")
+    svc_table.add_column("Image Strategy")
+    svc_table.add_column("Ports")
+    svc_table.add_column("GPU")
+    svc_table.add_column("Depends On")
+
+    for idx, svc_name in enumerate(ordered, 1):
+        svc_config = services[svc_name]
+
+        # Image strategy
+        image_name = svc_config.get("image", "")
+        build_cfg = svc_config.get("build", {})
+        svc_type = _detect_service_type(svc_name, svc_config)
+        if image_name and not build_cfg:
+            strategy = f"from_registry({image_name[:30]})"
+        elif build_cfg:
+            target = ""
+            if isinstance(build_cfg, dict):
+                target = build_cfg.get("target", "")
+                dockerfile = build_cfg.get("dockerfile", "Dockerfile")
+                context = build_cfg.get("context", ".")
+            else:
+                dockerfile = "Dockerfile"
+                context = build_cfg
+            df_path = os.path.join(compose_dir, context, dockerfile)
+            if os.path.exists(df_path):
+                strategy = f"from_dockerfile({dockerfile}"
+                if target:
+                    strategy += f" → {target}"
+                strategy += ")"
+            else:
+                strategy = "debian_slim (no Dockerfile)"
+        elif svc_type:
+            strategy = f"debian_slim + apt({svc_type})"
+        else:
+            strategy = "debian_slim"
+
+        # Ports
+        ports = _get_service_ports(svc_config)
+        ports_str = ", ".join(str(p) for p in ports) if ports else "-"
+
+        # GPU
+        needs_gpu = _service_needs_gpu(svc_config)
+        gpu_str = "[bold green]✓ GPU[/bold green]" if needs_gpu else "[dim]CPU[/dim]"
+
+        # Dependencies
+        deps = _get_service_dependencies(svc_config)
+        if deps:
+            dep_strs = []
+            for dep_name, condition in deps:
+                if condition == "service_completed_successfully":
+                    dep_strs.append(f"{dep_name} [yellow](wait)[/yellow]")
+                else:
+                    dep_strs.append(dep_name)
+            deps_str = ", ".join(dep_strs)
+        else:
+            deps_str = "-"
+
+        svc_table.add_row(str(idx), svc_name, strategy, ports_str, gpu_str, deps_str)
+
+    console.print(svc_table)
+
+    # Networking info
+    console.print(f"\n[bold cyan]Networking:[/bold cyan]")
+    console.print("  Each service gets its own Sandbox with tunneled ports.")
+    console.print("  Environment variables referencing service hostnames (e.g. http://redis:6379)")
+    console.print("  are automatically rewritten to use tunnel URLs at startup.")
+
+    # Warnings
+    warnings = []
+    for svc_name, svc_config in services.items():
+        image_name = svc_config.get("image", "")
+        build_cfg = svc_config.get("build", {})
+        if image_name and "cloudflare" in image_name.lower():
+            warnings.append(f"  [yellow]⚠ {svc_name}:[/yellow] cloudflared image — tunnel handled by Modal natively")
+        if svc_config.get("shm_size"):
+            warnings.append(f"  [yellow]⚠ {svc_name}:[/yellow] shm_size not supported in Sandbox mode")
+        if svc_config.get("tmpfs"):
+            warnings.append(f"  [yellow]⚠ {svc_name}:[/yellow] tmpfs mount — /tmp always available but size not configurable")
+
+    if warnings:
+        console.print(f"\n[bold yellow]Warnings:[/bold yellow]")
+        for w in warnings:
+            console.print(w)
+
+    console.print(f"\n[bold green]Ready for Sandbox deployment ({len(services)} sandboxes).[/bold green]")
+    console.print("[dim]Run `m-gpux compose sandbox up` to deploy.[/dim]")
+
+
+def compose_sandbox_up(
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to docker-compose.yml"),
+):
+    """
+    Deploy a Docker Compose stack using Modal Sandboxes (multi-container).
+
+    Each service runs in its own isolated Modal Sandbox. Services with
+    Dockerfiles are built via Image.from_dockerfile. Dependencies are
+    resolved with proper wait/readiness ordering. Ports are tunneled
+    for inter-service communication.
+
+    This mode provides true container isolation — each service has its own
+    filesystem, process space, and optional GPU. Best for complex stacks
+    like Triton + Redis + App + Nginx.
+
+    Examples:
+        m-gpux compose sandbox up
+        m-gpux compose sandbox up -f docker-compose.prod.yml
+    """
+    console.print(Panel.fit(
+        "[bold magenta]m-gpux Compose Sandbox[/bold magenta]\n"
+        "True multi-container: each service → its own Modal Sandbox.\n"
+        "[dim]Dockerfile builds • GPU per-service • dependency ordering • tunneled networking[/dim]",
+        border_style="cyan",
+    ))
+
+    # --- Find compose file ---
+    compose_path = file or _find_compose_file()
+    if compose_path is None:
+        console.print("[bold red]No docker-compose.yml or compose.yml found.[/bold red]")
+        console.print("[dim]Use --file / -f to specify a path.[/dim]")
+        raise typer.Exit(1)
+
+    compose_dir = os.path.dirname(os.path.abspath(compose_path)) or "."
+    console.print(f"[green]Compose file:[/green] [bold]{compose_path}[/bold]")
+
+    # --- Parse ---
+    data = _parse_compose(compose_path)
+    services = data["services"]
+    ordered = _topological_sort(services)
+
+    # --- Display services ---
+    console.print(f"\n[bold cyan]Services ({len(services)}):[/bold cyan]")
+    for svc_name in ordered:
+        svc_config = services[svc_name]
+        ports = _get_service_ports(svc_config)
+        gpu = _service_needs_gpu(svc_config)
+        deps = _get_service_dependencies(svc_config)
+        image = svc_config.get("image", "")
+        build_cfg = svc_config.get("build", {})
+        src = image or ("Dockerfile" if build_cfg else "debian_slim")
+        dep_names = [d[0] for d in deps]
+        console.print(
+            f"  [bold]{svc_name}[/bold] — {src}"
+            f"{' [green]GPU[/green]' if gpu else ''}"
+            f"{' → ports ' + ', '.join(str(p) for p in ports) if ports else ''}"
+            f"{' | depends: ' + ', '.join(dep_names) if dep_names else ''}"
+        )
+
+    # --- Select services ---
+    # Categorize: "core" services (have ports or are depended upon by others)
+    # vs "one-shot" (no ports, not depended upon, likely batch jobs)
+    depended_upon = set()
+    for svc_config in services.values():
+        depends = svc_config.get("depends_on", [])
+        if isinstance(depends, dict):
+            depends = list(depends.keys())
+        depended_upon.update(depends)
+
+    core_services = []
+    optional_services = []
+    for svc_name in ordered:
+        svc_config = services[svc_name]
+        ports = _get_service_ports(svc_config)
+        has_deps_on_it = svc_name in depended_upon
+        depends = svc_config.get("depends_on", [])
+        if isinstance(depends, dict):
+            depends = list(depends.keys())
+        # Core: has ports, or is depended upon, or depends on something (part of a chain)
+        if ports or has_deps_on_it or depends:
+            core_services.append(svc_name)
+        else:
+            optional_services.append(svc_name)
+
+    selected_services = None
+    all_names = list(services.keys())
+
+    if optional_services:
+        console.print(f"\n[bold cyan]Service categories:[/bold cyan]")
+        console.print(f"  [green]Core[/green] ({len(core_services)}): {', '.join(core_services)}")
+        console.print(f"  [yellow]Optional[/yellow] ({len(optional_services)}): {', '.join(optional_services)}")
+
+        run_choice_options = [
+            ("Core only", f"Start {len(core_services)} core services (recommended)"),
+            ("All", f"Start all {len(all_names)} services"),
+            ("Custom", "Pick specific services"),
+        ]
+        run_idx = arrow_select(run_choice_options, title="Which services?", default=0)
+
+        if run_idx == 0:
+            selected_services = core_services
+            console.print(f"  [green]Selected:[/green] {', '.join(selected_services)} (+ dependencies)")
+        elif run_idx == 1:
+            selected_services = None  # all
+        else:
+            # Custom selection with numbered list
+            console.print("[dim]Enter service names or numbers (space-separated):[/dim]")
+            for i, name in enumerate(all_names, 1):
+                marker = "[green]●[/green]" if name in core_services else "[yellow]○[/yellow]"
+                console.print(f"  {marker} {i}. {name}")
+            svc_input = Prompt.ask("  Services", default=" ".join(str(i+1) for i, n in enumerate(all_names) if n in core_services))
+            selected_services = []
+            for token in svc_input.split():
+                token = token.strip().rstrip(",")
+                if token.isdigit():
+                    idx = int(token) - 1
+                    if 0 <= idx < len(all_names):
+                        selected_services.append(all_names[idx])
+                elif token in services:
+                    selected_services.append(token)
+            if not selected_services:
+                console.print("[bold red]No valid services selected.[/bold red]")
+                raise typer.Exit(1)
+            console.print(f"  [green]Selected:[/green] {', '.join(selected_services)} (+ dependencies)")
+    elif len(all_names) > 3:
+        run_all = Prompt.ask(
+            f"\n[bold cyan]Run all {len(all_names)} services?[/bold cyan]",
+            choices=["y", "n"], default="y",
+        )
+        if run_all == "n":
+            console.print("[dim]Enter service names (space-separated):[/dim]")
+            svc_input = Prompt.ask("  Services", default=all_names[0])
+            selected_services = [s.strip() for s in svc_input.split() if s.strip() in services]
+            if not selected_services:
+                console.print("[bold red]No valid services selected.[/bold red]")
+                raise typer.Exit(1)
+            console.print(f"  [green]Selected:[/green] {', '.join(selected_services)} (+ dependencies)")
+
+    # Show auto-added dependencies so user knows what will be built
+    if selected_services:
+        def _get_all_deps(svc, all_svcs, visited=None):
+            if visited is None:
+                visited = set()
+            if svc in visited:
+                return visited
+            visited.add(svc)
+            dep_cfg = all_svcs.get(svc, {}).get("depends_on", [])
+            if isinstance(dep_cfg, dict):
+                dep_cfg = list(dep_cfg.keys())
+            for d in dep_cfg:
+                if d in all_svcs:
+                    _get_all_deps(d, all_svcs, visited)
+            return visited
+
+        all_needed = set()
+        for s in selected_services:
+            all_needed.update(_get_all_deps(s, services))
+        auto_added = sorted(all_needed - set(selected_services))
+        if auto_added:
+            console.print(f"  [dim]Auto-added dependencies:[/dim] [yellow]{', '.join(auto_added)}[/yellow]")
+
+    # --- Profile ---
+    selected_profile = _select_profile()
+    if selected_profile is None:
+        raise typer.Exit(1)
+    _activate_profile(selected_profile)
+
+    # --- GPU selection (for GPU services) ---
+    # Determine which services will actually run (selected + deps)
+    if selected_services:
+        _running_svcs = set()
+        for s in selected_services:
+            _running_svcs.update(_get_all_deps(s, services))
+    else:
+        _running_svcs = set(services.keys())
+
+    gpu_flagged = [s for s in ordered if s in _running_svcs and _service_needs_gpu(services[s])]
+    gpu_spec = "T4"
+    cpu_spec = None
+    gpu_override = {}  # svc_name → bool (True=GPU, False=CPU)
+
+    if gpu_flagged:
+        console.print(f"\n[bold cyan]GPU Configuration[/bold cyan]")
+        console.print(f"[dim]Compose marks these services for GPU: {', '.join(gpu_flagged)}[/dim]")
+        console.print(f"[dim]Each GPU sandbox costs extra. Select which services truly need GPU:[/dim]")
+
+        for svc_name in gpu_flagged:
+            svc_config = services[svc_name]
+            cmd = _command_to_shell(svc_config.get("command", "")) or "(default)"
+            use_gpu = Prompt.ask(
+                f"  [cyan]{svc_name}[/cyan] ({cmd[:60]}) — GPU?",
+                choices=["y", "n"], default="y",
+            )
+            gpu_override[svc_name] = (use_gpu == "y")
+
+        actual_gpu_svcs = [s for s, v in gpu_override.items() if v]
+        if actual_gpu_svcs:
+            gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
+            gpu_idx = arrow_select(gpu_options, title="GPU", default=1)
+            gpu_spec = list(AVAILABLE_GPUS.values())[gpu_idx][0]
+            console.print(f"[green]GPU services:[/green] [bold]{', '.join(actual_gpu_svcs)}[/bold] → {gpu_spec}")
+        else:
+            console.print("[dim]No services will use GPU.[/dim]")
+    else:
+        console.print("\n[dim]No GPU services detected. All sandboxes will use CPU.[/dim]")
+
+    # --- Python version detection ---
+    python_version = "3.12"
+    if os.path.exists(os.path.join(compose_dir, "pyproject.toml")):
+        try:
+            try:
+                import tomllib
+            except ImportError:
+                import tomli as tomllib
+            with open(os.path.join(compose_dir, "pyproject.toml"), "rb") as _f:
+                _pyproj = tomllib.load(_f)
+            _req_python = _pyproj.get("project", {}).get("requires-python", "")
+            if _req_python:
+                import re as _re_py
+                _m = _re_py.search(r'(\d+\.\d+)', _req_python)
+                if _m:
+                    python_version = _m.group(1)
+                    console.print(f"[dim]Python version: {python_version} (from pyproject.toml)[/dim]")
+        except Exception:
+            pass
+
+    # --- Exclude patterns ---
+    default_excludes = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox"
+    exclude_input = Prompt.ask(
+        "[bold cyan]Exclude patterns[/bold cyan]",
+        default=default_excludes,
+    )
+    exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
+
+    # --- Detect unresolved env vars ---
+    import re as _re
+    all_raw_env = {}
+    for svc_config in services.values():
+        svc_env = _extract_env_vars(svc_config)
+        all_raw_env.update(svc_env)
+
+    unresolved_vars = set()
+    for k, v in all_raw_env.items():
+        refs = _re.findall(r'\$\{([A-Z_][A-Z_0-9]*)', str(v))
+        for ref in refs:
+            if ref not in os.environ:
+                unresolved_vars.add(ref)
+        if not v and k not in os.environ:
+            unresolved_vars.add(k)
+
+    user_env_values = {}
+    if unresolved_vars:
+        console.print(f"\n[bold cyan]Environment Variables[/bold cyan]")
+        console.print("[dim]Referenced in compose but not set locally.[/dim]")
+        for var in sorted(unresolved_vars):
+            val = Prompt.ask(f"  [cyan]{var}[/cyan]", default="")
+            if val:
+                user_env_values[var] = val
+
+    workspace_volume = _workspace_volume_name(".")
+
+    # --- Generate script ---
+    console.print("\n[bold cyan]Generating Sandbox compose script...[/bold cyan]")
+
+    script = _build_sandbox_compose_script(
+        services=services,
+        compose_dir=compose_dir,
+        exclude_patterns=exclude_patterns,
+        user_env_values=user_env_values,
+        python_version=python_version,
+        gpu_spec=gpu_spec,
+        cpu_spec=cpu_spec,
+        workspace_volume_name=workspace_volume,
+        selected_services=selected_services,
+        gpu_override=gpu_override,
+    )
+
+    # --- Summary ---
+    active_count = len(selected_services) if selected_services else len(services)
+    gpu_services = [s for s, v in gpu_override.items() if v]
+
+    console.print(Panel(
+        f"[bold]Sandbox Compose Deployment[/bold]\n\n"
+        f"  Compose file: {compose_path}\n"
+        f"  Sandboxes: {active_count} services (+ dependencies)\n"
+        f"  GPU services: {', '.join(gpu_services) if gpu_services else 'none'} → {gpu_spec}\n"
+        f"  Volume: {workspace_volume}\n\n"
+        f"[dim]Each service runs in its own isolated Sandbox.\n"
+        f"Ports are tunneled. Dependencies wait for readiness.\n"
+        f"Service hostnames in env vars are rewritten to tunnel URLs.[/dim]",
+        title="DEPLOYMENT PLAN",
+        border_style="green",
+    ))
+
+    # Sandbox mode runs as a LOCAL Python script (not modal run).
+    # Images are built locally, sandboxes created via Sandbox.create().
+    runner_file = "modal_runner.py"
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+
+    from rich.syntax import Syntax
+
+    console.print()
+    verbose = os.environ.get("MGPUX_VERBOSE", "").strip() in ("1", "true", "yes")
+    if verbose:
+        console.print(Syntax(script, "python", theme="monokai", line_numbers=True))
+
+    console.print(
+        f"[dim]Generated [bold]{runner_file}[/bold] — this runs locally and creates Sandboxes on Modal.[/dim]"
+    )
+
+    while True:
+        choice = Prompt.ask(
+            "[bold cyan][Enter][/bold cyan] run  •  [bold cyan]v[/bold cyan] view code  •  [bold cyan]c[/bold cyan] cancel",
+            default="",
+        ).strip().lower()
+        if choice in ("", "r", "run"):
+            break
+        if choice in ("c", "cancel", "q", "quit"):
+            console.print("[yellow]Cancelled.[/yellow]")
+            return
+        if choice in ("v", "view", "show"):
+            console.print(Syntax(script, "python", theme="monokai", line_numbers=True))
+            continue
+
+    console.print(f"[bold green]Starting Sandbox Compose ({active_count} services)...[/bold green]")
+    console.print("[dim]Press Ctrl+C to detach (sandboxes keep running on Modal).[/dim]")
+
+    # Save session metadata
+    session_metadata = {
+        "id": new_session_id(),
+        "kind": "compose-sandbox",
+        "profile": selected_profile,
+        "compute": gpu_spec if gpu_services else "CPU",
+        "workspace_volume": workspace_volume,
+        "local_dir": os.path.abspath(compose_dir),
+        "app_name": "m-gpux-compose-sandbox",
+        "services": list(services.keys()),
+        "mode": "sandbox",
+        "state": "running",
+    }
+    from m_gpux.core.state import save_session
+    saved = save_session(session_metadata)
+    console.print(
+        f"[green]Tracked session:[/green] [bold]{saved['id']}[/bold] "
+        f"([cyan]m-gpux-compose-sandbox[/cyan])"
+    )
+
+    # Run locally with python (NOT modal run)
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    try:
+        result = subprocess.run(["python", runner_file], env=env)
+    except KeyboardInterrupt:
+        console.print("\n[green]Detached. Sandboxes keep running on Modal.[/green]")
+        console.print("[dim]Use `m-gpux compose sandbox ps` to check status.[/dim]")
+        console.print("[dim]Use `m-gpux compose sandbox down` to stop all.[/dim]")
+
+    # Cleanup
+    del_choice = Prompt.ask(
+        f"[bold cyan]Delete {runner_file}?[/bold cyan]",
+        choices=["y", "n"], default="y",
+    )
+    if del_choice.lower() == "y":
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
+
+
+def compose_sandbox_exec(
+    service: str = typer.Argument(..., help="Service name to exec into"),
+    command: str = typer.Argument("bash", help="Command to run"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to docker-compose.yml"),
+):
+    """
+    Execute a command in a running Sandbox service.
+
+    Similar to `docker compose exec`, this runs a command inside
+    a running Sandbox container.
+
+    Examples:
+        m-gpux compose sandbox exec redis redis-cli
+        m-gpux compose sandbox exec prod bash
+    """
+    console.print(f"[cyan]Looking for sandbox: compose-{service}[/cyan]")
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    # Find the sandbox by listing all sandboxes for the app
+    script = f'''
+import modal
+
+sb_app = modal.App.lookup("m-gpux-compose-sandbox")
+try:
+    sb = modal.Sandbox.from_name("m-gpux-compose-sandbox", "compose-{service}")
+    print(f"Found sandbox: {{sb.object_id}}")
+    p = sb.exec("{command}", timeout=3600, pty=True)
+    for line in p.stdout:
+        print(line, end="")
+    p.wait()
+    print(f"\\nExit code: {{p.returncode}}")
+except modal.exception.NotFoundError:
+    print(f"ERROR: No running sandbox found for service '{service}'")
+    print("Make sure the compose stack is running: m-gpux compose sandbox up")
+'''
+
+    runner_file = "modal_sandbox_exec.py"
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+
+    try:
+        subprocess.run(["python", runner_file], env=env)
+    finally:
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
+
+
+def compose_sandbox_logs(
+    service: str = typer.Argument(None, help="Service name (omit for all)"),
+):
+    """
+    Stream logs from a running Sandbox service.
+
+    Examples:
+        m-gpux compose sandbox logs
+        m-gpux compose sandbox logs redis
+    """
+    script = f'''
+import modal
+import threading
+
+sb_app = modal.App.lookup("m-gpux-compose-sandbox")
+
+def _stream(name, sb):
+    try:
+        for line in sb.stdout:
+            print(f"[{{name}}] {{line}}", end="")
+    except Exception:
+        pass
+
+target_service = {repr(service)}
+
+for sb in modal.Sandbox.list(app_id=sb_app.app_id):
+    tags = sb.get_tags()
+    # Sandboxes created with name= are findable
+    if sb.poll() is not None:
+        continue
+    # We use naming convention compose-<service>
+    if target_service:
+        try:
+            named_sb = modal.Sandbox.from_name("m-gpux-compose-sandbox", f"compose-{{target_service}}")
+            t = threading.Thread(target=_stream, args=(target_service, named_sb), daemon=True)
+            t.start()
+            t.join()
+        except modal.exception.NotFoundError:
+            print(f"No running sandbox found for service '{{target_service}}'")
+        break
+
+if not target_service:
+    print("Streaming logs from all services...")
+    print("(Use Ctrl+C to stop)")
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\\nStopped.")
+'''
+
+    runner_file = "modal_sandbox_logs.py"
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    try:
+        subprocess.run(["python", runner_file], env=env)
+    finally:
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
+
+
+def compose_sandbox_ps(
+):
+    """
+    List running Sandbox services and their status.
+
+    Shows sandbox ID, status, ports, and tunnel URLs for each service.
+    Similar to `docker compose ps`.
+    """
+    script = '''
+import modal
+
+try:
+    sb_app = modal.App.lookup("m-gpux-compose-sandbox")
+except modal.exception.NotFoundError:
+    print("No compose-sandbox app found. Run `m-gpux compose sandbox up` first.")
+    exit(1)
+
+print(f"{'Service':<20} {'Status':<12} {'Sandbox ID':<30} {'Tunnels'}")
+print("-" * 90)
+
+found = False
+for sb in modal.Sandbox.list(app_id=sb_app.app_id):
+    found = True
+    rc = sb.poll()
+    status = "running" if rc is None else f"exited({rc})"
+    try:
+        tunnels = sb.tunnels(timeout=5) if rc is None else {}
+        tunnel_str = ", ".join(f"{p}→{t.url}" for p, t in tunnels.items()) if tunnels else "-"
+    except Exception:
+        tunnel_str = "-"
+    print(f"{'?':<20} {status:<12} {sb.object_id:<30} {tunnel_str}")
+
+if not found:
+    print("No sandboxes running.")
+'''
+
+    runner_file = "modal_sandbox_ps.py"
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    try:
+        subprocess.run(["python", runner_file], env=env)
+    finally:
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
+
+
+def compose_sandbox_down(
+):
+    """
+    Stop and terminate all Sandbox services.
+
+    Terminates all running sandboxes in the compose-sandbox app.
+    Similar to `docker compose down`.
+    """
+    console.print("[bold cyan]Stopping all compose sandboxes...[/bold cyan]")
+
+    script = '''
+import modal
+
+try:
+    sb_app = modal.App.lookup("m-gpux-compose-sandbox")
+except modal.exception.NotFoundError:
+    print("No compose-sandbox app found.")
+    exit(0)
+
+count = 0
+for sb in modal.Sandbox.list(app_id=sb_app.app_id):
+    if sb.poll() is None:
+        print(f"Terminating {sb.object_id}...")
+        sb.terminate()
+        count += 1
+    sb.detach()
+
+print(f"\\nTerminated {count} sandbox(es).")
+'''
+
+    runner_file = "modal_sandbox_down.py"
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    try:
+        subprocess.run(["python", runner_file], env=env)
+    finally:
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
+
+    console.print("[bold green]Done.[/bold green]")
+
+
 # ─── Plugin registration ──────────────────────────────────────
 from m_gpux.core.plugin import PluginBase as _PluginBase
 
 
 class ComposePlugin(_PluginBase):
     name = "compose"
-    help = "Deploy Docker Compose stacks on Modal — single-container or full VM mode."
+    help = "Deploy Docker Compose stacks on Modal — subprocess, VM, or sandbox mode."
     rich_help_panel = "Compute Engine"
 
     def register(self, root_app):
@@ -2414,5 +4082,19 @@ class ComposePlugin(_PluginBase):
         vm_app.command("up", help="Provision Modal GPU container & deploy compose stack")(compose_vm_up)
         vm_app.command("check", help="Analyze compose file for VM deployment")(compose_vm_check)
 
+        # Sandbox sub-commands — true multi-container isolation
+        sandbox_app = typer.Typer(
+            name="sandbox",
+            help="Deploy compose stacks as isolated Modal Sandboxes (true multi-container).",
+            no_args_is_help=True,
+        )
+        sandbox_app.command("up", help="Deploy each service as an isolated Sandbox")(compose_sandbox_up)
+        sandbox_app.command("check", help="Analyze compose file for Sandbox deployment")(compose_sandbox_check)
+        sandbox_app.command("down", help="Stop and terminate all Sandbox services")(compose_sandbox_down)
+        sandbox_app.command("ps", help="List running Sandbox services")(compose_sandbox_ps)
+        sandbox_app.command("exec", help="Execute a command in a running Sandbox")(compose_sandbox_exec)
+        sandbox_app.command("logs", help="Stream logs from Sandbox services")(compose_sandbox_logs)
+
         compose_app.add_typer(vm_app)
+        compose_app.add_typer(sandbox_app)
         root_app.add_typer(compose_app, rich_help_panel=self.rich_help_panel)

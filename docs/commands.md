@@ -220,8 +220,9 @@ The hub is a step-by-step wizard:
 | 1. Profile | Select which Modal profile to use if multiple exist |
 | 2. GPU | Pick from the available Modal GPU types |
 | 3. Action | Choose Jupyter Lab, Run Python script, Web Bash shell, or vLLM Inference |
-| 4. Review | The generated `modal_runner.py` is shown for inspection |
-| 5. Launch | Press Enter to execute, or edit the script first |
+| 4. Python | Choose Python 3.10, 3.11, 3.12, 3.13, 3.14, or enter a custom Modal-supported version |
+| 5. Review | The generated `modal_runner.py` is shown for inspection |
+| 6. Launch | Press Enter to execute, or edit the script first |
 
 ### Hub actions
 

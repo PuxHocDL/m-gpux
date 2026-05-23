@@ -105,6 +105,33 @@ AVAILABLE_CPUS = {
     "7":  (64,  32768,  "64 cores, 32 GB — max performance"),
 }
 
+AVAILABLE_PYTHON_VERSIONS = [
+    ("3.12", "Default, broadly compatible"),
+    ("3.11", "Stable for older ML packages"),
+    ("3.10", "Minimum supported by m-gpux"),
+    ("3.13", "Newer runtime, package support may vary"),
+    ("3.14", "Latest runtime, package support may vary"),
+    ("Custom", "Type a Modal-supported Python version"),
+]
+
+
+def _select_python_version() -> str:
+    console.print("\n[bold cyan]Step 3: Choose Python Version[/bold cyan]")
+    choice_idx = arrow_select(AVAILABLE_PYTHON_VERSIONS, title="Python Version", default=0)
+    selected = AVAILABLE_PYTHON_VERSIONS[choice_idx][0]
+    if selected != "Custom":
+        console.print(f"[green]Python version: [bold]{selected}[/bold][/green]")
+        return selected
+
+    while True:
+        custom = Prompt.ask("Enter Python version", default="3.12").strip()
+        if custom and custom.count(".") == 1:
+            major, minor = custom.split(".", 1)
+            if major.isdigit() and minor.isdigit():
+                console.print(f"[green]Python version: [bold]{custom}[/bold][/green]")
+                return custom
+        console.print("[bold red]Please enter a version like 3.12 or 3.13.[/bold red]")
+
 JUPYTER_SCRIPT = """
 import modal
 import os
@@ -117,7 +144,7 @@ import time
 app = modal.App("m-gpux-jupyter")
 workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
-    modal.Image.debian_slim()
+    modal.Image.debian_slim(python_version="{python_version}")
     {pip_section}
     .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets")
     .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
@@ -191,7 +218,7 @@ import sys
 
 app = modal.App("m-gpux-runner")
 
-image = modal.Image.debian_slim(){pip_section}.add_local_dir(
+image = modal.Image.debian_slim(python_version="{python_version}"){pip_section}.add_local_dir(
     "{local_dir}", remote_path="/workspace", ignore={exclude_patterns}
 )
 
@@ -435,6 +462,7 @@ def _session_metadata(
     kind: str,
     profile: str,
     compute_label: str,
+    python_version: str,
     workspace_volume: str,
     local_dir: str,
     app_name: str,
@@ -445,6 +473,7 @@ def _session_metadata(
         "kind": kind,
         "profile": profile,
         "compute": compute_label,
+        "python_version": python_version,
         "workspace_volume": workspace_volume,
         "local_dir": os.path.abspath(local_dir),
         "app_name": app_name,
@@ -458,6 +487,7 @@ def _maybe_save_workload_preset(
     profile: str,
     compute_spec: str,
     compute_label: str,
+    python_version: str,
     pip_section: str,
     exclude_patterns: list[str],
 ) -> Optional[str]:
@@ -476,6 +506,7 @@ def _maybe_save_workload_preset(
             "profile": profile,
             "compute_spec": compute_spec,
             "compute_label": compute_label,
+            "python_version": python_version,
             "pip_section": pip_section,
             "exclude_patterns": exclude_patterns,
         },
@@ -496,7 +527,7 @@ import time
 app = modal.App("m-gpux-interactive")
 workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
-    modal.Image.debian_slim()
+    modal.Image.debian_slim(python_version="{python_version}")
     .apt_install(
         "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
         "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
@@ -569,7 +600,7 @@ app = modal.App("m-gpux-vllm")
 MODEL_NAME = "{model_name}"
 
 vllm_image = (
-    modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="3.12")
+    modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="{python_version}")
     .entrypoint([])
     .pip_install("vllm", "transformers", "hf-transfer")
     .env({{"HF_HUB_ENABLE_HF_TRANSFER": "1"}})
@@ -620,7 +651,7 @@ import time
 app = modal.App("m-gpux-shell")
 workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missing=True)
 image = (
-    modal.Image.debian_slim()
+    modal.Image.debian_slim(python_version="{python_version}")
     .apt_install(
         "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
         "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
@@ -745,10 +776,11 @@ def hub_main():
     ]
     action_idx = arrow_select(action_options, title="Select Action", default=0)
     action_choice = str(action_idx + 1)
+    python_version = _select_python_version()
     
     if action_choice == "1":
         # --- Environment Setup ---
-        console.print("\n[bold cyan]Step 3: Environment Setup[/bold cyan]")
+        console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
@@ -772,7 +804,7 @@ def hub_main():
                     console.print(f"[bold red]File {req_input} not found. Using default packages.[/bold red]")
 
         # --- File upload config ---
-        console.print("\n[bold cyan]Step 4: Configure File Upload[/bold cyan]")
+        console.print("\n[bold cyan]Step 5: Configure File Upload[/bold cyan]")
         console.print("[dim]Files and directories in current workspace:[/dim]")
         entries = sorted(os.listdir("."))
         for entry in entries:
@@ -802,11 +834,13 @@ def hub_main():
             profile=selected_profile,
             compute_spec=compute_spec,
             compute_label=compute_label,
+            python_version=python_version,
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
         script = (JUPYTER_SCRIPT
             .replace("{compute_spec}", compute_spec)
+            .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -819,6 +853,7 @@ def hub_main():
                 kind="jupyter",
                 profile=selected_profile,
                 compute_label=compute_label,
+                python_version=python_version,
                 workspace_volume=workspace_volume,
                 local_dir=".",
                 app_name="m-gpux-jupyter",
@@ -838,8 +873,8 @@ def hub_main():
             script_content = rf.read()
         console.print(f"[dim]Loaded {script_path} ({len(script_content)} chars).[/dim]")
         
-        # --- Step 3: requirements.txt support ---
-        console.print("\n[bold cyan]Step 3: Environment Setup[/bold cyan]")
+        # --- Step 4: requirements.txt support ---
+        console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
@@ -862,8 +897,8 @@ def hub_main():
                 else:
                     console.print(f"[bold red]File {req_input} not found. Using default packages.[/bold red]")
         
-        # --- Step 4: File upload selection ---
-        console.print("\n[bold cyan]Step 4: Configure File Upload[/bold cyan]")
+        # --- Step 5: File upload selection ---
+        console.print("\n[bold cyan]Step 5: Configure File Upload[/bold cyan]")
         console.print("[dim]Files and directories in current workspace:[/dim]")
         
         entries = sorted(os.listdir("."))
@@ -887,7 +922,7 @@ def hub_main():
         )
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
         
-        # --- Step 5: Detect interactive input() calls ---
+        # --- Step 6: Detect interactive input() calls ---
         import re as _re
         input_matches = _re.findall(r'input\s*\(', script_content)
         
@@ -911,6 +946,7 @@ def hub_main():
                 script = (INTERACTIVE_SCRIPT
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
+                    .replace("{python_version}", python_version)
                     .replace("{local_dir}", local_dir_escaped)
                     .replace("{workspace_volume}", workspace_volume)
                     .replace("{script_name}", base_script_name)
@@ -925,6 +961,7 @@ def hub_main():
                     profile=selected_profile,
                     compute_spec=compute_spec,
                     compute_label=compute_label,
+                    python_version=python_version,
                     pip_section=pip_section,
                     exclude_patterns=exclude_patterns,
                 )
@@ -936,6 +973,7 @@ def hub_main():
                         kind="interactive",
                         profile=selected_profile,
                         compute_label=compute_label,
+                        python_version=python_version,
                         workspace_volume=workspace_volume,
                         local_dir=".",
                         app_name="m-gpux-interactive",
@@ -952,6 +990,8 @@ def hub_main():
                 stdin_input_repr = repr("\n".join(responses) + "\n")
                 script = (WRAPPER_SCRIPT
                     .replace("{compute_spec}", compute_spec)
+                    .replace("{compute_label}", compute_label)
+                    .replace("{python_version}", python_version)
                     .replace("{local_dir}", local_dir_escaped)
                     .replace("{script_name}", base_script_name)
                     .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -964,6 +1004,7 @@ def hub_main():
         script = (WRAPPER_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{compute_label}", compute_label)
+            .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{script_name}", base_script_name)
             .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -973,7 +1014,7 @@ def hub_main():
         
     elif action_choice == "3":
         # --- Environment Setup ---
-        console.print("\n[bold cyan]Step 3: Environment Setup[/bold cyan]")
+        console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
@@ -997,7 +1038,7 @@ def hub_main():
                     console.print(f"[bold red]File {req_input} not found. Using default packages.[/bold red]")
 
         # --- File upload config ---
-        console.print("\n[bold cyan]Step 4: Configure File Upload[/bold cyan]")
+        console.print("\n[bold cyan]Step 5: Configure File Upload[/bold cyan]")
         console.print("[dim]Files and directories in current workspace:[/dim]")
         entries = sorted(os.listdir("."))
         for entry in entries:
@@ -1027,11 +1068,13 @@ def hub_main():
             profile=selected_profile,
             compute_spec=compute_spec,
             compute_label=compute_label,
+            python_version=python_version,
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
         script = (BASH_SCRIPT
             .replace("{compute_spec}", compute_spec)
+            .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -1048,6 +1091,7 @@ def hub_main():
                 kind="bash",
                 profile=selected_profile,
                 compute_label=compute_label,
+                python_version=python_version,
                 workspace_volume=workspace_volume,
                 local_dir=".",
                 app_name="m-gpux-shell",
@@ -1069,6 +1113,7 @@ def hub_main():
         
         script = (VLLM_SCRIPT
             .replace("{compute_spec}", compute_spec)
+            .replace("{python_version}", python_version)
             .replace("{model_name}", selected_model))
         
         console.print(Panel(

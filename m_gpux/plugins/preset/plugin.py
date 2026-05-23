@@ -36,6 +36,7 @@ def _script_from_preset(preset: dict, local_dir: str) -> tuple[str, str, str]:
     action = str(preset.get("action", "bash"))
     compute_spec = str(preset.get("compute_spec", 'cpu=4, memory=2048'))
     compute_label = str(preset.get("compute_label", "CPU"))
+    python_version = str(preset.get("python_version", "3.12"))
     pip_section = str(preset.get("pip_section", ""))
     exclude_patterns = list(preset.get("exclude_patterns", []))
     local_dir_escaped = os.path.abspath(local_dir).replace("\\", "/")
@@ -50,6 +51,7 @@ def _script_from_preset(preset: dict, local_dir: str) -> tuple[str, str, str]:
 
     script = (
         template.replace("{compute_spec}", compute_spec)
+        .replace("{python_version}", python_version)
         .replace("{local_dir}", local_dir_escaped)
         .replace("{workspace_volume}", workspace_volume)
         .replace("{exclude_patterns}", repr(exclude_patterns))
@@ -73,6 +75,7 @@ def run_preset_by_name(name: str, *, kind: str | None = None) -> None:
     local_dir = "."
     script, workspace_volume, app_name = _script_from_preset(preset, local_dir)
     compute_label = str(preset.get("compute_label", "compute"))
+    python_version = str(preset.get("python_version", "3.12"))
     action = str(preset.get("action", "bash"))
     execute_modal_temp_script(
         script,
@@ -82,6 +85,7 @@ def run_preset_by_name(name: str, *, kind: str | None = None) -> None:
             kind=kind or action,
             profile=str(profile or ""),
             compute_label=compute_label,
+            python_version=python_version,
             workspace_volume=workspace_volume,
             local_dir=local_dir,
             app_name=app_name,
@@ -175,6 +179,7 @@ def create_command() -> None:
             "profile": profile,
             "compute_spec": compute_spec,
             "compute_label": compute_label,
+            "python_version": "3.12",
             "pip_section": pip_section,
             "exclude_patterns": [p.strip() for p in excludes.split(",") if p.strip()],
         },

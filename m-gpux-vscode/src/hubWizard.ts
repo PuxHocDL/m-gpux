@@ -29,6 +29,15 @@ const AVAILABLE_GPUS: GpuOption[] = [
   { id: "B200+", label: "B200+", description: "B200 priority / reserved" },
 ];
 
+const PYTHON_VERSIONS = [
+  { label: "3.12", description: "Default, broadly compatible" },
+  { label: "3.11", description: "Stable for older ML packages" },
+  { label: "3.10", description: "Minimum supported by m-gpux" },
+  { label: "3.13", description: "Newer runtime, package support may vary" },
+  { label: "3.14", description: "Latest runtime, package support may vary" },
+  { label: "Custom", description: "Type a Modal-supported Python version" },
+];
+
 // ---------------------------------------------------------------------------
 // Script templates (mirrors hub.py)
 // ---------------------------------------------------------------------------
@@ -139,7 +148,7 @@ const STABLE_TTYD_FLAGS = [
   "-T", "xterm-256color",
 ];
 
-function jupyterScript(gpu: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
+function jupyterScript(gpu: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
@@ -151,7 +160,7 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-jupyter")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim()${pipSection}.pip_install("jupyterlab").add_local_dir(
+image = modal.Image.debian_slim(python_version="${pythonVersion}")${pipSection}.pip_install("jupyterlab").add_local_dir(
     "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
 )
 
@@ -198,7 +207,7 @@ def run_jupyter():
 `;
 }
 
-function pythonScript(gpu: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
+function pythonScript(gpu: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
   return `import modal
 import subprocess
 import sys
@@ -206,7 +215,7 @@ import sys
 ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-runner")
-image = modal.Image.debian_slim()${pipSection}.add_local_dir(
+image = modal.Image.debian_slim(python_version="${pythonVersion}")${pipSection}.add_local_dir(
     "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(excludePatterns)}
 )
 
@@ -222,7 +231,7 @@ def run_script():
 `;
 }
 
-function bashScript(gpu: string, localDir: string, excludePatterns: string[]): string {
+function bashScript(gpu: string, pythonVersion: string, localDir: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import os
@@ -234,7 +243,7 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-shell")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_commands(
+image = modal.Image.debian_slim(python_version="${pythonVersion}").apt_install("bash", "curl", "tmux").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
     "chmod +x /usr/local/bin/ttyd"
 ).pip_install("torch").add_local_dir(
@@ -283,7 +292,7 @@ def run_shell():
 `;
 }
 
-function vllmScript(gpu: string, modelName: string): string {
+function vllmScript(gpu: string, pythonVersion: string, modelName: string): string {
   return `import modal
 import subprocess
 
@@ -294,7 +303,7 @@ app = modal.App("m-gpux-vllm")
 MODEL_NAME = "${modelName}"
 
 vllm_image = (
-    modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="3.12")
+    modal.Image.from_registry("nvidia/cuda:12.9.1-devel-ubuntu22.04", add_python="${pythonVersion}")
     .entrypoint([])
     .pip_install("vllm", "transformers", "hf-transfer")
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
@@ -331,7 +340,7 @@ def serve():
 `;
 }
 
-function interactiveScript(gpu: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
+function interactiveScript(gpu: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
@@ -343,7 +352,7 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-interactive")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim().apt_install("bash", "curl", "tmux").run_commands(
+image = modal.Image.debian_slim(python_version="${pythonVersion}").apt_install("bash", "curl", "tmux").run_commands(
     "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
     "chmod +x /usr/local/bin/ttyd"
 )${pipSection}.add_local_dir(
@@ -440,7 +449,7 @@ export async function runHubWizard(): Promise<void> {
     selectedProfileName = profiles[0].name;
   } else {
     const profilePick = await vscode.window.showQuickPick(profileItems, {
-      title: "M-GPUX Hub — Step 1/4: Select Workspace",
+      title: "M-GPUX Hub — Step 1/5: Select Workspace",
       placeHolder: "Choose a Modal profile or AUTO for smart selection",
     });
     if (!profilePick) { return; }
@@ -470,7 +479,7 @@ export async function runHubWizard(): Promise<void> {
       id: g.id,
     })),
     {
-      title: "M-GPUX Hub — Step 2/4: Choose GPU",
+      title: "M-GPUX Hub — Step 2/5: Choose GPU",
       placeHolder: "Select an NVIDIA GPU accelerator",
     }
   );
@@ -502,12 +511,16 @@ export async function runHubWizard(): Promise<void> {
       },
     ],
     {
-      title: "M-GPUX Hub — Step 3/4: Choose Application",
+      title: "M-GPUX Hub — Step 3/5: Choose Application",
       placeHolder: "What do you want to run on the GPU?",
     }
   );
   if (!actionPick) { return; }
   const action = (actionPick as any).action as string;
+
+  // Step 3: Select Python version
+  const pythonVersion = await pickPythonVersion();
+  if (!pythonVersion) { return; }
 
   // Get workspace directory
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -531,7 +544,7 @@ export async function runHubWizard(): Promise<void> {
       const pipSection = await askPipSection(localDir);
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = jupyterScript(selectedGpu, localDir, pipSection, excludes);
+      scriptContent = jupyterScript(selectedGpu, pythonVersion, localDir, pipSection, excludes);
       detach = true;
       break;
     }
@@ -541,20 +554,20 @@ export async function runHubWizard(): Promise<void> {
       const pipSection = await askPipSection(localDir);
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = pythonScript(selectedGpu, localDir, pyFile, pipSection, excludes);
+      scriptContent = pythonScript(selectedGpu, pythonVersion, localDir, pyFile, pipSection, excludes);
       break;
     }
     case "bash": {
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = bashScript(selectedGpu, localDir, excludes);
+      scriptContent = bashScript(selectedGpu, pythonVersion, localDir, excludes);
       detach = true;
       break;
     }
     case "vllm": {
       const model = await pickVllmModel();
       if (!model) { return; }
-      scriptContent = vllmScript(selectedGpu, model);
+      scriptContent = vllmScript(selectedGpu, pythonVersion, model);
       detach = true;
       break;
     }
@@ -562,13 +575,34 @@ export async function runHubWizard(): Promise<void> {
       return;
   }
 
-  // Step 4: Show generated script and execute
+  // Step 5: Show generated script and execute
   await showAndExecuteScript(scriptContent, selectedGpu, action, detach, localDir);
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+async function pickPythonVersion(): Promise<string | undefined> {
+  const pick = await vscode.window.showQuickPick(PYTHON_VERSIONS, {
+    title: "M-GPUX Hub — Step 4/5: Choose Python Version",
+    placeHolder: "Select the Python runtime for the Modal image",
+  });
+  if (!pick) { return undefined; }
+  if (pick.label !== "Custom") {
+    return pick.label;
+  }
+
+  const custom = await vscode.window.showInputBox({
+    title: "Custom Python version",
+    value: "3.12",
+    prompt: "Enter a Modal-supported Python version, for example 3.12 or 3.13",
+    validateInput: (value) => /^\d+\.\d+$/.test(value.trim())
+      ? undefined
+      : "Use a version like 3.12 or 3.13",
+  });
+  return custom?.trim();
+}
 
 async function askPipSection(localDir: string): Promise<string> {
   const reqPath = path.join(localDir, "requirements.txt");
