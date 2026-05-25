@@ -306,7 +306,7 @@ if [ -z "$M_GPUX_WELCOMED" ] && [ -t 1 ]; then
     _cpu=$(grep -c ^processor /proc/cpuinfo 2>/dev/null)
     _mem=$(awk '/MemTotal/ {printf "%.1f GiB", $2/1024/1024}' /proc/meminfo 2>/dev/null)
     printf "CPU: %s cores   RAM: %s   WD: /workspace\n" "${_cpu:-?}" "${_mem:-?}"
-    printf "${_DIM}Tools: ll, py, gpus, rg, fd, top. Run tmux manually if you want sessions.${_R}\n\n"
+    printf "${_DIM}Tools: ll, py, gpus, rg, fd, top.  Inside tmux 'main' — Ctrl+B then D detaches; close & reopen URL to reattach.${_R}\n\n"
 fi
 '''
 
@@ -580,10 +580,11 @@ def run_interactive():
         print("\\n[INTERACTIVE TERMINAL READY]")
         print("URL: " + tunnel.url)
         print("Workspace: /workspace   Run: python {script_name}")
+        print("Session: tmux 'main' (close & reopen URL to reattach running jobs)")
         print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
         print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
         proc = subprocess.Popen(
-            ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "--login"],
+            ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
             env=env,
         )
         proc.wait()
@@ -703,11 +704,12 @@ def run_shell():
     with modal.forward(port) as tunnel:
         print("\\n[WEB SHELL READY]")
         print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: direct bash")
+        print("Workspace: /workspace   Mode: tmux session 'main'")
+        print("Close & reopen the URL to reattach — running jobs keep running.")
         print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
         print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
         proc = subprocess.Popen(
-            ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "--login"],
+            ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
             env=env,
         )
         proc.wait()

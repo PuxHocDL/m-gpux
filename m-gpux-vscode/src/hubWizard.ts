@@ -84,7 +84,12 @@ def _monitor_metrics(interval=30):
     t.start()
 `;
 
+// `$` helper: TypeScript template literals interpret `${...}` as interpolation.
+// Use `${D}{foo}` to emit a literal `${foo}` into the bashrc (for bash parameter expansion).
+const D = "$";
+
 const WEB_TERMINAL_BASHRC = String.raw`
+# ---------- env ----------
 export TERM=xterm-256color
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
@@ -93,33 +98,99 @@ export HISTSIZE=50000
 export HISTFILESIZE=100000
 export HISTCONTROL=ignoreboth:erasedups
 shopt -s histappend checkwinsize globstar 2>/dev/null
-export PS1='\[\e[1;36m\]\w\[\e[0m\] \[\e[1;32m\]\$\[\e[0m\] '
+
+# ---------- color ----------
+export CLICOLOR=1
+export LESS="-R"
+export GREP_COLORS="mt=01;38;5;214"
+
+# ---------- aliases ----------
 alias ll='ls -lah --color=auto --group-directories-first'
 alias la='ls -A --color=auto'
 alias l='ls -CF --color=auto'
-alias py='python'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
 alias gpus='nvidia-smi'
+alias g='git'
+alias gs='git status'
+alias gl='git log --oneline --graph --decorate -20'
+alias py='python'
+alias ipy='ipython'
+alias venv='python -m venv .venv && source .venv/bin/activate'
+command -v batcat >/dev/null && alias cat='batcat --paging=never --style=plain' && alias bat='batcat'
+command -v fdfind >/dev/null && alias fd='fdfind'
+command -v btop  >/dev/null && alias top='btop'
+alias df='df -h'
+alias du='du -h'
+alias free='free -h'
+alias mkdir='mkdir -pv'
+
+# ---------- fzf ----------
+[ -f /usr/share/doc/fzf/examples/key-bindings.bash ] && source /usr/share/doc/fzf/examples/key-bindings.bash
+[ -f /usr/share/doc/fzf/examples/completion.bash ]   && source /usr/share/doc/fzf/examples/completion.bash
+export FZF_DEFAULT_OPTS="--height 40% --layout=reverse --border --color=bg+:#313244,bg:#1e1e2e,spinner:#f5e0dc,hl:#f38ba8,fg:#cdd6f4,header:#f38ba8,info:#cba6f7,pointer:#f5e0dc,marker:#f5e0dc,fg+:#cdd6f4,prompt:#cba6f7,hl+:#f38ba8"
+command -v fdfind >/dev/null && export FZF_DEFAULT_COMMAND='fdfind --type f --hidden --exclude .git'
+
+# ---------- prompt ----------
+export PS1='\[\e[1;36m\]\w\[\e[0m\] \[\e[1;32m\]\$\[\e[0m\] '
+
 cd /workspace 2>/dev/null || true
+
+# ---------- welcome banner ----------
 if [ -z "$M_GPUX_WELCOMED" ] && [ -t 1 ]; then
-  export M_GPUX_WELCOMED=1
-  printf "\n\033[1mM-GPUX Web Terminal\033[0m\n"
-  printf "Tools: ll, py, gpus, rg, fd, top. Run tmux manually if you want sessions.\n\n"
+    export M_GPUX_WELCOMED=1
+    _GREEN='\033[38;5;150m'; _DIM='\033[2m'; _BOLD='\033[1m'; _R='\033[0m'
+    printf "\n${D}{_BOLD}M-GPUX Web Terminal${D}{_R}\n"
+    if command -v nvidia-smi >/dev/null 2>&1; then
+        _gpu=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | sed 's/, / - /;s/$/ MiB/')
+        [ -n "$_gpu" ] && printf "GPU: %s\n" "$_gpu"
+    fi
+    _cpu=$(grep -c ^processor /proc/cpuinfo 2>/dev/null)
+    _mem=$(awk '/MemTotal/ {printf "%.1f GiB", $2/1024/1024}' /proc/meminfo 2>/dev/null)
+    printf "CPU: %s cores   RAM: %s   WD: /workspace\n" "${D}{_cpu:-?}" "${D}{_mem:-?}"
+    printf "${D}{_DIM}Tools: ll, py, gpus, rg, fd, top.  Inside tmux 'main' — Ctrl+B then D detaches; close & reopen URL to reattach.${D}{_R}\n\n"
 fi
 `;
 
 const WEB_TERMINAL_TMUX_CONF = String.raw`
 set -g default-terminal "xterm-256color"
+set -ga terminal-overrides ",xterm-256color:Tc"
+set -as terminal-features ",xterm-256color:RGB"
 set -g mouse on
 set -g history-limit 200000
 set -g status off
 setw -g mode-keys vi
-set -sg escape-time 10
+set -sg escape-time 0
 set -g base-index 1
 setw -g pane-base-index 1
 set -g renumber-windows on
-set -g aggressive-resize on
+set -g focus-events on
+
+# --- Smooth scrolling ---
+bind -n WheelUpPane   if-shell -F "#{alternate_on}" "send-keys -M" "select-pane -t=; copy-mode -e; send-keys -M"
+bind -n WheelDownPane if-shell -F "#{alternate_on}" "send-keys -M" "select-pane -t=; send-keys -M"
+bind -T copy-mode-vi WheelUpPane   send-keys -X -N 3 scroll-up
+bind -T copy-mode-vi WheelDownPane send-keys -X -N 3 scroll-down
+
+# nicer splits
 bind | split-window -h -c "#{pane_current_path}"
 bind - split-window -v -c "#{pane_current_path}"
+bind r source-file ~/.tmux.conf \; display "reloaded"
+
+# --- Catppuccin Mocha ---
+set -g status-position bottom
+set -g status-justify left
+set -g status-style "bg=#1e1e2e fg=#cdd6f4"
+set -g status-left-length 60
+set -g status-right-length 120
+set -g status-left "#[bg=#cba6f7,fg=#1e1e2e,bold] m-gpux #[bg=#313244,fg=#cba6f7] #S #[bg=#1e1e2e,fg=#313244] "
+set -g status-right "#[fg=#313244]#[bg=#313244,fg=#fab387] #(awk '{printf \"%.2f\", $1}' /proc/loadavg) #[bg=#313244,fg=#a6e3a1]#[bg=#a6e3a1,fg=#1e1e2e,bold] %H:%M "
+setw -g window-status-format "#[fg=#6c7086] #I:#W "
+setw -g window-status-current-format "#[bg=#cba6f7,fg=#1e1e2e,bold] #I:#W #[bg=#1e1e2e,fg=#cba6f7]"
+set -g pane-border-style "fg=#313244"
+set -g pane-active-border-style "fg=#cba6f7"
+set -g message-style "bg=#cba6f7,fg=#1e1e2e,bold"
 `;
 
 const STABLE_TTYD_FLAGS = [
@@ -160,8 +231,11 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-jupyter")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim(python_version="${pythonVersion}")${pipSection}.pip_install("jupyterlab").add_local_dir(
-    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
+image = (
+    modal.Image.debian_slim(python_version="${pythonVersion}")
+    ${pipSection}
+    .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets")
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
 def _prepare_workspace():
@@ -185,25 +259,40 @@ def run_jupyter():
     _print_metrics()
     _prepare_workspace()
     _start_workspace_autocommit()
-    _monitor_metrics()
+    # NOTE: background metrics monitor disabled — it floods tunnelled stdout
+    # every 30s and makes JupyterLab feel laggy.
     jupyter_port = 8888
     with modal.forward(jupyter_port) as tunnel:
-        print(f"\\n=======================================================")
-        print(f"[JUPYTER READY] Connect via this URL: {tunnel.url}")
-        print(f"  Workspace files mounted at: /workspace")
-        print(f"  Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
-        print(f"  Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace")
-        print(f"=======================================================\\n")
-        subprocess.Popen([
-            "jupyter", "lab", "--no-browser", "--allow-root",
-            "--ip=0.0.0.0", "--port", str(jupyter_port),
-            "--NotebookApp.token=''", "--NotebookApp.password=''",
-            "--ServerApp.disable_check_xsrf=True",
-            "--ServerApp.allow_origin='*'",
-            "--ServerApp.allow_remote_access=True",
-            "--ServerApp.root_dir=/workspace",
-        ])
-        time.sleep(86400)
+        print("\\n=======================================================")
+        print(f"[JUPYTER READY] {tunnel.url}")
+        print("  Workspace mounted at: /workspace")
+        print("  Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
+        print("  Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace")
+        print("=======================================================\\n", flush=True)
+        proc = subprocess.Popen(
+            [
+                "jupyter", "lab",
+                "--no-browser",
+                "--allow-root",
+                "--ip=0.0.0.0",
+                "--port", str(jupyter_port),
+                "--ServerApp.token=",
+                "--ServerApp.password=",
+                "--ServerApp.disable_check_xsrf=True",
+                "--ServerApp.allow_origin=*",
+                "--ServerApp.allow_remote_access=True",
+                "--ServerApp.root_dir=/workspace",
+                # Lag fixes: lift iopub data/msg rate limits so big stdout does
+                # not get throttled, and stop polling for inactive shutdowns.
+                "--ServerApp.iopub_data_rate_limit=1.0e10",
+                "--ServerApp.iopub_msg_rate_limit=1.0e10",
+                "--ServerApp.rate_limit_window=3.0",
+                "--ServerApp.shutdown_no_activity_timeout=0",
+                "--LabApp.collaborative=False",
+            ],
+            env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
+        )
+        proc.wait()
 `;
 }
 
@@ -243,11 +332,18 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-shell")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim(python_version="${pythonVersion}").apt_install("bash", "curl", "tmux").run_commands(
-    "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
-    "chmod +x /usr/local/bin/ttyd"
-).pip_install("torch").add_local_dir(
-    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
+image = (
+    modal.Image.debian_slim(python_version="${pythonVersion}")
+    .apt_install(
+        "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
+        "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
+        "swig", "build-essential", "unzip",
+    )
+    .run_commands(
+        "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && chmod +x /usr/local/bin/ttyd",
+        "mkdir -p /root/.config",
+    )
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
 def _prepare_workspace():
@@ -281,11 +377,12 @@ def run_shell():
     with modal.forward(port) as tunnel:
         print("\\n[WEB SHELL READY]")
         print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: direct bash")
+        print("Workspace: /workspace   Mode: tmux session 'main'")
+        print("Close & reopen the URL to reattach — running jobs keep running.")
         print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
         print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
         proc = subprocess.Popen(
-            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
+            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
             env=env,
         )
         proc.wait()
@@ -331,9 +428,11 @@ def serve():
     _monitor_metrics()
     cmd = [
         "vllm", "serve", MODEL_NAME,
-        "--served-model-name", MODEL_NAME, "llm",
-        "--host", "0.0.0.0", "--port", "8000",
-        "--enforce-eager", "--tensor-parallel-size", "1",
+        "--served-model-name", MODEL_NAME,
+        "--host", "0.0.0.0",
+        "--port", "8000",
+        "--enforce-eager",
+        "--tensor-parallel-size", "1",
     ]
     print("Starting vLLM:", " ".join(cmd))
     subprocess.Popen(" ".join(cmd), shell=True)
@@ -352,11 +451,19 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-interactive")
 workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = modal.Image.debian_slim(python_version="${pythonVersion}").apt_install("bash", "curl", "tmux").run_commands(
-    "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64",
-    "chmod +x /usr/local/bin/ttyd"
-)${pipSection}.add_local_dir(
-    "${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)}
+image = (
+    modal.Image.debian_slim(python_version="${pythonVersion}")
+    .apt_install(
+        "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
+        "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
+        "swig", "build-essential", "unzip",
+    )
+    .run_commands(
+        "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && chmod +x /usr/local/bin/ttyd",
+        "mkdir -p /root/.config",
+    )
+    ${pipSection}
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
 def _prepare_workspace():
@@ -391,10 +498,11 @@ def run_interactive():
         print("\\n[INTERACTIVE TERMINAL READY]")
         print("URL: " + url)
         print("Workspace: /workspace   Run: python ${scriptName}")
+        print("Session: tmux 'main' (close & reopen URL to reattach running jobs)")
         print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
         print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
         proc = subprocess.Popen(
-            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "--login"],
+            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
             env=env,
         )
         proc.wait()
