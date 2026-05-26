@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { parse, stringify } from "smol-toml";
+import { resolvePython } from "./pythonResolver";
 
 export interface ModalProfile {
   name: string;
@@ -123,8 +124,14 @@ const MONTHLY_CREDIT = 30.0;
 
 /**
  * Fetch billing for a single profile using the Modal SDK via Python subprocess.
+ * Picks a Python interpreter that actually has `modal` importable — needed
+ * because the user's default `python` may be 3.14 (or any version) without
+ * the modal SDK installed.
  */
-function fetchUsageForProfile(tokenId: string, tokenSecret: string): Promise<number> {
+async function fetchUsageForProfile(tokenId: string, tokenSecret: string): Promise<number> {
+  const py = await resolvePython();
+  if (!py || !py.hasModal) { return -1; }
+
   return new Promise((resolve) => {
     const { execFile } = require("child_process");
     const script = [
@@ -142,7 +149,7 @@ function fetchUsageForProfile(tokenId: string, tokenSecret: string): Promise<num
       "except Exception as e:",
       "  print(json.dumps({'error':str(e)}))",
     ].join("\n");
-    execFile("python", ["-c", script, tokenId, tokenSecret], {
+    execFile(py.cmd, [...py.args, "-c", script, tokenId, tokenSecret], {
       timeout: 15000,
     }, (err: any, stdout: string) => {
       if (err) { resolve(-1); return; }

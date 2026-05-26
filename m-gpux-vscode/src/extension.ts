@@ -5,6 +5,7 @@ import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
 import { StatusBarManager } from "./statusBar";
 import { runHubWizard } from "./hubWizard";
 import { sessionStore } from "./sessionStore";
+import { resolvePython, clearPythonCache } from "./pythonResolver";
 import {
   loadProfiles,
   addProfile,
@@ -224,25 +225,50 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Billing Usage (show cost in terminal)
+  // Billing Usage — show inline summary built from the cached billing in the
+  // account tree. Avoids depending on the `m-gpux` Python CLI being installed
+  // (which breaks on Python 3.14 setups).
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.billingUsage", async () => {
-      const pick = await vscode.window.showQuickPick(
-        [
-          { label: "All Accounts", description: "Aggregate across all profiles", flag: "--all" },
-          { label: "Active Account", description: "Current active profile only", flag: "" },
-        ],
-        { title: "Billing Usage — Scope" }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "M-GPUX: Fetching billing data..." },
+        async () => { await accountTree.refreshWithBilling(); }
       );
-      if (!pick) { return; }
-      const terminal = vscode.window.createTerminal({ name: "M-GPUX: Billing" });
-      terminal.show();
-      const flag = (pick as any).flag;
-      terminal.sendText(`m-gpux billing usage ${flag}`.trim());
+      statusBar.refresh();
+
+      const profiles = loadProfiles();
+      const lines: string[] = [];
+      let totalUsed = 0;
+      let countWithData = 0;
+      for (const p of profiles) {
+        const b = accountTree.billingCache.get(p.name);
+        if (b && b.used >= 0) {
+          lines.push(`${p.active ? "● " : "  "}${p.name}: $${b.used.toFixed(2)} used · $${b.remaining.toFixed(2)} left`);
+          totalUsed += b.used;
+          countWithData++;
+        } else {
+          lines.push(`  ${p.name}: (no data)`);
+        }
+      }
+      if (countWithData > 0) {
+        lines.push("");
+        lines.push(`Total used (this month): $${totalUsed.toFixed(2)}`);
+      }
+
+      const summary = lines.join("\n") || "No accounts configured.";
+      await vscode.window.showInformationMessage(
+        summary,
+        { modal: true, detail: "Open Modal Dashboard for the authoritative usage breakdown." },
+        "Open Dashboard"
+      ).then((choice) => {
+        if (choice === "Open Dashboard") {
+          vscode.env.openExternal(vscode.Uri.parse("https://modal.com/settings/usage"));
+        }
+      });
     })
   );
 
-  // Load Probe
+  // Load Probe — self-contained Modal script (no m-gpux CLI dependency).
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.loadProbe", async () => {
       const gpuPick = await vscode.window.showQuickPick(
@@ -253,18 +279,32 @@ export function activate(context: vscode.ExtensionContext) {
           { label: "A100", description: "40 GB SXM" },
           { label: "H100", description: "80 GB" },
         ],
-        {
-          title: "Probe Hardware — Select GPU",
-          placeHolder: "Which GPU to probe?",
-        }
+        { title: "Probe Hardware — Select GPU", placeHolder: "Which GPU to probe?" }
       );
       if (!gpuPick) { return; }
 
-      const terminal = vscode.window.createTerminal({
-        name: `M-GPUX: Probe ${gpuPick.label}`,
+      const probeScript = buildProbeScript(gpuPick.label);
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+      const probePath = require("path").join(workspaceFolder, ".mgpux-probe.py");
+      require("fs").writeFileSync(probePath, probeScript, "utf-8");
+
+      const out = vscode.window.createOutputChannel(`M-GPUX: Probe ${gpuPick.label}`, "log");
+      out.show(true);
+      out.appendLine(`▸ Running: modal run .mgpux-probe.py`);
+      out.appendLine(`  GPU: ${gpuPick.label}`);
+      out.appendLine(`  CWD: ${workspaceFolder}\n`);
+
+      const proc = spawn("modal", ["run", ".mgpux-probe.py"], {
+        cwd: workspaceFolder,
+        shell: true,
+        env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
-      terminal.show();
-      terminal.sendText(`m-gpux load probe --gpu ${gpuPick.label}`);
+      proc.stdout.on("data", (d: Buffer) => out.append(d.toString()));
+      proc.stderr.on("data", (d: Buffer) => out.append(d.toString()));
+      proc.on("close", (code: number | null) => {
+        out.appendLine(`\nExit ${code}`);
+        try { require("fs").unlinkSync(probePath); } catch { /* ignore */ }
+      });
     })
   );
 
@@ -274,7 +314,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.5.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.5.1 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -419,6 +459,99 @@ export function activate(context: vscode.ExtensionContext) {
       sessionStore.remove(id);
     })
   );
+
+  // Python diagnostics — helpful when modal SDK is missing on the local
+  // interpreter (the most common cause of "billing unavailable" on fresh
+  // Python 3.14 installs).
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.checkPython", async () => {
+      clearPythonCache();
+      const py = await resolvePython(true);
+      if (!py) {
+        const choice = await vscode.window.showErrorMessage(
+          "No Python interpreter found. Install Python 3.10–3.13 and re-run.",
+          "Open Python downloads"
+        );
+        if (choice === "Open Python downloads") {
+          vscode.env.openExternal(vscode.Uri.parse("https://www.python.org/downloads/"));
+        }
+        return;
+      }
+      const cmdline = [py.cmd, ...py.args].join(" ");
+      if (py.hasModal) {
+        vscode.window.showInformationMessage(
+          `M-GPUX uses: ${cmdline}  (Python ${py.version}, modal ✓)`
+        );
+      } else {
+        const choice = await vscode.window.showWarningMessage(
+          `Found Python ${py.version} (${cmdline}) but \`modal\` is not installed there. ` +
+          `Billing widgets will show no data. Install with: ${cmdline} -m pip install modal`,
+          "Open Modal docs"
+        );
+        if (choice === "Open Modal docs") {
+          vscode.env.openExternal(vscode.Uri.parse("https://modal.com/docs/guide"));
+        }
+      }
+    })
+  );
+
+  // Re-resolve python whenever the user changes the override setting.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("mgpux.pythonPath")) {
+        clearPythonCache();
+        accountTree.refreshWithBilling();
+      }
+    })
+  );
+}
+
+function buildProbeScript(gpu: string): string {
+  return `import modal
+
+app = modal.App("m-gpux-probe")
+image = modal.Image.debian_slim(python_version="3.12")
+
+@app.function(image=image, gpu="${gpu}", timeout=300)
+def probe():
+    import subprocess, json
+    info = {}
+    try:
+        out = subprocess.check_output([
+            "nvidia-smi",
+            "--query-gpu=name,driver_version,memory.total,memory.free,utilization.gpu,temperature.gpu,power.draw",
+            "--format=csv,noheader,nounits",
+        ], text=True)
+        for line in out.strip().split("\\n"):
+            p = [x.strip() for x in line.split(",")]
+            if len(p) >= 7:
+                info = {
+                    "name": p[0], "driver": p[1],
+                    "vram_total_mb": int(p[2]), "vram_free_mb": int(p[3]),
+                    "util_pct": int(p[4]), "temp_c": int(p[5]),
+                    "power_w": float(p[6]),
+                }
+                break
+    except Exception as exc:
+        info["nvidia_smi_error"] = str(exc)
+    try:
+        with open("/proc/meminfo") as f:
+            mi = {k.strip(): v.strip() for line in f for k, v in [line.split(":")]}
+        info["ram_total_gib"] = round(int(mi["MemTotal"].split()[0]) / 1048576, 1)
+        info["ram_free_gib"] = round(int(mi["MemAvailable"].split()[0]) / 1048576, 1)
+    except Exception:
+        pass
+    try:
+        info["cpu_count"] = int(subprocess.check_output(["nproc"], text=True).strip())
+    except Exception:
+        pass
+    print("\\n=== Probe ${gpu} ===")
+    print(json.dumps(info, indent=2))
+
+@app.local_entrypoint()
+def main():
+    probe.remote()
+`;
 }
 
 export function deactivate() {

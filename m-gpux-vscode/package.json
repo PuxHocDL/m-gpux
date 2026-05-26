@@ -2,9 +2,17 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "publisher": "puxpux",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PuxHocDL/m-gpux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PuxHocDL/m-gpux/issues"
+  },
+  "homepage": "https://github.com/PuxHocDL/m-gpux#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -139,8 +147,25 @@
         "title": "Remove Session from List",
         "category": "M-GPUX",
         "icon": "$(trash)"
+      },
+      {
+        "command": "mgpux.checkPython",
+        "title": "Check Python Interpreter",
+        "category": "M-GPUX",
+        "icon": "$(symbol-namespace)"
       }
     ],
+    "configuration": {
+      "title": "M-GPUX",
+      "properties": {
+        "mgpux.pythonPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Path or command to a Python interpreter with `modal` installed (used for billing). Leave empty to auto-detect across py launcher / python3.13 / python3.12 / ... / python."
+        }
+      }
+    },
     "menus": {
       "view/title": [
         {

@@ -9,7 +9,7 @@ export class AccountTreeProvider
   >();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  private billingCache: Map<string, BillingInfo> = new Map();
+  readonly billingCache: Map<string, BillingInfo> = new Map();
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
