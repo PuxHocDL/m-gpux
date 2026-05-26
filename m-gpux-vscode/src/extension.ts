@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
 import { AccountTreeProvider, AccountItem } from "./accountTree";
 import { ActionsTreeProvider } from "./actionsTree";
+import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
 import { StatusBarManager } from "./statusBar";
 import { runHubWizard } from "./hubWizard";
+import { sessionStore } from "./sessionStore";
 import {
   loadProfiles,
   addProfile,
@@ -11,15 +13,24 @@ import {
   getActiveProfile,
 } from "./config";
 
+const { spawn } = require("child_process");
+
 let statusBar: StatusBarManager;
 
 export function activate(context: vscode.ExtensionContext) {
   // --- Tree Views ---
   const accountTree = new AccountTreeProvider();
   const actionsTree = new ActionsTreeProvider();
+  const sessionsTree = new SessionsTreeProvider();
 
   vscode.window.registerTreeDataProvider("mgpux.accountsView", accountTree);
   vscode.window.registerTreeDataProvider("mgpux.actionsView", actionsTree);
+  vscode.window.registerTreeDataProvider("mgpux.sessionsView", sessionsTree);
+
+  // Periodically refresh the sessions tree so the "age" / "starting…" descriptions stay live.
+  const sessionTicker = setInterval(() => sessionsTree.refresh(), 5000);
+  context.subscriptions.push({ dispose: () => clearInterval(sessionTicker) });
+  context.subscriptions.push({ dispose: () => sessionStore.dispose() });
 
   // --- Status Bar ---
   statusBar = new StatusBarManager();
@@ -263,8 +274,149 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.4.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.5.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
+    })
+  );
+
+  // --- Session commands ---
+
+  function resolveSessionId(node?: SessionTreeNode): string | undefined {
+    if (node?.sessionId) { return node.sessionId; }
+    const sessions = sessionStore.list();
+    if (sessions.length === 0) {
+      vscode.window.showInformationMessage("No active sessions.");
+      return undefined;
+    }
+    return sessions[0].id;
+  }
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.refreshSessions", () => sessionsTree.refresh())
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.openSession", async (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      if (!s?.accessUrl) {
+        vscode.window.showInformationMessage("Session has no access URL yet — still starting.");
+        return;
+      }
+      vscode.env.openExternal(vscode.Uri.parse(s.accessUrl));
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.copySessionUrl", async (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      if (!s?.accessUrl) {
+        vscode.window.showInformationMessage("Session has no access URL yet.");
+        return;
+      }
+      await vscode.env.clipboard.writeText(s.accessUrl);
+      vscode.window.showInformationMessage("URL copied to clipboard.");
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.viewSessionLogs", (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      s?.output.show(true);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.stopSession", async (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      if (!s) { return; }
+      if (s.status === "stopped" || s.status === "failed") {
+        const remove = await vscode.window.showQuickPick(
+          [
+            { label: "Remove from list", action: "remove" as const },
+            { label: "Keep", action: "keep" as const },
+          ],
+          { title: `Session ${s.kind}/${s.gpu} already ${s.status}` }
+        );
+        if (remove?.action === "remove") {
+          sessionStore.remove(id);
+        }
+        return;
+      }
+
+      const confirm = await vscode.window.showWarningMessage(
+        s.appId
+          ? `Stop ${s.kind} on ${s.gpu}?\nThis will run \`modal app stop ${s.appId}\` on profile '${s.profile}'.`
+          : `Stop ${s.kind} on ${s.gpu}?\nApp ID not detected yet — only the local process will be killed.`,
+        { modal: true },
+        "Stop"
+      );
+      if (confirm !== "Stop") { return; }
+
+      sessionStore.update(id, { status: "stopping" });
+      s.output.appendLine("\n▸ Stop requested by user.");
+
+      // Kill local proc (best-effort — for detached runs this only closes the pipe)
+      try { s.proc?.kill(); } catch { /* ignore */ }
+
+      if (!s.appId) {
+        sessionStore.update(id, { status: "stopped", proc: undefined });
+        vscode.window.showInformationMessage(`Stopped ${s.kind} (local only — no app ID).`);
+        return;
+      }
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `M-GPUX: stopping ${s.appId}...`,
+        },
+        async () => {
+          // Ensure right profile is active before issuing app stop
+          await new Promise<void>((resolve) => {
+            const p = spawn("modal", ["profile", "activate", s.profile], { cwd: s.cwd, shell: true });
+            p.on("close", () => resolve());
+            p.on("error", () => resolve());
+          });
+
+          const result = await new Promise<{ code: number; out: string }>((resolve) => {
+            const p = spawn("modal", ["app", "stop", s.appId!], {
+              cwd: s.cwd,
+              shell: true,
+              env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+            });
+            let out = "";
+            p.stdout.on("data", (d: Buffer) => { out += d.toString(); s.output.append(d.toString()); });
+            p.stderr.on("data", (d: Buffer) => { out += d.toString(); s.output.append(d.toString()); });
+            p.on("close", (code: number | null) => resolve({ code: code ?? 1, out }));
+            p.on("error", (err: Error) => resolve({ code: 1, out: err.message }));
+          });
+
+          if (result.code === 0) {
+            sessionStore.update(id, { status: "stopped", proc: undefined });
+            vscode.window.showInformationMessage(`Stopped ${s.kind} on ${s.gpu} (${s.appId}).`);
+          } else {
+            sessionStore.update(id, { status: "failed", proc: undefined });
+            vscode.window.showErrorMessage(
+              `Failed to stop ${s.appId} — see logs.`
+            );
+          }
+        }
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.removeSession", (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      sessionStore.remove(id);
     })
   );
 }

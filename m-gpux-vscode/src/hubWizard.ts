@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
+import { sessionStore, newSessionId, SessionKind } from "./sessionStore";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -804,20 +805,20 @@ async function showAndExecuteScript(
     return;
   }
 
-  // Create output channel for logs
+  const profileName = getActiveProfile()?.name ?? "default";
+
+  // Output channel is silent — it is only revealed via "View Logs" on the session node.
   const outputChannel = vscode.window.createOutputChannel(`M-GPUX: ${actionType} (${gpu})`, "log");
-  outputChannel.show(true);
   outputChannel.appendLine(`═══════════════════════════════════════════════`);
   outputChannel.appendLine(`  M-GPUX: Launching ${actionType} on ${gpu}`);
-  outputChannel.appendLine(`  Profile: ${getActiveProfile()?.name ?? "default"}`);
+  outputChannel.appendLine(`  Profile: ${profileName}`);
   outputChannel.appendLine(`  Time: ${new Date().toLocaleString()}`);
   outputChannel.appendLine(`═══════════════════════════════════════════════\n`);
 
-  // Activate profile first
-  const selectedProfile = getActiveProfile();
-  if (selectedProfile) {
-    outputChannel.appendLine(`▸ Activating profile: ${selectedProfile.name}`);
-    const activateResult = await runCommand("modal", ["profile", "activate", selectedProfile.name], localDir);
+  // Activate profile first (silent — log to channel only)
+  if (profileName !== "default") {
+    outputChannel.appendLine(`▸ Activating profile: ${profileName}`);
+    const activateResult = await runCommand("modal", ["profile", "activate", profileName], localDir);
     if (activateResult.exitCode !== 0) {
       outputChannel.appendLine(`⚠ Profile activation warning: ${activateResult.stderr}`);
     } else {
@@ -825,7 +826,6 @@ async function showAndExecuteScript(
     }
   }
 
-  // Run modal with progress — use just filename with cwd to avoid space-in-path issues
   const useDetach = detach;
   const runnerFilename = path.basename(runnerPath);
   const args = useDetach
@@ -836,116 +836,109 @@ async function showAndExecuteScript(
   outputChannel.appendLine(`  CWD: ${localDir}`);
   outputChannel.appendLine(`  Mode: ${useDetach ? "Detached (background)" : "Foreground"}\n`);
 
-  // Show progress in notification
-  vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: `M-GPUX: Launching ${actionType} on ${gpu}...`,
-      cancellable: true,
-    },
-    (progress, token) => {
-      return new Promise<void>((resolve) => {
-        const proc = spawn("modal", args, {
-          cwd: localDir,
-          shell: true,
-          env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
-        });
+  // Register session in store BEFORE spawn so the sidebar shows "starting"
+  const sessionId = newSessionId();
+  const kind = (actionType as SessionKind);
+  sessionStore.add({
+    id: sessionId,
+    kind,
+    gpu,
+    profile: profileName,
+    status: "starting",
+    startedAt: Date.now(),
+    output: outputChannel,
+    cwd: localDir,
+    detached: useDetach,
+  });
 
-        let foundUrl = false;
+  // Reveal the sidebar so the user sees the new session
+  vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => {/* ignore */});
 
-        token.onCancellationRequested(() => {
-          proc.kill();
-          outputChannel.appendLine("\n⚠ Cancelled by user.");
-          resolve();
-        });
+  const proc = spawn("modal", args, {
+    cwd: localDir,
+    shell: true,
+    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+  });
 
-        proc.stdout.on("data", (data: Buffer) => {
-          const text = data.toString();
-          outputChannel.append(text);
+  sessionStore.update(sessionId, { proc });
 
-          // Detect URLs in output
-          const urlMatch = text.match(/https?:\/\/[^\s"']+/g);
-          if (urlMatch && !foundUrl) {
-            foundUrl = true;
-            const url = urlMatch[0];
+  // ---- output handlers ----
+  let buffer = "";
+  let gotAccessUrl = false;
+  let gotAppMeta = false;
 
-            progress.report({ message: "Ready! Opening..." });
-
-            // Show persistent notification with URL
-            vscode.window.showInformationMessage(
-              `${actionType} is ready on ${gpu}!`,
-              "Open in Browser",
-              "Copy URL"
-            ).then((action) => {
-              if (action === "Open in Browser") {
-                vscode.env.openExternal(vscode.Uri.parse(url));
-              } else if (action === "Copy URL") {
-                vscode.env.clipboard.writeText(url);
-                vscode.window.showInformationMessage("URL copied to clipboard!");
-              }
-            });
-
-            outputChannel.appendLine(`\n${"═".repeat(50)}`);
-            outputChannel.appendLine(`  ✓ ${actionType} READY`);
-            outputChannel.appendLine(`  URL: ${url}`);
-            outputChannel.appendLine(`${"═".repeat(50)}\n`);
-          }
-        });
-
-        proc.stderr.on("data", (data: Buffer) => {
-          const text = data.toString();
-          outputChannel.append(text);
-
-          // Modal also prints URLs and status to stderr
-          const urlMatch = text.match(/https?:\/\/[^\s"']+/g);
-          if (urlMatch && !foundUrl) {
-            foundUrl = true;
-            const url = urlMatch[0];
-            progress.report({ message: "Ready!" });
-
-            vscode.window.showInformationMessage(
-              `${actionType} is running on ${gpu}`,
-              "Open Modal Dashboard"
-            ).then((action) => {
-              if (action === "Open Modal Dashboard") {
-                vscode.env.openExternal(vscode.Uri.parse(url));
-              }
-            });
-          }
-        });
-
-        proc.on("close", (code: number | null) => {
-          if (code === 0) {
-            outputChannel.appendLine(`\n✓ Process completed successfully.`);
-            if (!foundUrl) {
-              vscode.window.showInformationMessage(`${actionType} on ${gpu} completed.`);
-            }
-          } else if (code !== null) {
-            outputChannel.appendLine(`\n✗ Process exited with code ${code}.`);
-            vscode.window.showWarningMessage(
-              `${actionType} exited with code ${code}. Check Output for details.`
-            );
-          }
-
-          // Cleanup temp file
-          try {
-            if (fs.existsSync(runnerPath)) {
-              fs.unlinkSync(runnerPath);
-              outputChannel.appendLine(`  Cleaned up ${path.basename(runnerPath)}`);
-            }
-          } catch { /* ignore */ }
-
-          resolve();
-        });
-
-        proc.on("error", (err: Error) => {
-          outputChannel.appendLine(`\n✗ Failed to start: ${err.message}`);
-          vscode.window.showErrorMessage(`Failed to run modal: ${err.message}`);
-          resolve();
-        });
-      });
+  const handleChunk = (text: string) => {
+    outputChannel.append(text);
+    buffer += text;
+    // Keep buffer bounded
+    if (buffer.length > 16000) {
+      buffer = buffer.slice(-8000);
     }
-  );
+
+    if (!gotAppMeta) {
+      // Modal prints lines like:
+      //   ✓ Initialized. View run at https://modal.com/apps/<ws>/main/ap-XXXXX
+      const m = buffer.match(/https?:\/\/modal\.com\/apps\/[^\s"']*\/(ap-[A-Za-z0-9]+)/);
+      if (m) {
+        gotAppMeta = true;
+        sessionStore.update(sessionId, {
+          appId: m[1],
+          dashboardUrl: m[0],
+        });
+      }
+    }
+
+    if (!gotAccessUrl) {
+      // Public tunnel URLs (modal.host / modal.run) — what the user actually opens.
+      const m = buffer.match(/https?:\/\/[^\s"']*modal\.(?:host|run)[^\s"']*/);
+      if (m) {
+        gotAccessUrl = true;
+        sessionStore.update(sessionId, {
+          status: "ready",
+          accessUrl: m[0],
+        });
+      }
+    }
+  };
+
+  proc.stdout.on("data", (d: Buffer) => handleChunk(d.toString()));
+  proc.stderr.on("data", (d: Buffer) => handleChunk(d.toString()));
+
+  proc.on("close", (code: number | null) => {
+    const s = sessionStore.get(sessionId);
+    if (!s) { return; }
+    if (code === 0) {
+      outputChannel.appendLine(`\n✓ Local process completed (code 0).`);
+      // For detached runs, the remote keeps running even after local exits — leave session as "ready"
+      // For foreground runs, the session is genuinely done — mark stopped.
+      sessionStore.update(sessionId, {
+        status: useDetach && gotAccessUrl ? "ready" : "stopped",
+        proc: undefined,
+      });
+    } else if (s.status === "stopping") {
+      outputChannel.appendLine(`\n• Local process exited after stop (code ${code}).`);
+      sessionStore.update(sessionId, { status: "stopped", proc: undefined });
+    } else {
+      outputChannel.appendLine(`\n✗ Process exited with code ${code}.`);
+      sessionStore.update(sessionId, { status: "failed", proc: undefined });
+      vscode.window.showWarningMessage(
+        `M-GPUX: ${actionType} on ${gpu} exited with code ${code}. Right-click the session → View Logs.`
+      );
+    }
+
+    // Cleanup temp file
+    try {
+      if (fs.existsSync(runnerPath)) {
+        fs.unlinkSync(runnerPath);
+      }
+    } catch { /* ignore */ }
+  });
+
+  proc.on("error", (err: Error) => {
+    outputChannel.appendLine(`\n✗ Failed to start: ${err.message}`);
+    sessionStore.update(sessionId, { status: "failed", proc: undefined });
+    vscode.window.showErrorMessage(`M-GPUX: failed to run modal: ${err.message}`);
+  });
 }
 
 /** Helper: run a command and return stdout/stderr/exitCode */

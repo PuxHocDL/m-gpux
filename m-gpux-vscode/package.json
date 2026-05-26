@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.4.2",
+  "version": "2.5.0",
   "publisher": "puxpux",
   "license": "MIT",
   "engines": {
@@ -38,6 +38,10 @@
         {
           "id": "mgpux.accountsView",
           "name": "Accounts"
+        },
+        {
+          "id": "mgpux.sessionsView",
+          "name": "Active Sessions"
         },
         {
           "id": "mgpux.actionsView",
@@ -99,6 +103,42 @@
         "title": "Show Info",
         "category": "M-GPUX",
         "icon": "$(info)"
+      },
+      {
+        "command": "mgpux.refreshSessions",
+        "title": "Refresh Sessions",
+        "category": "M-GPUX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mgpux.openSession",
+        "title": "Open Session URL",
+        "category": "M-GPUX",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "mgpux.copySessionUrl",
+        "title": "Copy Session URL",
+        "category": "M-GPUX",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "mgpux.viewSessionLogs",
+        "title": "View Session Logs",
+        "category": "M-GPUX",
+        "icon": "$(output)"
+      },
+      {
+        "command": "mgpux.stopSession",
+        "title": "Stop Session",
+        "category": "M-GPUX",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "mgpux.removeSession",
+        "title": "Remove Session from List",
+        "category": "M-GPUX",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -112,6 +152,16 @@
           "command": "mgpux.refreshAccounts",
           "when": "view == mgpux.accountsView",
           "group": "navigation"
+        },
+        {
+          "command": "mgpux.openHub",
+          "when": "view == mgpux.sessionsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mgpux.refreshSessions",
+          "when": "view == mgpux.sessionsView",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -123,6 +173,41 @@
         {
           "command": "mgpux.removeAccount",
           "when": "view == mgpux.accountsView && viewItem == account"
+        },
+        {
+          "command": "mgpux.openSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasUrl/",
+          "group": "inline@1"
+        },
+        {
+          "command": "mgpux.stopSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(starting|ready|stopping)/",
+          "group": "inline@2"
+        },
+        {
+          "command": "mgpux.viewSessionLogs",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\./",
+          "group": "inline@3"
+        },
+        {
+          "command": "mgpux.copySessionUrl",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasUrl/",
+          "group": "actions@1"
+        },
+        {
+          "command": "mgpux.viewSessionLogs",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\./",
+          "group": "actions@2"
+        },
+        {
+          "command": "mgpux.stopSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(starting|ready|stopping)/",
+          "group": "actions@3"
+        },
+        {
+          "command": "mgpux.removeSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(stopped|failed)/",
+          "group": "actions@4"
         }
       ]
     }
