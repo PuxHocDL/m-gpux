@@ -6,6 +6,9 @@ const KIND_ICON: Record<string, string> = {
   python: "play",
   bash: "terminal",
   vllm: "server",
+  "host-asgi":   "server-environment",
+  "host-wsgi":   "server",
+  "host-static": "file-directory",
 };
 
 const STATUS_ICON: Record<SessionStatus, string> = {

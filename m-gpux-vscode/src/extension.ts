@@ -2,8 +2,14 @@ import * as vscode from "vscode";
 import { AccountTreeProvider, AccountItem } from "./accountTree";
 import { ActionsTreeProvider } from "./actionsTree";
 import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
+import { PresetsTreeProvider, PresetItem, loadPresets } from "./presetsTree";
 import { StatusBarManager } from "./statusBar";
 import { runHubWizard } from "./hubWizard";
+import { runHostWizard } from "./hostWizard";
+import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
+import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
+import { composeCheck, composeUp, composeSandbox } from "./composeActions";
+import { listApps, activateProfile, runCommand } from "./modalCli";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
@@ -24,10 +30,12 @@ export function activate(context: vscode.ExtensionContext) {
   const accountTree = new AccountTreeProvider();
   const actionsTree = new ActionsTreeProvider();
   const sessionsTree = new SessionsTreeProvider();
+  const presetsTree = new PresetsTreeProvider();
 
   vscode.window.registerTreeDataProvider("mgpux.accountsView", accountTree);
   vscode.window.registerTreeDataProvider("mgpux.actionsView", actionsTree);
   vscode.window.registerTreeDataProvider("mgpux.sessionsView", sessionsTree);
+  vscode.window.registerTreeDataProvider("mgpux.presetsView", presetsTree);
 
   // Periodically refresh the sessions tree so the "age" / "starting…" descriptions stay live.
   const sessionTicker = setInterval(() => sessionsTree.refresh(), 5000);
@@ -320,7 +328,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.5.6 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.6.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -501,6 +509,107 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // ─── Stop all apps on a profile ─────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.stopAll", async () => {
+      const profiles = loadProfiles();
+      if (profiles.length === 0) {
+        vscode.window.showWarningMessage("No Modal accounts configured.");
+        return;
+      }
+      let profileName = getActiveProfile()?.name;
+      if (profiles.length > 1) {
+        const pick = await vscode.window.showQuickPick(
+          [
+            ...profiles.map((p) => ({
+              label: p.active ? `$(check) ${p.name}` : `$(person) ${p.name}`,
+              profileName: p.name,
+              allProfiles: false,
+            })),
+            { label: "$(globe) All profiles", profileName: "", allProfiles: true } as any,
+          ],
+          { title: "Stop apps — select scope" }
+        );
+        if (!pick) { return; }
+        if ((pick as any).allProfiles) {
+          await stopAllAppsForProfiles(profiles.map((p) => p.name));
+          return;
+        }
+        profileName = (pick as any).profileName;
+      }
+      if (!profileName) { return; }
+      await stopAllAppsForProfiles([profileName]);
+    })
+  );
+
+  // ─── Presets ────────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.refreshPresets", () => presetsTree.refresh())
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.createPreset", async () => {
+      await createPreset();
+      presetsTree.refresh();
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.runPreset", async (item?: PresetItem) => {
+      let name = item?.presetName;
+      if (!name) {
+        const presets = loadPresets();
+        const names = Object.keys(presets).sort();
+        if (names.length === 0) {
+          const create = await vscode.window.showInformationMessage(
+            "No presets saved yet. Create one?", "Create"
+          );
+          if (create === "Create") { vscode.commands.executeCommand("mgpux.createPreset"); }
+          return;
+        }
+        const pick = await vscode.window.showQuickPick(
+          names.map((n) => {
+            const p = presets[n];
+            return { label: n, description: `${p.action} • ${p.compute_label ?? p.compute_spec ?? "?"}` };
+          }),
+          { title: "Run preset", placeHolder: "Pick a saved preset" }
+        );
+        if (!pick) { return; }
+        name = pick.label;
+      }
+      await runPresetByName(name);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.deletePreset", async (item?: PresetItem) => {
+      const name = item?.presetName;
+      if (!name) {
+        vscode.window.showWarningMessage("Right-click a preset to delete it.");
+        return;
+      }
+      await deletePresetCommand(name);
+      presetsTree.refresh();
+    })
+  );
+
+  // ─── Host wizard ────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.hostApp", () => runHostWizard())
+  );
+
+  // ─── Serve LLM ──────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.serveDeploy",         () => runServeDeploy()),
+    vscode.commands.registerCommand("mgpux.serveKeysList",       () => runServeKeysList()),
+    vscode.commands.registerCommand("mgpux.serveKeysCreate",     () => runServeKeyCreate()),
+    vscode.commands.registerCommand("mgpux.openServeDashboard",  () => openServeDashboard())
+  );
+
+  // ─── Compose ────────────────────────────────────────────────
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.composeCheck",   () => composeCheck()),
+    vscode.commands.registerCommand("mgpux.composeUp",      () => composeUp()),
+    vscode.commands.registerCommand("mgpux.composeSandbox", () => composeSandbox())
+  );
+
   // Re-resolve python whenever the user changes the override setting.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -509,6 +618,66 @@ export function activate(context: vscode.ExtensionContext) {
         accountTree.refreshWithBilling();
       }
     })
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
+async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
+  // Collect running apps per profile first so the confirmation modal can
+  // show a clear summary before we begin issuing destructive commands.
+  const plan: { profile: string; appId: string; name: string }[] = [];
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: "M-GPUX: scanning running apps..." },
+    async () => {
+      for (const profile of profiles) {
+        const apps = await listApps(profile);
+        for (const a of apps) {
+          if (a.state === "running" || a.state === "deployed") {
+            plan.push({ profile, appId: a.appId, name: a.name || a.appId });
+          }
+        }
+      }
+    }
+  );
+
+  if (plan.length === 0) {
+    vscode.window.showInformationMessage(
+      profiles.length === 1
+        ? `No running apps on profile '${profiles[0]}'.`
+        : `No running apps across ${profiles.length} profiles.`
+    );
+    return;
+  }
+
+  const preview = plan.slice(0, 6).map((p) => `• ${p.name} (${p.profile})`).join("\n");
+  const more = plan.length > 6 ? `\n…and ${plan.length - 6} more` : "";
+  const confirm = await vscode.window.showWarningMessage(
+    `Stop ${plan.length} Modal app(s)?`,
+    { modal: true, detail: preview + more },
+    "Stop all"
+  );
+  if (confirm !== "Stop all") { return; }
+
+  let ok = 0;
+  let failed = 0;
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: `M-GPUX: stopping ${plan.length} app(s)...`, cancellable: false },
+    async (progress) => {
+      let done = 0;
+      for (const entry of plan) {
+        progress.report({
+          message: `${entry.name} (${entry.profile})`,
+          increment: 100 / plan.length,
+        });
+        await activateProfile(entry.profile);
+        const res = await runCommand("modal", ["app", "stop", entry.appId], {});
+        if (res.exitCode === 0) { ok++; } else { failed++; }
+        done++;
+      }
+    }
+  );
+  vscode.window.showInformationMessage(
+    `M-GPUX: stopped ${ok} app(s)${failed ? `, ${failed} failed — check logs` : ""}.`
   );
 }
 

@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.5.6",
+  "version": "2.6.0",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -50,6 +50,10 @@
         {
           "id": "mgpux.sessionsView",
           "name": "Active Sessions"
+        },
+        {
+          "id": "mgpux.presetsView",
+          "name": "Presets"
         },
         {
           "id": "mgpux.actionsView",
@@ -153,6 +157,84 @@
         "title": "Check Python Interpreter",
         "category": "M-GPUX",
         "icon": "$(symbol-namespace)"
+      },
+      {
+        "command": "mgpux.stopAll",
+        "title": "Stop All Apps on Profile",
+        "category": "M-GPUX",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "mgpux.refreshPresets",
+        "title": "Refresh Presets",
+        "category": "M-GPUX",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "mgpux.createPreset",
+        "title": "Create Preset",
+        "category": "M-GPUX",
+        "icon": "$(add)"
+      },
+      {
+        "command": "mgpux.runPreset",
+        "title": "Run Preset",
+        "category": "M-GPUX",
+        "icon": "$(play)"
+      },
+      {
+        "command": "mgpux.deletePreset",
+        "title": "Delete Preset",
+        "category": "M-GPUX",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "mgpux.hostApp",
+        "title": "Host Web App (ASGI / WSGI / Static)",
+        "category": "M-GPUX",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "mgpux.serveDeploy",
+        "title": "Deploy LLM Endpoint",
+        "category": "M-GPUX",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "mgpux.serveKeysList",
+        "title": "Manage API Keys",
+        "category": "M-GPUX",
+        "icon": "$(key)"
+      },
+      {
+        "command": "mgpux.serveKeysCreate",
+        "title": "Create API Key",
+        "category": "M-GPUX",
+        "icon": "$(add)"
+      },
+      {
+        "command": "mgpux.openServeDashboard",
+        "title": "Open Modal Apps Dashboard",
+        "category": "M-GPUX",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "mgpux.composeCheck",
+        "title": "Check docker-compose.yml",
+        "category": "M-GPUX",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "mgpux.composeUp",
+        "title": "Deploy docker-compose to Modal",
+        "category": "M-GPUX",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "mgpux.composeSandbox",
+        "title": "Compose Sandbox",
+        "category": "M-GPUX",
+        "icon": "$(layers)"
       }
     ],
     "configuration": {
@@ -186,6 +268,16 @@
         {
           "command": "mgpux.refreshSessions",
           "when": "view == mgpux.sessionsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mgpux.createPreset",
+          "when": "view == mgpux.presetsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mgpux.refreshPresets",
+          "when": "view == mgpux.presetsView",
           "group": "navigation"
         }
       ],
@@ -233,6 +325,15 @@
           "command": "mgpux.removeSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(stopped|failed)/",
           "group": "actions@4"
+        },
+        {
+          "command": "mgpux.runPreset",
+          "when": "view == mgpux.presetsView && viewItem == preset",
+          "group": "inline"
+        },
+        {
+          "command": "mgpux.deletePreset",
+          "when": "view == mgpux.presetsView && viewItem == preset"
         }
       ]
     }
