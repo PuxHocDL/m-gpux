@@ -921,9 +921,23 @@ async function showAndExecuteScript(
       const m = buffer.match(/https?:\/\/[^\s"']*modal\.(?:host|run)[^\s"']*/);
       if (m) {
         gotAccessUrl = true;
+        const url = m[0];
         sessionStore.update(sessionId, {
           status: "ready",
-          accessUrl: m[0],
+          accessUrl: url,
+        });
+        // One-shot toast so the URL is not buried in the output channel.
+        vscode.window.showInformationMessage(
+          `${actionType} ready on ${gpu}: ${url}`,
+          "Open in Browser",
+          "Copy URL"
+        ).then((choice) => {
+          if (choice === "Open in Browser") {
+            vscode.env.openExternal(vscode.Uri.parse(url));
+          } else if (choice === "Copy URL") {
+            vscode.env.clipboard.writeText(url);
+            vscode.window.showInformationMessage("URL copied.");
+          }
         });
       }
     }

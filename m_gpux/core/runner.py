@@ -16,6 +16,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from typing import Optional
 
 from rich.panel import Panel
@@ -149,27 +150,55 @@ def execute_modal_temp_script(
         )
 
     result = None
+    deployed_url: Optional[str] = None
+    dashboard_url: Optional[str] = None
     try:
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.setdefault("PYTHONUTF8", "1")
 
-        # When running with --detach we want to keep the modal CLI isolated from
-        # the terminal's signal group so a Ctrl+C closing the terminal (SIGHUP)
-        # or a parent shell exit does not bring the local modal process down
-        # mid-submission. Modal's own --detach takes care of the remote side,
-        # but the local CLI must live long enough to print the access URL.
-        popen_kwargs: dict = {"env": env}
         # For both detach and deploy we want the local modal CLI isolated from
         # the parent terminal's signal group — a Ctrl+C / SIGHUP on the shell
         # must not kill the CLI before Modal has finished accepting the job.
+        popen_kwargs: dict = {"env": env}
         if detach or deploy:
             if os.name == "nt":
                 popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
             else:
                 popen_kwargs["start_new_session"] = True
 
-        result = subprocess.run(cmd, **popen_kwargs)
+        if deploy:
+            # Tee modal's output to the terminal AND scrape the deployed URL so
+            # we can show it prominently after the deploy completes.
+            popen_kwargs["stdout"] = subprocess.PIPE
+            popen_kwargs["stderr"] = subprocess.STDOUT
+            popen_kwargs["text"] = True
+            popen_kwargs["bufsize"] = 1  # line-buffered
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+            url_re = re.compile(r"https?://[^\s\"']*modal\.run[^\s\"']*")
+            dash_re = re.compile(r"https?://modal\.com/apps/[^\s\"']+")
+            try:
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    if not deployed_url:
+                        m = url_re.search(line)
+                        if m:
+                            deployed_url = m.group(0)
+                    if not dashboard_url:
+                        m = dash_re.search(line)
+                        if m:
+                            dashboard_url = m.group(0)
+            finally:
+                proc.wait()
+
+            class _R:
+                pass
+            result = _R()
+            result.returncode = proc.returncode
+        else:
+            result = subprocess.run(cmd, **popen_kwargs)
     except KeyboardInterrupt:
         if deploy:
             console.print("\n[green]Deployment submitted. The remote service stays up until you stop it.[/green]")
@@ -177,6 +206,25 @@ def execute_modal_temp_script(
             console.print("\n[green]Disconnected locally. The remote container is still running.[/green]")
         else:
             console.print(f"\n[yellow]Execution of {description} interrupted.[/yellow]")
+
+    if deploy and deployed_url and result is not None and result.returncode == 0:
+        from rich.panel import Panel as _Panel
+        body_lines = [f"[bold green]▶ {deployed_url}[/bold green]"]
+        if dashboard_url:
+            body_lines.append(f"[dim]Dashboard:[/dim] {dashboard_url}")
+        body_lines.append("")
+        body_lines.append("[dim]Open the URL in a browser to use the service.[/dim]")
+        body_lines.append("[dim]Stop with:[/dim] [bold]m-gpux stop[/bold]")
+        console.print()
+        console.print(_Panel(
+            "\n".join(body_lines),
+            title="\U0001f680  JUPYTER READY" if "jupyter" in description.lower()
+                  else ("\U0001f9e0  SHELL READY" if "shell" in description.lower() or "bash" in description.lower()
+                        else "\U0001f680  SERVICE READY"),
+            border_style="bright_magenta",
+            expand=False,
+        ))
+        console.print()
 
     def _read_app_name() -> Optional[str]:
         try:
