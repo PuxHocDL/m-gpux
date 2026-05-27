@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import * as cp from "child_process";
+import * as fs from "fs";
+import { save as persistSessions, logPathFor } from "./sessionPersistence";
 
 export type SessionKind = "jupyter" | "python" | "bash" | "vllm";
 
@@ -12,19 +14,19 @@ export interface Session {
   profile: string;
   status: SessionStatus;
   startedAt: number;
-  // Modal app id (e.g. "ap-XXXXX") — parsed from CLI output. Required for `modal app stop`.
   appId?: string;
-  // Modal dashboard URL — also parsed from CLI output.
   dashboardUrl?: string;
-  // Public tunnel URL (Jupyter / ttyd / vLLM) — what the user actually opens.
   accessUrl?: string;
-  // OutputChannel for this session's logs. Hidden by default; user can "View Logs" to show.
   output: vscode.OutputChannel;
-  // Local `modal run` process. Kept so we can detach the local pipe when the user stops.
   proc?: cp.ChildProcess;
   cwd: string;
-  // True when launched with `modal run --detach` — local proc death does not stop the remote app.
   detached: boolean;
+  // Path to the on-disk log file (tailed into the output channel). The file
+  // also survives extension restarts so the user can see history after reopen.
+  logPath: string;
+  // When true, the session was reconstructed from disk after VS Code restart
+  // (the spawn handle is therefore unavailable).
+  restored?: boolean;
 }
 
 class SessionStore {
@@ -42,6 +44,7 @@ class SessionStore {
 
   add(s: Session): void {
     this.sessions.set(s.id, s);
+    this.persist();
     this._onChange.fire();
   }
 
@@ -49,6 +52,7 @@ class SessionStore {
     const s = this.sessions.get(id);
     if (!s) { return; }
     Object.assign(s, patch);
+    this.persist();
     this._onChange.fire();
   }
 
@@ -57,7 +61,12 @@ class SessionStore {
     if (!s) { return; }
     try { s.output.dispose(); } catch { /* ignore */ }
     this.sessions.delete(id);
+    this.persist();
     this._onChange.fire();
+  }
+
+  private persist(): void {
+    persistSessions(this.list());
   }
 
   dispose(): void {
@@ -73,4 +82,16 @@ export const sessionStore = new SessionStore();
 
 export function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Returns the log path for a session, ensuring the directory exists. */
+export function sessionLogPath(id: string): string {
+  return logPathFor(id);
+}
+
+/** Appends to the on-disk log file (best-effort, sync). */
+export function appendSessionLog(session: Session, text: string): void {
+  try {
+    fs.appendFileSync(session.logPath, text);
+  } catch { /* ignore */ }
 }

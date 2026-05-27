@@ -144,7 +144,24 @@ def execute_modal_temp_script(
         env = os.environ.copy()
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.setdefault("PYTHONUTF8", "1")
-        result = subprocess.run(cmd, env=env)
+
+        # When running with --detach we want to keep the modal CLI isolated from
+        # the terminal's signal group so a Ctrl+C closing the terminal (SIGHUP)
+        # or a parent shell exit does not bring the local modal process down
+        # mid-submission. Modal's own --detach takes care of the remote side,
+        # but the local CLI must live long enough to print the access URL.
+        popen_kwargs: dict = {"env": env}
+        if detach:
+            if os.name == "nt":
+                # Windows: detach into its own console group; CTRL_C_EVENT to
+                # the parent will not propagate.
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+            else:
+                # POSIX: become session leader; signals sent to the foreground
+                # process group of the parent terminal won't reach us.
+                popen_kwargs["start_new_session"] = True
+
+        result = subprocess.run(cmd, **popen_kwargs)
     except KeyboardInterrupt:
         if detach:
             console.print("\n[green]Disconnected locally. The remote container is still running.[/green]")

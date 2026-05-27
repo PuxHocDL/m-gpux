@@ -3,7 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
-import { sessionStore, newSessionId, SessionKind } from "./sessionStore";
+import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -839,26 +839,41 @@ async function showAndExecuteScript(
   // Register session in store BEFORE spawn so the sidebar shows "starting"
   const sessionId = newSessionId();
   const kind = (actionType as SessionKind);
-  sessionStore.add({
+  const logPath = sessionLogPath(sessionId);
+  // Truncate any stale log from a prior id collision (extremely unlikely)
+  try { fs.writeFileSync(logPath, ""); } catch { /* ignore */ }
+
+  const session = {
     id: sessionId,
     kind,
     gpu,
     profile: profileName,
-    status: "starting",
+    status: "starting" as const,
     startedAt: Date.now(),
     output: outputChannel,
     cwd: localDir,
     detached: useDetach,
-  });
+    logPath,
+  };
+  sessionStore.add(session);
 
   // Reveal the sidebar so the user sees the new session
   vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => {/* ignore */});
 
+  // Spawn detached + unref so the modal child survives VS Code shutdown.
+  // On Windows detached+shell creates a separate process group; on POSIX it
+  // creates a new session. Either way SIGINT/SIGTERM to the parent does not
+  // propagate to the child, so `--detach` truly survives.
+  const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {
     cwd: localDir,
-    shell: true,
+    shell: isWin,
+    detached: true,
+    windowsHide: true,
+    stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
   });
+  proc.unref();
 
   sessionStore.update(sessionId, { proc });
 
@@ -869,6 +884,8 @@ async function showAndExecuteScript(
 
   const handleChunk = (text: string) => {
     outputChannel.append(text);
+    const s = sessionStore.get(sessionId);
+    if (s) { appendSessionLog(s, text); }
     buffer += text;
     // Keep buffer bounded
     if (buffer.length > 16000) {

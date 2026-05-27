@@ -4,7 +4,8 @@ import { ActionsTreeProvider } from "./actionsTree";
 import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
 import { StatusBarManager } from "./statusBar";
 import { runHubWizard } from "./hubWizard";
-import { sessionStore } from "./sessionStore";
+import { sessionStore, Session } from "./sessionStore";
+import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
 import {
   loadProfiles,
@@ -32,6 +33,11 @@ export function activate(context: vscode.ExtensionContext) {
   const sessionTicker = setInterval(() => sessionsTree.refresh(), 5000);
   context.subscriptions.push({ dispose: () => clearInterval(sessionTicker) });
   context.subscriptions.push({ dispose: () => sessionStore.dispose() });
+
+  // Restore sessions persisted from a previous VS Code window. The local
+  // `modal` process is gone, but if the user launched with --detach the
+  // remote Modal app is still running and the access URL is still valid.
+  restoreSessions().catch(() => { /* best-effort */ });
 
   // --- Status Bar ---
   statusBar = new StatusBarManager();
@@ -314,7 +320,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.5.1 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.5.2 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -504,6 +510,96 @@ export function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+}
+
+async function restoreSessions(): Promise<void> {
+  ensureSessionDirs();
+  const persisted = loadPersistedSessions();
+  if (persisted.length === 0) { return; }
+
+  // Bucket by profile so we issue one `modal app list` per profile.
+  const byProfile = new Map<string, typeof persisted>();
+  for (const p of persisted) {
+    if (!byProfile.has(p.profile)) { byProfile.set(p.profile, []); }
+    byProfile.get(p.profile)!.push(p);
+  }
+
+  const liveAppIds = new Set<string>();
+  for (const [profile, _entries] of byProfile) {
+    const ids = await fetchLiveAppIds(profile);
+    for (const id of ids) { liveAppIds.add(id); }
+  }
+
+  for (const p of persisted) {
+    // Determine fresh status from Modal app list (only if we have an app id).
+    let status: Session["status"] = p.status;
+    if (p.appId) {
+      status = liveAppIds.has(p.appId) ? "ready" : "stopped";
+    } else if (status === "starting") {
+      // No app id was ever captured and the previous host died — call it failed.
+      status = "failed";
+    }
+
+    const outputChannel = vscode.window.createOutputChannel(
+      `M-GPUX: ${p.kind} (${p.gpu}) [restored]`,
+      "log"
+    );
+    // Replay the on-disk log so the user can view it.
+    try {
+      const logged = require("fs").readFileSync(p.logPath, "utf-8");
+      outputChannel.append(logged);
+    } catch { /* file may not exist */ }
+    outputChannel.appendLine("\n[restored from previous VS Code session]");
+
+    sessionStore.add({
+      id: p.id,
+      kind: p.kind,
+      gpu: p.gpu,
+      profile: p.profile,
+      status,
+      startedAt: p.startedAt,
+      appId: p.appId,
+      dashboardUrl: p.dashboardUrl,
+      accessUrl: p.accessUrl,
+      output: outputChannel,
+      cwd: p.cwd,
+      detached: p.detached,
+      logPath: p.logPath,
+      restored: true,
+    });
+  }
+}
+
+function fetchLiveAppIds(profile: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const proc = spawn(
+      "modal",
+      ["app", "list", "--env", "main", "--json"],
+      {
+        shell: true,
+        env: { ...process.env, MODAL_PROFILE: profile, PYTHONIOENCODING: "utf-8" },
+      }
+    );
+    let stdout = "";
+    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+    proc.on("error", () => resolve([]));
+    proc.on("close", () => {
+      try {
+        const apps = JSON.parse(stdout || "[]");
+        const ids: string[] = [];
+        for (const a of apps) {
+          const id = a["App ID"] ?? a.app_id ?? a.id;
+          const state = (a["State"] ?? a.state ?? "").toString().toLowerCase();
+          if (id && (state === "running" || state === "deployed")) {
+            ids.push(id);
+          }
+        }
+        resolve(ids);
+      } catch {
+        resolve([]);
+      }
+    });
+  });
 }
 
 function buildProbeScript(gpu: string): string {

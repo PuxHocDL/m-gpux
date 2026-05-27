@@ -111,12 +111,13 @@ function makeChild(label: string, description: string, icon: vscode.ThemeIcon): 
 }
 
 function describeStatus(s: Session, age: string): string {
+  const tag = s.restored ? " • restored" : "";
   switch (s.status) {
-    case "starting": return `starting • ${age}`;
-    case "ready": return `ready • ${age}`;
+    case "starting": return `starting • ${age}${tag}`;
+    case "ready": return `ready • ${age}${tag}`;
     case "stopping": return `stopping…`;
-    case "stopped": return `stopped`;
-    case "failed": return `failed`;
+    case "stopped": return `stopped${tag}`;
+    case "failed": return `failed${tag}`;
   }
 }
 
