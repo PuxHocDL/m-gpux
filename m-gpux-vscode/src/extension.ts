@@ -10,6 +10,7 @@ import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox } from "./composeActions";
 import { listApps, activateProfile, runCommand } from "./modalCli";
+import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
@@ -45,7 +46,20 @@ export function activate(context: vscode.ExtensionContext) {
   // Restore sessions persisted from a previous VS Code window. The local
   // `modal` process is gone, but if the user launched with --detach the
   // remote Modal app is still running and the access URL is still valid.
-  restoreSessions().catch(() => { /* best-effort */ });
+  // We first hydrate from local persistence, then ask Modal what's
+  // actually running (across all profiles) so sessions launched from the
+  // CLI or other VS Code windows also show up.
+  (async () => {
+    try { await restoreSessions(); } catch { /* best-effort */ }
+    try { await refreshFromModal(); } catch { /* best-effort */ }
+  })();
+
+  // Re-query Modal every 60s so freshly-stopped apps drop to "stopped" and
+  // newly-started ones get adopted without a manual refresh.
+  const discoveryTicker = setInterval(() => {
+    refreshFromModal().catch(() => { /* ignore */ });
+  }, 60_000);
+  context.subscriptions.push({ dispose: () => clearInterval(discoveryTicker) });
 
   // --- Status Bar ---
   statusBar = new StatusBarManager();
@@ -328,7 +342,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.6.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.7.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -346,7 +360,33 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("mgpux.refreshSessions", () => sessionsTree.refresh())
+    vscode.commands.registerCommand("mgpux.refreshSessions", async () => {
+      // Manual refresh: also re-query Modal so the user can recover apps
+      // that drifted (e.g., stopped from outside the extension).
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "M-GPUX: refreshing sessions from Modal..." },
+        async () => {
+          try {
+            const { refreshed, markedStopped, adopted } = await refreshFromModal();
+            const parts: string[] = [];
+            if (refreshed)     { parts.push(`${refreshed} refreshed`); }
+            if (adopted)       { parts.push(`${adopted} adopted`); }
+            if (markedStopped) { parts.push(`${markedStopped} marked stopped`); }
+            vscode.window.showInformationMessage(
+              parts.length ? `M-GPUX: ${parts.join(" • ")}.` : "M-GPUX: no changes."
+            );
+          } catch (e: any) {
+            vscode.window.showWarningMessage(`M-GPUX: refresh failed — ${e?.message ?? e}`);
+          }
+        }
+      );
+      sessionsTree.refresh();
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.discoverApps", async () => {
+      await vscode.commands.executeCommand("mgpux.refreshSessions");
+    })
   );
 
   context.subscriptions.push(
@@ -416,6 +456,11 @@ export function activate(context: vscode.ExtensionContext) {
 
       sessionStore.update(id, { status: "stopping" });
       s.output.appendLine("\n▸ Stop requested by user.");
+
+      // Tear down live sync first so we don't push to a volume that's about
+      // to be detached from a stopped container.
+      try { s.liveSync?.dispose(); } catch { /* ignore */ }
+      sessionStore.update(id, { liveSync: undefined });
 
       // Kill local proc (best-effort — for detached runs this only closes the pipe)
       try { s.proc?.kill(); } catch { /* ignore */ }

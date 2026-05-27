@@ -20,6 +20,7 @@ export interface PersistedSession {
   cwd: string;
   detached: boolean;
   logPath: string;
+  workspaceVolume?: string;
 }
 
 export function ensureDirs(): void {
@@ -59,6 +60,7 @@ export function save(sessions: Session[]): void {
       cwd: s.cwd,
       detached: s.detached,
       logPath: logPathFor(s.id),
+      workspaceVolume: s.workspaceVolume,
     }));
     fs.writeFileSync(STATE_FILE, JSON.stringify(persisted, null, 2), "utf-8");
   } catch {

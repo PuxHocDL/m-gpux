@@ -143,6 +143,7 @@ export async function runPresetByName(name: string): Promise<void> {
   }
   const cwd = workspaceFolder.replace(/\\/g, "/");
   const script = buildScript(preset, cwd);
+  const volumeName = workspaceVolumeName(cwd);
 
   await launchModalScript({
     scriptContent: script,
@@ -152,6 +153,7 @@ export async function runPresetByName(name: string): Promise<void> {
     computeLabel: preset.compute_label ?? "preset",
     profile: profileName,
     preview: false, // presets are pre-approved — skip the review step
+    workspaceVolume: volumeName,
   });
 }
 
@@ -208,12 +210,14 @@ def _prep():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _autocommit(interval=20):
+def _autocommit(interval=5):
     def _loop():
         while True:
             time.sleep(interval)
             try: workspace_volume.commit()
-            except Exception as e: print(f"[sync] {e}")
+            except Exception as e: print(f"[sync] commit {e}")
+            try: workspace_volume.reload()
+            except Exception as e: print(f"[sync] reload {e}")
     threading.Thread(target=_loop, daemon=True).start()
 
 @app.function(image=image, ${computeSpec}, timeout=24 * HOUR, scaledown_window=60 * MINUTE, max_containers=1, volumes={"/workspace": workspace_volume})
@@ -257,12 +261,14 @@ def _prep():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _autocommit(interval=20):
+def _autocommit(interval=5):
     def _loop():
         while True:
             time.sleep(interval)
             try: workspace_volume.commit()
-            except Exception as e: print(f"[sync] {e}")
+            except Exception as e: print(f"[sync] commit {e}")
+            try: workspace_volume.reload()
+            except Exception as e: print(f"[sync] reload {e}")
     threading.Thread(target=_loop, daemon=True).start()
 
 @app.function(image=image, ${computeSpec}, timeout=24 * HOUR, scaledown_window=60 * MINUTE, max_containers=1, volumes={"/workspace": workspace_volume})

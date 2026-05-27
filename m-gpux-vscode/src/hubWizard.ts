@@ -220,7 +220,7 @@ const STABLE_TTYD_FLAGS = [
   "-T", "xterm-256color",
 ];
 
-function jupyterScript(gpu: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
+function jupyterScript(computeSpec: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
@@ -257,7 +257,12 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
+def _start_workspace_autocommit(interval=5):
+    # Bidirectional: commit() pushes container-side changes (training
+    # outputs, notebook checkpoints) into the volume so the local
+    # extension can run 'modal volume get' them. reload() pulls anything
+    # the extension just 'modal volume put'-ed so the user's freshly
+    # edited code shows up inside the running session.
     def _loop():
         while True:
             time.sleep(interval)
@@ -265,11 +270,15 @@ def _start_workspace_autocommit(interval=20):
                 workspace_volume.commit()
             except Exception as exc:
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
+            try:
+                workspace_volume.reload()
+            except Exception as exc:
+                print(f"[sync] workspace reload failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
 @app.function(
     image=image,
-    gpu="${gpu}",
+    ${computeSpec},
     timeout=24 * HOUR,
     scaledown_window=60 * MINUTE,
     max_containers=1,
@@ -307,7 +316,7 @@ def serve():
 `;
 }
 
-function pythonScript(gpu: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
+function pythonScript(computeSpec: string, computeLabel: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
   return `import modal
 import subprocess
 import sys
@@ -319,10 +328,10 @@ image = modal.Image.debian_slim(python_version="${pythonVersion}")${pipSection}.
     "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(excludePatterns)}
 )
 
-@app.function(image=image, gpu="${gpu}", timeout=86400)
+@app.function(image=image, ${computeSpec}, timeout=86400)
 def run_script():
     _print_metrics()
-    print("[EXECUTING] ${scriptName} on ${gpu}...")
+    print("[EXECUTING] ${scriptName} on ${computeLabel}...")
     subprocess.run(
         [sys.executable, "/workspace/${scriptName}"],
         text=True,
@@ -331,7 +340,7 @@ def run_script():
 `;
 }
 
-function bashScript(gpu: string, pythonVersion: string, localDir: string, excludePatterns: string[]): string {
+function bashScript(computeSpec: string, pythonVersion: string, localDir: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import os
@@ -366,7 +375,12 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
+def _start_workspace_autocommit(interval=5):
+    # Bidirectional: commit() pushes container-side changes (training
+    # outputs, notebook checkpoints) into the volume so the local
+    # extension can run 'modal volume get' them. reload() pulls anything
+    # the extension just 'modal volume put'-ed so the user's freshly
+    # edited code shows up inside the running session.
     def _loop():
         while True:
             time.sleep(interval)
@@ -374,11 +388,15 @@ def _start_workspace_autocommit(interval=20):
                 workspace_volume.commit()
             except Exception as exc:
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
+            try:
+                workspace_volume.reload()
+            except Exception as exc:
+                print(f"[sync] workspace reload failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
 @app.function(
     image=image,
-    gpu="${gpu}",
+    ${computeSpec},
     timeout=24 * HOUR,
     scaledown_window=60 * MINUTE,
     max_containers=1,
@@ -452,7 +470,7 @@ def serve():
 `;
 }
 
-function interactiveScript(gpu: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
+function interactiveScript(computeSpec: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
@@ -485,7 +503,12 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
+def _start_workspace_autocommit(interval=5):
+    # Bidirectional: commit() pushes container-side changes (training
+    # outputs, notebook checkpoints) into the volume so the local
+    # extension can run 'modal volume get' them. reload() pulls anything
+    # the extension just 'modal volume put'-ed so the user's freshly
+    # edited code shows up inside the running session.
     def _loop():
         while True:
             time.sleep(interval)
@@ -493,9 +516,13 @@ def _start_workspace_autocommit(interval=20):
                 workspace_volume.commit()
             except Exception as exc:
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
+            try:
+                workspace_volume.reload()
+            except Exception as exc:
+                print(f"[sync] workspace reload failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
+@app.function(image=image, ${computeSpec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_interactive():
     _print_metrics()
     _prepare_workspace()
@@ -592,22 +619,7 @@ export async function runHubWizard(): Promise<void> {
   // Activate selected profile
   switchProfile(selectedProfileName);
 
-  // Step 1: Select GPU
-  const gpuPick = await vscode.window.showQuickPick(
-    AVAILABLE_GPUS.map((g) => ({
-      label: g.label,
-      description: g.description,
-      id: g.id,
-    })),
-    {
-      title: "M-GPUX Hub — Step 2/5: Choose GPU",
-      placeHolder: "Select an NVIDIA GPU accelerator",
-    }
-  );
-  if (!gpuPick) { return; }
-  const selectedGpu = gpuPick.label;
-
-  // Step 2: Select action
+  // Step 2: Choose action FIRST so we know whether GPU is required (vLLM).
   const actionPick = await vscode.window.showQuickPick(
     [
       {
@@ -627,17 +639,48 @@ export async function runHubWizard(): Promise<void> {
       },
       {
         label: "$(server) vLLM Inference Server",
-        description: "OpenAI-compatible LLM API endpoint",
+        description: "OpenAI-compatible LLM API endpoint (GPU only)",
         action: "vllm",
       },
     ],
     {
-      title: "M-GPUX Hub — Step 3/5: Choose Application",
-      placeHolder: "What do you want to run on the GPU?",
+      title: "M-GPUX Hub — Step 2/5: Choose Application",
+      placeHolder: "What do you want to run?",
     }
   );
   if (!actionPick) { return; }
   const action = (actionPick as any).action as string;
+
+  // Step 3: Compute type — vLLM is GPU-only, everything else can run on CPU.
+  let computeSpec: string;
+  let computeLabel: string;
+  if (action === "vllm") {
+    const gpuPick = await pickGpu("M-GPUX Hub — Step 3/5: Choose GPU");
+    if (!gpuPick) { return; }
+    computeSpec = `gpu="${gpuPick}"`;
+    computeLabel = gpuPick;
+  } else {
+    const typePick = await vscode.window.showQuickPick(
+      [
+        { label: "$(symbol-misc) GPU",      description: "NVIDIA accelerator (T4 / L4 / A100 / H100 …)", value: "gpu" as const },
+        { label: "$(circuit-board) CPU",    description: "CPU-only — much cheaper for non-GPU workloads", value: "cpu" as const },
+      ],
+      { title: "M-GPUX Hub — Step 3/5: Choose Compute Type" }
+    );
+    if (!typePick) { return; }
+    if ((typePick as any).value === "cpu") {
+      const cpuPick = await pickCpu();
+      if (!cpuPick) { return; }
+      computeSpec = cpuPick.spec;
+      computeLabel = cpuPick.label;
+    } else {
+      const gpuPick = await pickGpu("M-GPUX Hub — Choose GPU");
+      if (!gpuPick) { return; }
+      computeSpec = `gpu="${gpuPick}"`;
+      computeLabel = gpuPick;
+    }
+  }
+  const selectedGpu = computeLabel;
 
   // Step 3: Select Python version
   const pythonVersion = await pickPythonVersion();
@@ -666,7 +709,7 @@ export async function runHubWizard(): Promise<void> {
       const pipSection = await askPipSection(localDir);
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = jupyterScript(selectedGpu, pythonVersion, localDir, pipSection, excludes);
+      scriptContent = jupyterScript(computeSpec, pythonVersion, localDir, pipSection, excludes);
       mode = "deploy";
       break;
     }
@@ -676,21 +719,24 @@ export async function runHubWizard(): Promise<void> {
       const pipSection = await askPipSection(localDir);
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = pythonScript(selectedGpu, pythonVersion, localDir, pyFile, pipSection, excludes);
+      scriptContent = pythonScript(computeSpec, computeLabel, pythonVersion, localDir, pyFile, pipSection, excludes);
       mode = "run";
       break;
     }
     case "bash": {
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = bashScript(selectedGpu, pythonVersion, localDir, excludes);
+      scriptContent = bashScript(computeSpec, pythonVersion, localDir, excludes);
       mode = "deploy";
       break;
     }
     case "vllm": {
       const model = await pickVllmModel();
       if (!model) { return; }
-      scriptContent = vllmScript(selectedGpu, pythonVersion, model);
+      // vLLM template still uses `gpu=...` directly — extract the GPU id from
+      // computeSpec which is guaranteed to be GPU-shape for this branch.
+      const gpuId = computeSpec.match(/gpu="([^"]+)"/)?.[1] ?? "L4";
+      scriptContent = vllmScript(gpuId, pythonVersion, model);
       mode = "deploy";
       break;
     }
@@ -698,13 +744,44 @@ export async function runHubWizard(): Promise<void> {
       return;
   }
 
-  // Step 5: Show generated script and execute
-  await showAndExecuteScript(scriptContent, selectedGpu, action, mode, localDir);
+  // Step 5: Show generated script and execute. Jupyter / bash / interactive
+  // mount a workspace volume — those get bidirectional live sync. python is
+  // a one-shot run with `add_local_dir` and vllm has no user workspace, so
+  // we pass undefined and the launcher skips sync setup.
+  const wantsSync = action === "jupyter" || action === "bash";
+  const volumeForSync = wantsSync ? workspaceVolumeName(localDir) : undefined;
+  await showAndExecuteScript(scriptContent, selectedGpu, action, mode, localDir, volumeForSync);
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const AVAILABLE_CPUS = [
+  { label: "CPU 1c / 0.5GB",  cores: 1,  memory: 512,   description: "Smallest — quick scripts" },
+  { label: "CPU 2c / 1GB",    cores: 2,  memory: 1024,  description: "Light tasks" },
+  { label: "CPU 4c / 2GB",    cores: 4,  memory: 2048,  description: "Balanced default" },
+  { label: "CPU 8c / 4GB",    cores: 8,  memory: 4096,  description: "Bigger workloads" },
+  { label: "CPU 16c / 8GB",   cores: 16, memory: 8192,  description: "Heavier preprocessing" },
+  { label: "CPU 32c / 16GB",  cores: 32, memory: 16384, description: "Max single-container" },
+];
+
+async function pickGpu(title: string): Promise<string | undefined> {
+  const pick = await vscode.window.showQuickPick(
+    AVAILABLE_GPUS.map((g) => ({ label: g.label, description: g.description, id: g.id })),
+    { title, placeHolder: "Select an NVIDIA GPU accelerator" }
+  );
+  return pick?.label;
+}
+
+async function pickCpu(): Promise<{ spec: string; label: string } | undefined> {
+  const pick = await vscode.window.showQuickPick(
+    AVAILABLE_CPUS.map((c) => ({ label: c.label, description: c.description, cores: c.cores, memory: c.memory })),
+    { title: "M-GPUX Hub — Select CPU", placeHolder: "Cores / memory" }
+  );
+  if (!pick) { return undefined; }
+  return { spec: `cpu=${pick.cores}, memory=${pick.memory}`, label: pick.label };
+}
 
 async function pickPythonVersion(): Promise<string | undefined> {
   const pick = await vscode.window.showQuickPick(PYTHON_VERSIONS, {
@@ -794,7 +871,8 @@ async function showAndExecuteScript(
   gpu: string,
   actionType: string,
   mode: "deploy" | "run",
-  localDir: string
+  localDir: string,
+  workspaceVolume?: string
 ): Promise<void> {
   const { spawn } = require("child_process");
 
@@ -867,8 +945,28 @@ async function showAndExecuteScript(
     cwd: localDir,
     detached: mode === "deploy",
     logPath,
+    workspaceVolume,
   };
   sessionStore.add(session);
+
+  // Start bidirectional sync if this action mounts a workspace volume.
+  // We start before spawning modal so the initial push happens while the
+  // container is still building its image.
+  if (workspaceVolume) {
+    try {
+      const { LiveSyncDriver } = require("./liveSync");
+      const driver = new LiveSyncDriver({
+        volumeName: workspaceVolume,
+        workspaceDir: localDir,
+        profile: profileName,
+        output: outputChannel,
+      });
+      driver.start();
+      sessionStore.update(sessionId, { liveSync: driver });
+    } catch (err: any) {
+      outputChannel.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+    }
+  }
 
   // Reveal the sidebar so the user sees the new session
   vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => {/* ignore */});
@@ -968,12 +1066,20 @@ async function showAndExecuteScript(
         status: stillUp ? "ready" : "stopped",
         proc: undefined,
       });
+      if (!stillUp) {
+        try { s.liveSync?.dispose(); } catch { /* ignore */ }
+        sessionStore.update(sessionId, { liveSync: undefined });
+      }
     } else if (s.status === "stopping") {
       outputChannel.appendLine(`\n• Local process exited after stop (code ${code}).`);
       sessionStore.update(sessionId, { status: "stopped", proc: undefined });
+      try { s.liveSync?.dispose(); } catch { /* ignore */ }
+      sessionStore.update(sessionId, { liveSync: undefined });
     } else {
       outputChannel.appendLine(`\n✗ Process exited with code ${code}.`);
       sessionStore.update(sessionId, { status: "failed", proc: undefined });
+      try { s.liveSync?.dispose(); } catch { /* ignore */ }
+      sessionStore.update(sessionId, { liveSync: undefined });
       vscode.window.showWarningMessage(
         `M-GPUX: ${actionType} on ${gpu} exited with code ${code}. Right-click the session → View Logs.`
       );

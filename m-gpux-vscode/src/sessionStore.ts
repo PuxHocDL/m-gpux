@@ -27,6 +27,13 @@ export interface Session {
   // When true, the session was reconstructed from disk after VS Code restart
   // (the spawn handle is therefore unavailable).
   restored?: boolean;
+  // Name of the Modal Volume mounted at /workspace inside the container.
+  // Present for hub / preset / interactive sessions; the live-sync driver
+  // uses it to push local edits into the running session.
+  workspaceVolume?: string;
+  // Disposable that tears down the live-sync watcher when the session
+  // is stopped. Not persisted.
+  liveSync?: vscode.Disposable;
 }
 
 class SessionStore {
@@ -59,6 +66,7 @@ class SessionStore {
   remove(id: string): void {
     const s = this.sessions.get(id);
     if (!s) { return; }
+    try { s.liveSync?.dispose(); } catch { /* ignore */ }
     try { s.output.dispose(); } catch { /* ignore */ }
     this.sessions.delete(id);
     this.persist();
@@ -71,6 +79,7 @@ class SessionStore {
 
   dispose(): void {
     for (const s of this.sessions.values()) {
+      try { s.liveSync?.dispose(); } catch { /* ignore */ }
       try { s.output.dispose(); } catch { /* ignore */ }
     }
     this.sessions.clear();
