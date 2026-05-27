@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.5.5",
+  "version": "2.5.6",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {

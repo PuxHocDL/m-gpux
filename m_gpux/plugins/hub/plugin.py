@@ -146,7 +146,15 @@ workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missin
 image = (
     modal.Image.debian_slim(python_version="{python_version}")
     {pip_section}
-    .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets")
+    .pip_install(
+        "jupyterlab>=4.2",
+        "jupyter-server>=2.14",
+        "ipywidgets",
+        # Real-time collaboration keeps notebook + cell outputs in a CRDT
+        # Y.Doc on the server. Reconnecting from a new browser tab resyncs
+        # the live state (including in-progress cell output).
+        "jupyter-collaboration>=3.0",
+    )
     .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
 )
 
@@ -199,7 +207,6 @@ def serve():
             "--ServerApp.iopub_msg_rate_limit=1.0e10",
             "--ServerApp.rate_limit_window=3.0",
             "--ServerApp.shutdown_no_activity_timeout=0",
-            "--LabApp.collaborative=False",
         ],
         env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
     )

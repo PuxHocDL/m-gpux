@@ -235,7 +235,16 @@ workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missin
 image = (
     modal.Image.debian_slim(python_version="${pythonVersion}")
     ${pipSection}
-    .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets")
+    .pip_install(
+        "jupyterlab>=4.2",
+        "jupyter-server>=2.14",
+        "ipywidgets",
+        # Real-time collaboration keeps notebook + cell outputs in a CRDT
+        # Y.Doc on the server. Reconnecting from a new browser tab resyncs
+        # the live state (including in-progress cell output) instead of
+        # loading a stale snapshot from disk.
+        "jupyter-collaboration>=3.0",
+    )
     .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
@@ -289,7 +298,9 @@ def serve():
             "--ServerApp.iopub_msg_rate_limit=1.0e10",
             "--ServerApp.rate_limit_window=3.0",
             "--ServerApp.shutdown_no_activity_timeout=0",
-            "--LabApp.collaborative=False",
+            # Collaborative mode is enabled by installing jupyter-collaboration —
+            # we just don't disable it. The flag below would be the kill-switch.
+            # "--LabApp.collaborative=False",
         ],
         env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
     )
@@ -862,20 +873,19 @@ async function showAndExecuteScript(
   // Reveal the sidebar so the user sees the new session
   vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => {/* ignore */});
 
-  // Spawn detached + unref so the modal child survives VS Code shutdown.
-  // On Windows detached+shell creates a separate process group; on POSIX it
-  // creates a new session. Either way SIGINT/SIGTERM to the parent does not
-  // propagate to the child, so `--detach` truly survives.
+  // For `modal deploy` the local CLI exits quickly once the deployment is
+  // accepted, and the remote app lives independently — we don't need
+  // `detached: true` (which spawns a visible console window on Windows even
+  // with windowsHide). For `modal run` we let the local process die with
+  // VS Code: the user explicitly chose foreground mode.
   const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {
     cwd: localDir,
     shell: isWin,
-    detached: true,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
   });
-  proc.unref();
 
   sessionStore.update(sessionId, { proc });
 
