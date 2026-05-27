@@ -172,7 +172,7 @@ def _start_workspace_autocommit(interval=20):
     image=image,
     {compute_spec},
     timeout=24 * HOUR,
-    scaledown_window=24 * HOUR,
+    scaledown_window=60 * MINUTE,
     max_containers=1,
     volumes={"/workspace": workspace_volume},
 )
@@ -688,7 +688,7 @@ def _start_workspace_autocommit(interval=20):
     image=image,
     {compute_spec},
     timeout=24 * HOUR,
-    scaledown_window=24 * HOUR,
+    scaledown_window=60 * MINUTE,
     max_containers=1,
     volumes={"/workspace": workspace_volume},
 )

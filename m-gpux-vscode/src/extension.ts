@@ -320,7 +320,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.5.3 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.5.4 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
