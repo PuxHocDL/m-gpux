@@ -150,9 +150,11 @@ image = (
     .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={exclude_patterns})
 )
 
+MINUTE = 60
+HOUR = 60 * MINUTE
+
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
-    # Local files should win on every launch, while remote-only outputs remain.
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
@@ -166,47 +168,41 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
-def run_jupyter():
+@app.function(
+    image=image,
+    {compute_spec},
+    timeout=24 * HOUR,
+    scaledown_window=24 * HOUR,
+    max_containers=1,
+    volumes={"/workspace": workspace_volume},
+)
+@modal.concurrent(max_inputs=100)
+@modal.web_server(port=8888, startup_timeout=10 * MINUTE)
+def serve():
     _print_metrics()
     _prepare_workspace()
     _start_workspace_autocommit()
-    # NOTE: background metrics monitor is intentionally disabled here.
-    # It floods the tunnelled stdout every 30s which causes JupyterLab to
-    # appear laggy. Re-enable manually if you need it.
-    jupyter_port = 8888
-    with modal.forward(jupyter_port) as tunnel:
-        print("\\n=======================================================")
-        print(f"[JUPYTER READY] {tunnel.url}")
-        print("  Workspace mounted at: /workspace")
-        print("  Sync volume: {workspace_volume} (auto-commit every ~20s)")
-        print("  Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace")
-        print("=======================================================\\n", flush=True)
-        proc = subprocess.Popen(
-            [
-                "jupyter", "lab",
-                "--no-browser",
-                "--allow-root",
-                "--ip=0.0.0.0",
-                "--port", str(jupyter_port),
-                # Auth: token-less because the URL is already a private Modal tunnel.
-                "--ServerApp.token=",
-                "--ServerApp.password=",
-                "--ServerApp.disable_check_xsrf=True",
-                "--ServerApp.allow_origin=*",
-                "--ServerApp.allow_remote_access=True",
-                "--ServerApp.root_dir=/workspace",
-                # Lag fixes: lift iopub data/msg rate limits so big stdout does
-                # not get throttled, and stop polling for inactive shutdowns.
-                "--ServerApp.iopub_data_rate_limit=1.0e10",
-                "--ServerApp.iopub_msg_rate_limit=1.0e10",
-                "--ServerApp.rate_limit_window=3.0",
-                "--ServerApp.shutdown_no_activity_timeout=0",
-                "--LabApp.collaborative=False",
-            ],
-            env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
-        )
-        proc.wait()
+    subprocess.Popen(
+        [
+            "jupyter", "lab",
+            "--no-browser",
+            "--allow-root",
+            "--ip=0.0.0.0",
+            "--port", "8888",
+            "--ServerApp.token=",
+            "--ServerApp.password=",
+            "--ServerApp.disable_check_xsrf=True",
+            "--ServerApp.allow_origin=*",
+            "--ServerApp.allow_remote_access=True",
+            "--ServerApp.root_dir=/workspace",
+            "--ServerApp.iopub_data_rate_limit=1.0e10",
+            "--ServerApp.iopub_msg_rate_limit=1.0e10",
+            "--ServerApp.rate_limit_window=3.0",
+            "--ServerApp.shutdown_no_activity_timeout=0",
+            "--LabApp.collaborative=False",
+        ],
+        env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
+    )
 """
 
 WRAPPER_SCRIPT = """
@@ -670,9 +666,11 @@ _BASHRC_B64 = "{bashrc_b64}"
 _TMUX_B64 = "{tmux_b64}"
 _STARSHIP_B64 = "{starship_b64}"
 
+MINUTE = 60
+HOUR = 60 * MINUTE
+
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
-    # Local files should win on every launch, while remote-only outputs remain.
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
@@ -686,8 +684,17 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
-def run_shell():
+@app.function(
+    image=image,
+    {compute_spec},
+    timeout=24 * HOUR,
+    scaledown_window=24 * HOUR,
+    max_containers=1,
+    volumes={"/workspace": workspace_volume},
+)
+@modal.concurrent(max_inputs=50)
+@modal.web_server(port=8888, startup_timeout=5 * MINUTE)
+def serve():
     _print_metrics()
     _prepare_workspace()
     _start_workspace_autocommit()
@@ -699,20 +706,11 @@ def run_shell():
     with open("/root/.config/starship.toml", "wb") as f:
         f.write(base64.b64decode(_STARSHIP_B64))
 
-    port = 8888
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-    with modal.forward(port) as tunnel:
-        print("\\n[WEB SHELL READY]")
-        print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: tmux session 'main'")
-        print("Close & reopen the URL to reattach — running jobs keep running.")
-        print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
-        print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
-        proc = subprocess.Popen(
-            ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
-            env=env,
-        )
-        proc.wait()
+    subprocess.Popen(
+        ["ttyd", *{ttyd_flags}, "-p", "8888", "bash", "-lc", "tmux new-session -A -s main"],
+        env=env,
+    )
 """
 
 
@@ -850,7 +848,7 @@ def hub_main():
         execute_modal_temp_script(
             script,
             f"Jupyter Lab on {compute_label}",
-            detach=True,
+            deploy=True,
             session_metadata=_session_metadata(
                 kind="jupyter",
                 profile=selected_profile,
@@ -1088,7 +1086,7 @@ def hub_main():
         execute_modal_temp_script(
             script,
             f"Web Bash Shell on {compute_label}",
-            detach=True,
+            deploy=True,
             session_metadata=_session_metadata(
                 kind="bash",
                 profile=selected_profile,

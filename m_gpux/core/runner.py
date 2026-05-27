@@ -79,6 +79,7 @@ def execute_modal_temp_script(
     description: str,
     detach: bool = False,
     session_metadata: dict | None = None,
+    deploy: bool = False,
 ) -> None:
     """Materialise *content* as ``modal_runner.py``, summarise it, then execute.
 
@@ -128,12 +129,20 @@ def execute_modal_temp_script(
                 content = rf.read()
             continue
 
-    cmd = ["modal", "run", runner_file]
-    if detach:
-        cmd.insert(2, "--detach")
+    if deploy:
+        cmd = ["modal", "deploy", runner_file]
+    elif detach:
+        cmd = ["modal", "run", "--detach", runner_file]
+    else:
+        cmd = ["modal", "run", runner_file]
 
     console.print(f"[bold green]Starting {description}…[/bold green]")
-    if detach:
+    if deploy:
+        console.print(
+            "[dim]Deploying as a persistent Modal service. The URL stays valid until you "
+            "run `modal app stop`. Use [bold]m-gpux stop[/bold] to release the GPU.[/dim]"
+        )
+    elif detach:
         console.print(
             "[dim]Detached: container keeps running if you close this terminal. "
             "Reopen the tunnel URL to reconnect.[/dim]"
@@ -151,19 +160,20 @@ def execute_modal_temp_script(
         # mid-submission. Modal's own --detach takes care of the remote side,
         # but the local CLI must live long enough to print the access URL.
         popen_kwargs: dict = {"env": env}
-        if detach:
+        # For both detach and deploy we want the local modal CLI isolated from
+        # the parent terminal's signal group — a Ctrl+C / SIGHUP on the shell
+        # must not kill the CLI before Modal has finished accepting the job.
+        if detach or deploy:
             if os.name == "nt":
-                # Windows: detach into its own console group; CTRL_C_EVENT to
-                # the parent will not propagate.
                 popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
             else:
-                # POSIX: become session leader; signals sent to the foreground
-                # process group of the parent terminal won't reach us.
                 popen_kwargs["start_new_session"] = True
 
         result = subprocess.run(cmd, **popen_kwargs)
     except KeyboardInterrupt:
-        if detach:
+        if deploy:
+            console.print("\n[green]Deployment submitted. The remote service stays up until you stop it.[/green]")
+        elif detach:
             console.print("\n[green]Disconnected locally. The remote container is still running.[/green]")
         else:
             console.print(f"\n[yellow]Execution of {description} interrupted.[/yellow]")
@@ -182,7 +192,7 @@ def execute_modal_temp_script(
         return None
 
     tracked_session_id: str | None = None
-    if detach and session_metadata and (result is None or result.returncode == 0):
+    if (detach or deploy) and session_metadata and (result is None or result.returncode == 0):
         app_name = _read_app_name()
         session = {
             **session_metadata,
@@ -199,7 +209,7 @@ def execute_modal_temp_script(
 
     stop_choice = Prompt.ask(
         "[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
-        choices=["y", "n"], default="n" if detach else "y",
+        choices=["y", "n"], default="n" if (detach or deploy) else "y",
     )
     if stop_choice.lower() == "y":
         app_name = _read_app_name()

@@ -320,7 +320,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.5.2 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v2.5.3 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -524,19 +524,20 @@ async function restoreSessions(): Promise<void> {
     byProfile.get(p.profile)!.push(p);
   }
 
-  const liveAppIds = new Set<string>();
+  const liveIdsOrNames = new Set<string>();
   for (const [profile, _entries] of byProfile) {
-    const ids = await fetchLiveAppIds(profile);
-    for (const id of ids) { liveAppIds.add(id); }
+    const ids = await fetchLiveApps(profile);
+    for (const id of ids) { liveIdsOrNames.add(id); }
   }
 
   for (const p of persisted) {
-    // Determine fresh status from Modal app list (only if we have an app id).
+    // Determine fresh status from Modal app list (we match by ID OR name —
+    // `modal run` sessions key on ap-XXXXX, `modal deploy` sessions key on the
+    // app's declared name).
     let status: Session["status"] = p.status;
     if (p.appId) {
-      status = liveAppIds.has(p.appId) ? "ready" : "stopped";
+      status = liveIdsOrNames.has(p.appId) ? "ready" : "stopped";
     } else if (status === "starting") {
-      // No app id was ever captured and the previous host died — call it failed.
       status = "failed";
     }
 
@@ -570,7 +571,7 @@ async function restoreSessions(): Promise<void> {
   }
 }
 
-function fetchLiveAppIds(profile: string): Promise<string[]> {
+function fetchLiveApps(profile: string): Promise<string[]> {
   return new Promise((resolve) => {
     const proc = spawn(
       "modal",
@@ -586,15 +587,17 @@ function fetchLiveAppIds(profile: string): Promise<string[]> {
     proc.on("close", () => {
       try {
         const apps = JSON.parse(stdout || "[]");
-        const ids: string[] = [];
+        const out: string[] = [];
         for (const a of apps) {
           const id = a["App ID"] ?? a.app_id ?? a.id;
+          const name = a["Name"] ?? a.name ?? a.description;
           const state = (a["State"] ?? a.state ?? "").toString().toLowerCase();
-          if (id && (state === "running" || state === "deployed")) {
-            ids.push(id);
+          if (state === "running" || state === "deployed") {
+            if (id) { out.push(id); }
+            if (name) { out.push(name); }
           }
         }
-        resolve(ids);
+        resolve(out);
       } catch {
         resolve([]);
       }

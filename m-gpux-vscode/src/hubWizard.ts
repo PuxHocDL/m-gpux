@@ -239,6 +239,9 @@ image = (
     .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
+MINUTE = 60
+HOUR = 60 * MINUTE
+
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
     # Local files should win on every launch, while remote-only outputs remain.
@@ -255,45 +258,41 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
-def run_jupyter():
+@app.function(
+    image=image,
+    gpu="${gpu}",
+    timeout=24 * HOUR,
+    scaledown_window=24 * HOUR,
+    max_containers=1,
+    volumes={"/workspace": workspace_volume},
+)
+@modal.concurrent(max_inputs=100)
+@modal.web_server(port=8888, startup_timeout=10 * MINUTE)
+def serve():
     _print_metrics()
     _prepare_workspace()
     _start_workspace_autocommit()
-    # NOTE: background metrics monitor disabled — it floods tunnelled stdout
-    # every 30s and makes JupyterLab feel laggy.
-    jupyter_port = 8888
-    with modal.forward(jupyter_port) as tunnel:
-        print("\\n=======================================================")
-        print(f"[JUPYTER READY] {tunnel.url}")
-        print("  Workspace mounted at: /workspace")
-        print("  Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
-        print("  Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace")
-        print("=======================================================\\n", flush=True)
-        proc = subprocess.Popen(
-            [
-                "jupyter", "lab",
-                "--no-browser",
-                "--allow-root",
-                "--ip=0.0.0.0",
-                "--port", str(jupyter_port),
-                "--ServerApp.token=",
-                "--ServerApp.password=",
-                "--ServerApp.disable_check_xsrf=True",
-                "--ServerApp.allow_origin=*",
-                "--ServerApp.allow_remote_access=True",
-                "--ServerApp.root_dir=/workspace",
-                # Lag fixes: lift iopub data/msg rate limits so big stdout does
-                # not get throttled, and stop polling for inactive shutdowns.
-                "--ServerApp.iopub_data_rate_limit=1.0e10",
-                "--ServerApp.iopub_msg_rate_limit=1.0e10",
-                "--ServerApp.rate_limit_window=3.0",
-                "--ServerApp.shutdown_no_activity_timeout=0",
-                "--LabApp.collaborative=False",
-            ],
-            env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
-        )
-        proc.wait()
+    subprocess.Popen(
+        [
+            "jupyter", "lab",
+            "--no-browser",
+            "--allow-root",
+            "--ip=0.0.0.0",
+            "--port", "8888",
+            "--ServerApp.token=",
+            "--ServerApp.password=",
+            "--ServerApp.disable_check_xsrf=True",
+            "--ServerApp.allow_origin=*",
+            "--ServerApp.allow_remote_access=True",
+            "--ServerApp.root_dir=/workspace",
+            "--ServerApp.iopub_data_rate_limit=1.0e10",
+            "--ServerApp.iopub_msg_rate_limit=1.0e10",
+            "--ServerApp.rate_limit_window=3.0",
+            "--ServerApp.shutdown_no_activity_timeout=0",
+            "--LabApp.collaborative=False",
+        ],
+        env={**os.environ, "JUPYTER_PLATFORM_DIRS": "1"},
+    )
 `;
 }
 
@@ -347,6 +346,9 @@ image = (
     .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
 )
 
+MINUTE = 60
+HOUR = 60 * MINUTE
+
 def _prepare_workspace():
     os.makedirs("/workspace", exist_ok=True)
     # Local files should win on every launch, while remote-only outputs remain.
@@ -363,30 +365,29 @@ def _start_workspace_autocommit(interval=20):
                 print(f"[sync] workspace commit failed: {exc}", flush=True)
     threading.Thread(target=_loop, daemon=True).start()
 
-@app.function(image=image, gpu="${gpu}", timeout=86400, volumes={"/workspace": workspace_volume})
-def run_shell():
+@app.function(
+    image=image,
+    gpu="${gpu}",
+    timeout=24 * HOUR,
+    scaledown_window=24 * HOUR,
+    max_containers=1,
+    volumes={"/workspace": workspace_volume},
+)
+@modal.concurrent(max_inputs=50)
+@modal.web_server(port=8888, startup_timeout=5 * MINUTE)
+def serve():
     _print_metrics()
     _prepare_workspace()
     _start_workspace_autocommit()
-    port = 8888
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-    os.makedirs("/workspace", exist_ok=True)
     with open("/root/.bashrc", "w", encoding="utf-8") as f:
         f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
     with open("/root/.tmux.conf", "w", encoding="utf-8") as f:
         f.write(${JSON.stringify(WEB_TERMINAL_TMUX_CONF)})
-    with modal.forward(port) as tunnel:
-        print("\\n[WEB SHELL READY]")
-        print("URL: " + tunnel.url)
-        print("Workspace: /workspace   Mode: tmux session 'main'")
-        print("Close & reopen the URL to reattach — running jobs keep running.")
-        print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
-        print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
-        proc = subprocess.Popen(
-            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
-            env=env,
-        )
-        proc.wait()
+    subprocess.Popen(
+        ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", "8888", "bash", "-lc", "tmux new-session -A -s main"],
+        env=env,
+    )
 `;
 }
 
@@ -646,7 +647,8 @@ export async function runHubWizard(): Promise<void> {
   ];
 
   let scriptContent: string;
-  let detach = false;
+  // "deploy" = persistent web service (modal deploy). "run" = foreground job.
+  let mode: "deploy" | "run" = "run";
 
   switch (action) {
     case "jupyter": {
@@ -654,7 +656,7 @@ export async function runHubWizard(): Promise<void> {
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
       scriptContent = jupyterScript(selectedGpu, pythonVersion, localDir, pipSection, excludes);
-      detach = true;
+      mode = "deploy";
       break;
     }
     case "python": {
@@ -664,20 +666,21 @@ export async function runHubWizard(): Promise<void> {
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
       scriptContent = pythonScript(selectedGpu, pythonVersion, localDir, pyFile, pipSection, excludes);
+      mode = "run";
       break;
     }
     case "bash": {
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
       scriptContent = bashScript(selectedGpu, pythonVersion, localDir, excludes);
-      detach = true;
+      mode = "deploy";
       break;
     }
     case "vllm": {
       const model = await pickVllmModel();
       if (!model) { return; }
       scriptContent = vllmScript(selectedGpu, pythonVersion, model);
-      detach = true;
+      mode = "deploy";
       break;
     }
     default:
@@ -685,7 +688,7 @@ export async function runHubWizard(): Promise<void> {
   }
 
   // Step 5: Show generated script and execute
-  await showAndExecuteScript(scriptContent, selectedGpu, action, detach, localDir);
+  await showAndExecuteScript(scriptContent, selectedGpu, action, mode, localDir);
 }
 
 // ---------------------------------------------------------------------------
@@ -779,7 +782,7 @@ async function showAndExecuteScript(
   content: string,
   gpu: string,
   actionType: string,
-  detach: boolean,
+  mode: "deploy" | "run",
   localDir: string
 ): Promise<void> {
   const { spawn } = require("child_process");
@@ -826,15 +829,14 @@ async function showAndExecuteScript(
     }
   }
 
-  const useDetach = detach;
   const runnerFilename = path.basename(runnerPath);
-  const args = useDetach
-    ? ["run", "--detach", runnerFilename]
+  const args = mode === "deploy"
+    ? ["deploy", runnerFilename]
     : ["run", runnerFilename];
 
   outputChannel.appendLine(`▸ Running: modal ${args.join(" ")}`);
   outputChannel.appendLine(`  CWD: ${localDir}`);
-  outputChannel.appendLine(`  Mode: ${useDetach ? "Detached (background)" : "Foreground"}\n`);
+  outputChannel.appendLine(`  Mode: ${mode === "deploy" ? "Persistent web service" : "One-shot run"}\n`);
 
   // Register session in store BEFORE spawn so the sidebar shows "starting"
   const sessionId = newSessionId();
@@ -852,7 +854,7 @@ async function showAndExecuteScript(
     startedAt: Date.now(),
     output: outputChannel,
     cwd: localDir,
-    detached: useDetach,
+    detached: mode === "deploy",
     logPath,
   };
   sessionStore.add(session);
@@ -887,26 +889,35 @@ async function showAndExecuteScript(
     const s = sessionStore.get(sessionId);
     if (s) { appendSessionLog(s, text); }
     buffer += text;
-    // Keep buffer bounded
     if (buffer.length > 16000) {
       buffer = buffer.slice(-8000);
     }
 
     if (!gotAppMeta) {
-      // Modal prints lines like:
-      //   ✓ Initialized. View run at https://modal.com/apps/<ws>/main/ap-XXXXX
-      const m = buffer.match(/https?:\/\/modal\.com\/apps\/[^\s"']*\/(ap-[A-Za-z0-9]+)/);
-      if (m) {
+      // `modal run` output: ✓ Initialized. View run at https://modal.com/apps/<ws>/main/ap-XXXXX
+      // `modal deploy` output: View Deployment: https://modal.com/apps/<ws>/main/deployed/<name>
+      const runMatch = buffer.match(/https?:\/\/modal\.com\/apps\/[^\s"']*\/(ap-[A-Za-z0-9]+)/);
+      if (runMatch) {
         gotAppMeta = true;
         sessionStore.update(sessionId, {
-          appId: m[1],
-          dashboardUrl: m[0],
+          appId: runMatch[1],
+          dashboardUrl: runMatch[0],
         });
+      } else {
+        const deployMatch = buffer.match(/https?:\/\/modal\.com\/apps\/[^\s"']*\/deployed\/([A-Za-z0-9_-]+)/);
+        if (deployMatch) {
+          gotAppMeta = true;
+          // For deployed apps, use the app NAME as the identifier — `modal app stop` accepts both.
+          sessionStore.update(sessionId, {
+            appId: deployMatch[1],
+            dashboardUrl: deployMatch[0],
+          });
+        }
       }
     }
 
     if (!gotAccessUrl) {
-      // Public tunnel URLs (modal.host / modal.run) — what the user actually opens.
+      // Public access URLs: *.modal.run (deployed web_server) or *.modal.host (modal.forward).
       const m = buffer.match(/https?:\/\/[^\s"']*modal\.(?:host|run)[^\s"']*/);
       if (m) {
         gotAccessUrl = true;
@@ -926,10 +937,11 @@ async function showAndExecuteScript(
     if (!s) { return; }
     if (code === 0) {
       outputChannel.appendLine(`\n✓ Local process completed (code 0).`);
-      // For detached runs, the remote keeps running even after local exits — leave session as "ready"
-      // For foreground runs, the session is genuinely done — mark stopped.
+      // `modal deploy` exits as soon as the app is deployed — the remote service
+      // keeps running. `modal run` (python) genuinely finished.
+      const stillUp = mode === "deploy" && gotAccessUrl;
       sessionStore.update(sessionId, {
-        status: useDetach && gotAccessUrl ? "ready" : "stopped",
+        status: stillUp ? "ready" : "stopped",
         proc: undefined,
       });
     } else if (s.status === "stopping") {
