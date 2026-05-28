@@ -1,6 +1,6 @@
 # m-gpux
 
-Professional CLI tooling for Modal GPU workflows: account profiles, interactive runtimes, web hosting, Docker Compose deployments, model serving, vision training, sessions, and billing visibility.
+Professional CLI tooling for ModalGPU workflows: account profiles, interactive runtimes, web hosting, Docker Compose deployments, model serving, vision training, sessions, and billing visibility.
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyPI](https://img.shields.io/badge/PyPI-m--gpux-f59e0b?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/m-gpux/)
