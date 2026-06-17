@@ -115,6 +115,54 @@ AVAILABLE_PYTHON_VERSIONS = [
 ]
 
 
+def _select_gpu_count(max_count: int = 8) -> int:
+    """Ask how many GPUs to attach to a single container.
+
+    Modal accepts ``gpu="<type>:<count>"`` to pin multiple GPUs to one
+    container (used for tensor parallelism or models that don't fit on a
+    single card). Returns the chosen count (>= 1).
+    """
+    console.print("\n[bold cyan]Step 1c: Number of GPUs[/bold cyan]")
+    console.print(
+        "  [dim]Attach several GPUs to one container for tensor parallelism "
+        "or models too large for a single card.[/dim]"
+    )
+    while True:
+        raw = Prompt.ask("How many GPUs per container?", default="1").strip()
+        if raw.isdigit() and 1 <= int(raw) <= max_count:
+            count = int(raw)
+            if count > 1:
+                console.print(f"[green]Using [bold]{count}[/bold] GPUs per container.[/green]")
+            return count
+        console.print(f"[bold red]Enter a whole number between 1 and {max_count}.[/bold red]")
+
+
+def _select_jupyter_persistence() -> tuple[str, str, str]:
+    """Choose how the notebook container stays alive when no browser is connected.
+
+    Returns ``(min_containers, scaledown_window_expr, label)`` ready to be
+    spliced into the generated Modal script. ``keep-warm`` pins one container so
+    a long-running kernel (e.g. training) survives disconnects; the idle modes
+    scale to zero after a quiet period to save cost.
+    """
+    console.print("\n[bold cyan]Step 6: Notebook Session Persistence[/bold cyan]")
+    console.print(
+        "  [dim]Controls how long the kernel keeps running with no browser "
+        "connected. Keep-warm protects long training runs.[/dim]"
+    )
+    options = [
+        ("Keep-warm (always on)", "Pin one container — long jobs survive disconnects. Costs run until you stop."),
+        ("Idle 1 hour", "Scale to zero after 1h with no activity (balanced)."),
+        ("Idle 15 minutes", "Scale to zero quickly when idle (cheapest)."),
+    ]
+    idx = arrow_select(options, title="Session Persistence", default=0)
+    if idx == 0:
+        return "1", "60 * MINUTE", "keep-warm"
+    if idx == 1:
+        return "0", "60 * MINUTE", "idle-1h"
+    return "0", "15 * MINUTE", "idle-15m"
+
+
 def _select_python_version() -> str:
     console.print("\n[bold cyan]Step 3: Choose Python Version[/bold cyan]")
     choice_idx = arrow_select(AVAILABLE_PYTHON_VERSIONS, title="Python Version", default=0)
@@ -180,7 +228,8 @@ def _start_workspace_autocommit(interval=20):
     image=image,
     {compute_spec},
     timeout=24 * HOUR,
-    scaledown_window=60 * MINUTE,
+    scaledown_window={scaledown_window},
+    min_containers={min_containers},
     max_containers=1,
     volumes={"/workspace": workspace_volume},
 )
@@ -636,7 +685,7 @@ def serve():
         "--host", "0.0.0.0",
         "--port", "8000",
         "--enforce-eager",
-        "--tensor-parallel-size", "1",
+        "--tensor-parallel-size", "{tensor_parallel}",
     ]
     print("Starting vLLM:", " ".join(cmd))
     subprocess.Popen(" ".join(cmd), shell=True)
@@ -751,6 +800,7 @@ def hub_main():
     ]
     compute_type_idx = arrow_select(compute_type_options, title="Compute Type", default=0)
     use_cpu = (compute_type_idx == 1)
+    gpu_count = 1  # GPUs per container; bumped below for GPU workloads.
 
     if use_cpu:
         console.print("\n[bold cyan]Step 1b: Choose CPU Configuration[/bold cyan]")
@@ -770,8 +820,13 @@ def hub_main():
         gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
         gpu_idx = arrow_select(gpu_options, title="Select GPU", default=1)
         selected_gpu = list(AVAILABLE_GPUS.values())[gpu_idx][0]
-        compute_spec = f'gpu="{selected_gpu}"'
-        compute_label = selected_gpu
+        gpu_count = _select_gpu_count()
+        if gpu_count > 1:
+            compute_spec = f'gpu="{selected_gpu}:{gpu_count}"'
+            compute_label = f"{selected_gpu} x{gpu_count}"
+        else:
+            compute_spec = f'gpu="{selected_gpu}"'
+            compute_label = selected_gpu
         console.print(f"\n[green]You selected: [bold]{compute_label}[/bold][/green]")
     
     console.print("\n[bold cyan]Step 2: Choose Application[/bold cyan]")
@@ -834,6 +889,8 @@ def hub_main():
         )
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
 
+        min_containers, scaledown_window, persistence_label = _select_jupyter_persistence()
+
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
         workspace_volume = _workspace_volume_name(".")
         preset_name = _maybe_save_workload_preset(
@@ -851,10 +908,12 @@ def hub_main():
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
             .replace("{exclude_patterns}", repr(exclude_patterns))
-            .replace("{pip_section}", pip_section))
+            .replace("{pip_section}", pip_section)
+            .replace("{min_containers}", min_containers)
+            .replace("{scaledown_window}", scaledown_window))
         execute_modal_temp_script(
             script,
-            f"Jupyter Lab on {compute_label}",
+            f"Jupyter Lab on {compute_label} ({persistence_label})",
             deploy=True,
             session_metadata=_session_metadata(
                 kind="jupyter",
@@ -1121,7 +1180,8 @@ def hub_main():
         script = (VLLM_SCRIPT
             .replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
-            .replace("{model_name}", selected_model))
+            .replace("{model_name}", selected_model)
+            .replace("{tensor_parallel}", str(gpu_count)))
         
         console.print(Panel(
             f"[bold]After deploying, you'll get an OpenAI-compatible URL like:[/bold]\n"
