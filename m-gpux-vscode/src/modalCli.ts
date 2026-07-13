@@ -97,7 +97,11 @@ export async function listApps(profile: string, env = "main"): Promise<ModalAppE
     const apps = JSON.parse(res.stdout || "[]");
     return apps.map((a: any) => ({
       appId: a["App ID"] ?? a.app_id ?? a.id ?? "",
-      name: a["Name"] ?? a.name ?? a.description ?? "",
+      // `modal app list --json` labels this column "Description" (capital D) —
+      // there is NO "Name" field. Reading only a["Name"]/a.name/a.description
+      // yielded "" for every app, so isMgpuxApp("") was always false and
+      // discovery found zero apps → live sessions all got marked "stopped".
+      name: a["Name"] ?? a.name ?? a["Description"] ?? a.description ?? "",
       state: (a["State"] ?? a.state ?? "").toString().toLowerCase(),
     })).filter((a: ModalAppEntry) => a.appId);
   } catch {

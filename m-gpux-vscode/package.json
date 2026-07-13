@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -148,9 +148,9 @@
       },
       {
         "command": "mgpux.syncSession",
-        "title": "Sync Session Data (Pull Outputs)",
+        "title": "Sync Session Data (Pull Workspace from Modal)",
         "category": "M-GPUX",
-        "icon": "$(sync)"
+        "icon": "$(cloud-download)"
       },
       {
         "command": "mgpux.removeSession",

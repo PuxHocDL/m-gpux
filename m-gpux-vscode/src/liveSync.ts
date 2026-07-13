@@ -197,14 +197,6 @@ export class LiveSyncDriver implements vscode.Disposable {
     return pulled;
   }
 
-  /** Immediate push + pull cycle, bypassing the 5s timers. Used by the
-   *  "Sync Now" command so the user isn't stuck waiting for the next tick. */
-  async syncNow(): Promise<{ pushed: number; failed: number; pulled: number }> {
-    const { ok, failed } = await this.flushFull();
-    const pulled = await this.pull();
-    return { pushed: ok, failed, pulled };
-  }
-
   dispose(): void {
     if (this.disposed) { return; }
     this.disposed = true;
@@ -278,6 +270,91 @@ export async function pullOutputDirsOnce(opts: PullOptions): Promise<number> {
   }
   if (pulled > 0) {
     opts.output.appendLine(`[sync] ▼ pulled ${pulled} output dir(s) from volume`);
+  }
+  return pulled;
+}
+
+/** List the top-level entries of a Modal Volume via `modal volume ls --json`.
+ *  Returns `[]` on any failure (empty volume, missing volume, CLI error). */
+async function listVolumeTopLevel(
+  volumeName: string,
+  profile: string
+): Promise<{ name: string; type: string }[]> {
+  const res = await runCommand(
+    "modal",
+    ["volume", "ls", volumeName, "--json"],
+    { env: { MODAL_PROFILE: profile }, timeoutMs: 30_000 }
+  );
+  if (res.exitCode !== 0) { return []; }
+  try {
+    const items = JSON.parse(res.stdout || "[]");
+    if (!Array.isArray(items)) { return []; }
+    return items
+      .map((i: any) => ({
+        name: (i["Filename"] ?? i.Filename ?? i.filename ?? "").toString(),
+        type: (i["Type"] ?? i.type ?? "").toString().toLowerCase(),
+      }))
+      .filter((i: { name: string }) => i.name);
+  } catch {
+    return [];
+  }
+}
+
+/** Whether a top-level volume entry should be skipped when pulling the whole
+ *  workspace back (build/venv/cache junk and the extension's own scratch
+ *  files — mirrors DEFAULT_EXCLUDES but only needs to match top-level names). */
+function isPullExcluded(name: string): boolean {
+  return DEFAULT_EXCLUDES.some((pat) => {
+    if (pat.startsWith("*.")) { return name.endsWith(pat.slice(1)); }
+    return name === pat;
+  });
+}
+
+/** Pull the ENTIRE workspace volume back into the local workspace, not just the
+ *  outputs allowlist. This is what the manual "Sync Session Data" command uses:
+ *  the user wants the actual work they did in Jupyter/bash (notebooks, scripts,
+ *  generated files across the whole /workspace) — which lives all over the
+ *  volume, not only under outputs/ — copied down.
+ *
+ *  Strategy: `modal volume ls --json` to enumerate top-level entries, then
+ *  `modal volume get <vol> /<name> <staging>` each one into a single staging
+ *  dir (modal drops both files and dirs directly under an existing dest dir),
+ *  then merge the staging dir into the local workspace (overwrite existing, add
+ *  new; never deletes local files). Returns the number of top-level entries
+ *  pulled. Best-effort per entry — a single failed `get` is logged and skipped.
+ */
+export async function pullWorkspaceOnce(opts: PullOptions): Promise<number> {
+  const entries = await listVolumeTopLevel(opts.volumeName, opts.profile);
+  if (entries.length === 0) { return 0; }
+
+  const staging = path.join(os.tmpdir(), `mgpux-pullws-${crypto.randomBytes(6).toString("hex")}`);
+  fs.mkdirSync(staging, { recursive: true });
+  let pulled = 0;
+  try {
+    for (const entry of entries) {
+      if (isPullExcluded(entry.name)) { continue; }
+      const res = await runCommand(
+        "modal",
+        ["volume", "get", "--force", opts.volumeName, "/" + entry.name, staging],
+        { env: { MODAL_PROFILE: opts.profile }, timeoutMs: 120_000 }
+      );
+      if (res.exitCode !== 0) {
+        opts.output.appendLine(`[sync] pull ${entry.name} failed: ${res.stderr.trim().split("\n").pop()}`);
+        continue;
+      }
+      pulled++;
+    }
+    // Merge everything staged → local workspace in one pass.
+    try {
+      copyTree(staging, path.resolve(opts.workspaceDir));
+    } catch (err: any) {
+      opts.output.appendLine(`[sync] workspace merge failed: ${err?.message ?? err}`);
+    }
+  } finally {
+    try { fs.rmSync(staging, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+  if (pulled > 0) {
+    opts.output.appendLine(`[sync] ▼ pulled ${pulled} workspace item(s) from volume ${opts.volumeName}`);
   }
   return pulled;
 }

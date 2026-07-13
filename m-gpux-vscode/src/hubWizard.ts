@@ -980,6 +980,13 @@ async function showAndExecuteScript(
   // Truncate any stale log from a prior id collision (extremely unlikely)
   try { fs.writeFileSync(logPath, ""); } catch { /* ignore */ }
 
+  // For deploys, key the session on the App name straight from the script
+  // (e.g. modal.App("m-gpux-jupyter")). `modal app list` reports that name as
+  // the app's "Description", which is exactly what discovery reconciles
+  // against — so we don't have to rely on scraping a dashboard URL out of
+  // stdout (whose format the server controls and may not match our regex).
+  const deployAppId = mode === "deploy" ? extractWebEndpoint(content)?.appName : undefined;
+
   const session = {
     id: sessionId,
     kind,
@@ -992,6 +999,7 @@ async function showAndExecuteScript(
     detached: mode === "deploy",
     logPath,
     workspaceVolume,
+    appId: deployAppId,
   };
   sessionStore.add(session);
 

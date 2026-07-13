@@ -99,6 +99,11 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   // only used cosmetically for icons.
   const kind = opts.kind as SessionKind;
 
+  // Key deploy sessions on the App name from the script so discovery can
+  // reconcile them even if the dashboard URL never gets scraped from stdout.
+  // See the matching note in hubWizard.showAndExecuteScript.
+  const deployAppId = opts.mode === "deploy" ? extractWebEndpoint(opts.scriptContent)?.appName : undefined;
+
   sessionStore.add({
     id: sessionId,
     kind,
@@ -111,6 +116,7 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
     detached: opts.mode === "deploy",
     logPath,
     workspaceVolume: opts.workspaceVolume,
+    appId: deployAppId,
   });
 
   vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => { /* ignore */ });

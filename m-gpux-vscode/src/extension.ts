@@ -14,7 +14,7 @@ import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
-import { LiveSyncDriver, pullOutputDirsOnce } from "./liveSync";
+import { pullWorkspaceOnce, deriveWorkspaceVolumeName } from "./liveSync";
 import {
   loadProfiles,
   addProfile,
@@ -432,29 +432,50 @@ export function activate(context: vscode.ExtensionContext) {
       if (!id) { return; }
       const s = sessionStore.get(id);
       if (!s) { return; }
-      if (!s.workspaceVolume) {
-        vscode.window.showInformationMessage(`${s.kind} has no workspace volume to sync.`);
-        return;
+
+      // The manual sync is pull-dominant: it brings the whole /workspace volume
+      // (notebooks, scripts, generated files — everything the user did in
+      // Jupyter/bash) back down to the local folder. We do NOT push local up
+      // first; that's what the background live-sync already does continuously
+      // for running sessions, and pushing here would risk clobbering fresh
+      // remote edits with a stale local copy — the opposite of what the user
+      // wants when they click "pull my work back".
+      let volume = s.workspaceVolume;
+      let target = s.cwd;
+      if (!volume) {
+        // Adopted/CLI sessions don't carry a volume name. Fall back to the
+        // volume derived from the currently open workspace folder — that's the
+        // one a Jupyter/bash session launched from this folder would mount.
+        const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!folder) {
+          vscode.window.showInformationMessage(
+            `${s.kind} has no workspace volume and no folder is open — nothing to sync.`
+          );
+          return;
+        }
+        volume = deriveWorkspaceVolumeName(folder);
+        target = folder;
       }
+
       await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `M-GPUX: syncing ${s.kind}...` },
+        { location: vscode.ProgressLocation.Notification, title: `M-GPUX: pulling ${s.kind} workspace from Modal...` },
         async () => {
           try {
-            if (s.liveSync instanceof LiveSyncDriver) {
-              const result = await s.liveSync.syncNow();
+            const pulled = await pullWorkspaceOnce({
+              volumeName: volume!,
+              workspaceDir: target,
+              profile: s.profile,
+              output: s.output,
+            });
+            if (pulled > 0) {
               vscode.window.showInformationMessage(
-                `Synced ${s.kind}: pushed ${result.pushed} file(s)${result.failed ? `, ${result.failed} failed` : ""}, pulled ${result.pulled} output dir(s).`
-              );
+                `Pulled ${pulled} item(s) from ${s.kind} into ${target}.`,
+                "View Logs"
+              ).then((c) => { if (c === "View Logs") { s.output.show(true); } });
             } else {
-              // No live driver (restored after a VS Code restart, or adopted
-              // from a session launched elsewhere) — do a direct one-off pull.
-              const pulled = await pullOutputDirsOnce({
-                volumeName: s.workspaceVolume!,
-                workspaceDir: s.cwd,
-                profile: s.profile,
-                output: s.output,
-              });
-              vscode.window.showInformationMessage(`Pulled ${pulled} output dir(s) from ${s.kind} into ${s.cwd}.`);
+              vscode.window.showInformationMessage(
+                `Nothing pulled — the volume '${volume}' is empty or doesn't match this session.`
+              );
             }
           } catch (err: any) {
             vscode.window.showErrorMessage(`M-GPUX: sync failed: ${err?.message ?? err}`);
@@ -844,7 +865,8 @@ function fetchLiveApps(profile: string): Promise<string[]> {
         const out: string[] = [];
         for (const a of apps) {
           const id = a["App ID"] ?? a.app_id ?? a.id;
-          const name = a["Name"] ?? a.name ?? a.description;
+          // "Description" (capital D) is the real key; see note in modalCli.listApps.
+          const name = a["Name"] ?? a.name ?? a["Description"] ?? a.description;
           const state = (a["State"] ?? a.state ?? "").toString();
           if (isAliveAppState(state)) {
             if (id) { out.push(id); }

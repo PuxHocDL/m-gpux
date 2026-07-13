@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import { listApps, ModalAppEntry, isAliveAppState } from "./modalCli";
 import { loadProfiles } from "./config";
 import { sessionStore, Session, SessionKind, sessionLogPath } from "./sessionStore";
+import { deriveWorkspaceVolumeName } from "./liveSync";
 
 export interface DiscoveredApp {
   profile: string;
@@ -115,8 +116,12 @@ export async function refreshFromModal(profiles?: string[]): Promise<DiscoveryRe
       } else {
         refreshed++;
       }
-    } else if (s.status === "ready" || s.status === "starting" || s.status === "stopping") {
-      // Was supposed to be alive but Modal disagrees.
+    } else if (s.status === "ready" || s.status === "stopping") {
+      // Was supposed to be alive but Modal disagrees. We deliberately do NOT
+      // touch "starting" sessions here: a just-launched deploy may not appear
+      // in `modal app list` for a few seconds, and killing it on the first
+      // discovery tick would be a race. The session's own `modal` process
+      // handler transitions it out of "starting" (ready/failed/stopped).
       sessionStore.update(s.id, { status: "stopped" });
       markedStopped++;
     }
@@ -137,6 +142,16 @@ export async function refreshFromModal(profiles?: string[]): Promise<DiscoveryRe
     output.appendLine(`\nThis session was found on Modal but was not launched in this VS Code window.`);
     output.appendLine(`Click Stop to terminate it remotely, or open the dashboard for live logs.`);
 
+    // Jupyter / bash sessions mount a workspace Volume named after the local
+    // folder they were launched from. We can't know that folder for an adopted
+    // app, but the common case is that it's the folder currently open here —
+    // so derive the volume from it. That lets the "Sync" button appear and
+    // pull the remote work back; if the folder doesn't match, the pull simply
+    // returns nothing and the user is told.
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+    const usesVolume = r.kind === "jupyter" || r.kind === "bash";
+    const workspaceVolume = usesVolume && cwd ? deriveWorkspaceVolumeName(cwd) : undefined;
+
     sessionStore.add({
       id,
       kind: r.kind,
@@ -146,9 +161,10 @@ export async function refreshFromModal(profiles?: string[]): Promise<DiscoveryRe
       startedAt: Date.now(),
       appId: r.appId,
       output,
-      cwd: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "",
+      cwd,
       detached: true,
       logPath: sessionLogPath(id),
+      workspaceVolume,
       restored: true,
     });
     adopted++;
