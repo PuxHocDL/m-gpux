@@ -45,3 +45,5 @@ _test_*.py
 test_modal.py
 test_inference.py
 .tmp_smoke/
+
+CLAUDE.md
