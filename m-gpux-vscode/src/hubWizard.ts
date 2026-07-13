@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
-import { loadProfiles, switchProfile, getActiveProfile } from "./config";
+import { loadProfiles, switchProfile, getActiveProfile, fetchFunctionWebUrl } from "./config";
 import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
+import { extractWebEndpoint } from "./modalCli";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -941,7 +942,8 @@ async function showAndExecuteScript(
     return;
   }
 
-  const profileName = getActiveProfile()?.name ?? "default";
+  const activeProfile = getActiveProfile();
+  const profileName = activeProfile?.name ?? "default";
 
   // Output channel is silent — it is only revealed via "View Logs" on the session node.
   const outputChannel = vscode.window.createOutputChannel(`M-GPUX: ${actionType} (${gpu})`, "log");
@@ -1103,9 +1105,14 @@ async function showAndExecuteScript(
     if (!s) { return; }
     if (code === 0) {
       outputChannel.appendLine(`\n✓ Local process completed (code 0).`);
-      // `modal deploy` exits as soon as the app is deployed — the remote service
-      // keeps running. `modal run` (python) genuinely finished.
-      const stillUp = mode === "deploy" && gotAccessUrl;
+      // `modal deploy` exits 0 as soon as the app is accepted — the remote
+      // service keeps running independently of the local CLI process, so a
+      // clean exit means "deployed", regardless of whether we managed to
+      // scrape an access URL out of stdout (recent `modal` CLI versions no
+      // longer print the function's web URL during deploy, only the
+      // dashboard link — see `gotAppMeta` above). `modal run` (python) exiting
+      // 0 means the one-shot job genuinely finished.
+      const stillUp = mode === "deploy";
       sessionStore.update(sessionId, {
         status: stillUp ? "ready" : "stopped",
         proc: undefined,
@@ -1113,6 +1120,20 @@ async function showAndExecuteScript(
       if (!stillUp) {
         try { s.liveSync?.dispose(); } catch { /* ignore */ }
         sessionStore.update(sessionId, { liveSync: undefined });
+      } else if (!gotAccessUrl) {
+        // Best-effort: fetch the real web URL via the SDK since it wasn't in
+        // the CLI output. Non-blocking — the session is already "ready".
+        const endpoint = extractWebEndpoint(content);
+        if (endpoint && activeProfile?.token_id && activeProfile?.token_secret) {
+          fetchFunctionWebUrl(activeProfile.token_id, activeProfile.token_secret, endpoint.appName, endpoint.functionName)
+            .then((url) => {
+              if (url && sessionStore.get(sessionId)) {
+                sessionStore.update(sessionId, { accessUrl: url });
+                outputChannel.appendLine(`\n✓ Resolved access URL: ${url}`);
+              }
+            })
+            .catch(() => { /* best-effort */ });
+        }
       }
     } else if (s.status === "stopping") {
       outputChannel.appendLine(`\n• Local process exited after stop (code ${code}).`);

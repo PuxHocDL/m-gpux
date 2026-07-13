@@ -63,7 +63,7 @@ function buildSessionNode(s: Session): SessionTreeNode {
 
   const node = new SessionTreeNode(label, description, icon, vscode.TreeItemCollapsibleState.Collapsed);
   node.tooltip = buildTooltip(s);
-  node.contextValue = `session.${s.status}${s.accessUrl ? ".hasUrl" : ""}${s.appId ? ".hasApp" : ""}`;
+  node.contextValue = `session.${s.status}${s.accessUrl ? ".hasUrl" : ""}${s.appId ? ".hasApp" : ""}${s.workspaceVolume ? ".hasVolume" : ""}`;
   node.sessionId = s.id;
 
   const children: SessionTreeNode[] = [];

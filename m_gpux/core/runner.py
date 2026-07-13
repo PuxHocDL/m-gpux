@@ -29,6 +29,15 @@ from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.profiles import get_all_profiles
 from m_gpux.core.state import save_session, update_session
 
+# States `modal app list --json` can report (see `APP_STATE_TO_MESSAGE` in the
+# modal client's `cli/app.py`). There is no "running" state: apps launched via
+# `modal run` show up as "ephemeral" (foreground) or "ephemeral (detached)"
+# (backgrounded with `--detach`), and `modal deploy` apps show up as
+# "deployed". Matching only "deployed"/"running" silently drops every
+# ephemeral / detached / initializing app from `m-gpux stop` and session
+# discovery, making live sessions look stopped.
+ALIVE_APP_STATES = {"deployed", "ephemeral", "ephemeral (detached)", "initializing..."}
+
 
 def _summarize_runner(content: str, runner_file: str) -> Panel:
     """Return a compact summary panel describing the generated script."""
@@ -303,7 +312,7 @@ def scan_apps_across_profiles() -> list[tuple[str, str, str, str]]:
                 desc = a.get("Description", a.get("description", ""))
                 state = a.get("State", a.get("state", ""))
                 app_id = a.get("App ID", a.get("app_id", ""))
-                if desc.startswith("m-gpux") and state in ("deployed", "running"):
+                if desc.startswith("m-gpux") and state.strip().lower() in ALIVE_APP_STATES:
                     found.append((profile, app_id, desc, state))
         except Exception:
             continue

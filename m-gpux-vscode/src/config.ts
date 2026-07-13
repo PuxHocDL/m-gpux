@@ -161,6 +161,54 @@ async function fetchUsageForProfile(tokenId: string, tokenSecret: string): Promi
   });
 }
 
+/**
+ * Look up the public web URL of a deployed function via the Modal SDK.
+ *
+ * Recent `modal` CLI versions (1.4.x) stopped printing "Created web function
+ * ... => https://...modal.run" during `modal deploy` — the deploy output
+ * only shows the dashboard "View Deployment" link now, not the tunnel URL.
+ * Scraping stdout for it (the old approach) silently never matches, so this
+ * falls back to asking the server directly via `modal.Function.from_name(...)
+ * .get_web_url()`, the same way `fetchUsageForProfile` above asks for billing.
+ * Best-effort: returns undefined on any failure (missing SDK, function not a
+ * web endpoint yet, network hiccup, etc.) — callers should treat this as
+ * optional and not gate session "ready" status on it.
+ */
+export async function fetchFunctionWebUrl(
+  tokenId: string,
+  tokenSecret: string,
+  appName: string,
+  functionName: string,
+  environmentName = "main"
+): Promise<string | undefined> {
+  const py = await resolvePython();
+  if (!py || !py.hasModal) { return undefined; }
+
+  return new Promise((resolve) => {
+    const { execFile } = require("child_process");
+    const script = [
+      "import json,sys",
+      "try:",
+      "  from modal import Function",
+      "  from modal.client import Client",
+      "  client = Client.from_credentials(sys.argv[1], sys.argv[2])",
+      "  fn = Function.from_name(sys.argv[3], sys.argv[4], environment_name=sys.argv[5], client=client)",
+      "  print(json.dumps({'url': fn.get_web_url() or ''}))",
+      "except Exception as e:",
+      "  print(json.dumps({'error': str(e)}))",
+    ].join("\n");
+    execFile(py.cmd, [
+      ...py.args, "-c", script, tokenId, tokenSecret, appName, functionName, environmentName,
+    ], { timeout: 20000 }, (err: any, stdout: string) => {
+      if (err) { resolve(undefined); return; }
+      try {
+        const data = JSON.parse(stdout.trim());
+        resolve(data.url ? data.url : undefined);
+      } catch { resolve(undefined); }
+    });
+  });
+}
+
 export async function fetchAllBilling(): Promise<BillingInfo[]> {
   const profiles = loadProfiles();
   const results: BillingInfo[] = [];

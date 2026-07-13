@@ -116,6 +116,14 @@ def _select_profile() -> Optional[str]:
         console.print(f"  Using profile: [bold cyan]{name}[/bold cyan]")
         return name
 
+    env_profile = os.environ.get("MGPUX_PROFILE", "").strip()
+    if env_profile:
+        names = [name for name, _ in profiles]
+        if env_profile in names:
+            console.print(f"  Using profile from MGPUX_PROFILE: [bold cyan]{env_profile}[/bold cyan]")
+            return env_profile
+        console.print(f"[yellow]MGPUX_PROFILE={env_profile!r} not found among configured profiles, falling back to picker.[/yellow]")
+
     console.print("\n[bold cyan]Select Workspace / Profile[/bold cyan]")
     profile_options = [("AUTO", "Smart pick (most credit remaining)")]
     for name, is_active in profiles:

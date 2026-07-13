@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-cream-50 text-ink font-sans antialiased;
+    /* soft warm wash so white never looks sterile */
+    background-image:
+      radial-gradient(60rem 60rem at 110% -10%, rgba(253, 186, 116, 0.22), transparent 55%),
+      radial-gradient(48rem 48rem at -10% 0%, rgba(251, 146, 60, 0.16), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(251, 146, 60, 0.28);
+    color: #7c2d12;
+  }
+
+  /* Warm thin scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #fdba74 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(#fdba74, #fb923c);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  .container-px {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+  }
+
+  /* Glassy card on warm white */
+  .card {
+    @apply rounded-2xl border border-line/80 bg-white/80 backdrop-blur-xl shadow-soft;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50/80 px-3 py-1 text-xs font-semibold text-brand-700;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-grad px-5 py-3 text-sm font-semibold text-white shadow-soft
+      transition-all duration-200 hover:shadow-glow hover:brightness-[1.03] active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-white/70 px-5 py-3 text-sm font-semibold text-ink-soft
+      transition-all duration-200 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 active:scale-[0.98];
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-br from-brand-500 via-brand-400 to-brand-300 bg-clip-text text-transparent;
+  }
+
+  /* Subtle warm dot grid background */
+  .bg-dotgrid {
+    background-image: radial-gradient(rgba(234, 88, 12, 0.12) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+    mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+  }
+
+  /* Shimmering sheen used by ShinyText */
+  .shine-text {
+    background: linear-gradient(110deg, #9a3412 35%, #fdba74 50%, #9a3412 65%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
