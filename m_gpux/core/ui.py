@@ -61,6 +61,47 @@ def _read_key() -> str:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
 
+def _plain_select(
+    options: List[Tuple[str, str]],
+    title: str = "Select an option",
+    default: int = 0,
+) -> int:
+    """Non-tty fallback for arrow_select: numbered prompt read from stdin.
+
+    Used when no real console is attached (piped/redirected stdout), e.g.
+    when driving m-gpux from a script or CI. Accepts a 1-based number or
+    the option label (case-insensitive) on stdin; empty/EOF/invalid input
+    falls back to `default`.
+    """
+    _console.print(f"  [bold]{title}[/bold]  [dim](non-interactive: enter a number or press Enter for default)[/dim]")
+    for i, (label, desc) in enumerate(options):
+        marker = "*" if i == default else " "
+        if desc:
+            _console.print(f"  {marker} {i + 1}) {label:<18} {desc}")
+        else:
+            _console.print(f"  {marker} {i + 1}) {label}")
+
+    try:
+        raw = input("  > ").strip()
+    except EOFError:
+        raw = ""
+
+    if not raw:
+        chosen = default
+    elif raw.isdigit() and 1 <= int(raw) <= len(options):
+        chosen = int(raw) - 1
+    else:
+        matches = [i for i, (label, _) in enumerate(options) if label.lower() == raw.lower()]
+        chosen = matches[0] if matches else default
+
+    label, desc = options[chosen]
+    if desc:
+        _console.print(f"  [green]✓ {label}[/green]  [dim]{desc}[/dim]")
+    else:
+        _console.print(f"  [green]✓ {label}[/green]")
+    return chosen
+
+
 def arrow_select(
     options: List[Tuple[str, str]],
     title: str = "Select an option",
@@ -82,8 +123,14 @@ def arrow_select(
         Selected index (0-based).
     """
     cursor = max(0, min(default, len(options) - 1))
+
+    try:
+        term_lines = os.get_terminal_size().lines
+    except OSError:
+        return _plain_select(options, title=title, default=cursor)
+
     # Calculate visible window for long lists
-    max_visible = min(len(options), os.get_terminal_size().lines - 4)
+    max_visible = min(len(options), term_lines - 4)
 
     def _render():
         """Render the menu to terminal."""

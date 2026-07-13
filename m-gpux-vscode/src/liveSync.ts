@@ -119,7 +119,7 @@ export class LiveSyncDriver implements vscode.Disposable {
 
   /** One-shot full push, used on start. Walks the workspace and queues
    *  every non-excluded file. The flush loop then batches them. */
-  private async flushFull(): Promise<void> {
+  private async flushFull(): Promise<{ ok: number; failed: number }> {
     const seedRoot = path.resolve(this.opts.workspaceDir);
     const walk = (dir: string) => {
       let entries: fs.Dirent[];
@@ -136,11 +136,11 @@ export class LiveSyncDriver implements vscode.Disposable {
       }
     };
     walk(seedRoot);
-    await this.flush();
+    return this.flush();
   }
 
-  private async flush(): Promise<void> {
-    if (this.disposed || this.flushing || this.pendingPuts.size === 0) { return; }
+  private async flush(): Promise<{ ok: number; failed: number }> {
+    if (this.disposed || this.flushing || this.pendingPuts.size === 0) { return { ok: 0, failed: 0 }; }
     this.flushing = true;
     const batch = Array.from(this.pendingPuts.entries());
     this.pendingPuts.clear();
@@ -182,44 +182,27 @@ export class LiveSyncDriver implements vscode.Disposable {
     this.opts.output.appendLine(`[sync] ▲ pushed ${ok}/${batch.length} file(s)${failed ? `, ${failed} failed` : ""}`);
     this.status.text = "$(sync) m-gpux sync";
     this.flushing = false;
+    return { ok, failed };
   }
 
-  private async pull(): Promise<void> {
-    if (this.disposed || this.pulling) { return; }
+  private async pull(): Promise<number> {
+    if (this.disposed || this.pulling) { return 0; }
     this.pulling = true;
-    const dirs = this.opts.outputDirs ?? DEFAULT_OUTPUT_DIRS;
     let pulled = 0;
-    for (const dir of dirs) {
-      const localTarget = path.join(this.opts.workspaceDir, dir);
-      const tmpDir = path.join(os.tmpdir(), `mgpux-pull-${crypto.randomBytes(6).toString("hex")}`);
-      const res = await runCommand(
-        "modal",
-        ["volume", "get", "--force", this.opts.volumeName, "/" + dir, tmpDir],
-        { env: { MODAL_PROFILE: this.opts.profile }, timeoutMs: 60_000 }
-      );
-      if (res.exitCode !== 0) {
-        // Most likely the dir doesn't exist on the remote yet — that's fine.
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-        continue;
-      }
-      // Merge tmpDir → localTarget (overwrite). We don't delete files that
-      // the remote removed; the user can clean up manually if needed —
-      // safer than wiping local results on a transient remote rename.
-      try {
-        const tmpInner = path.join(tmpDir, dir);
-        const src = fs.existsSync(tmpInner) ? tmpInner : tmpDir;
-        copyTree(src, localTarget);
-        pulled++;
-      } catch (err: any) {
-        this.opts.output.appendLine(`[sync] pull ${dir} merge failed: ${err?.message ?? err}`);
-      } finally {
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-      }
+    try {
+      pulled = await pullOutputDirsOnce(this.opts);
+    } finally {
+      this.pulling = false;
     }
-    if (pulled > 0) {
-      this.opts.output.appendLine(`[sync] ▼ pulled ${pulled} output dir(s) from volume`);
-    }
-    this.pulling = false;
+    return pulled;
+  }
+
+  /** Immediate push + pull cycle, bypassing the 5s timers. Used by the
+   *  "Sync Now" command so the user isn't stuck waiting for the next tick. */
+  async syncNow(): Promise<{ pushed: number; failed: number; pulled: number }> {
+    const { ok, failed } = await this.flushFull();
+    const pulled = await this.pull();
+    return { pushed: ok, failed, pulled };
   }
 
   dispose(): void {
@@ -248,6 +231,55 @@ function copyTree(src: string, dst: string): void {
     if (entry.isDirectory()) { copyTree(a, b); }
     else if (entry.isFile()) { fs.copyFileSync(a, b); }
   }
+}
+
+export interface PullOptions {
+  volumeName: string;
+  workspaceDir: string;
+  profile: string;
+  output: vscode.OutputChannel;
+  outputDirs?: string[];
+}
+
+/** One-shot `modal volume get` for the output-dir allowlist, merging results
+ *  into the local workspace. Used both by `LiveSyncDriver.pull()` (on its
+ *  5s timer) and directly by the "Sync Now" command for sessions that don't
+ *  have a live driver running (e.g. restored after a VS Code restart, or
+ *  adopted from a session launched in a different window). */
+export async function pullOutputDirsOnce(opts: PullOptions): Promise<number> {
+  const dirs = opts.outputDirs ?? DEFAULT_OUTPUT_DIRS;
+  let pulled = 0;
+  for (const dir of dirs) {
+    const localTarget = path.join(opts.workspaceDir, dir);
+    const tmpDir = path.join(os.tmpdir(), `mgpux-pull-${crypto.randomBytes(6).toString("hex")}`);
+    const res = await runCommand(
+      "modal",
+      ["volume", "get", "--force", opts.volumeName, "/" + dir, tmpDir],
+      { env: { MODAL_PROFILE: opts.profile }, timeoutMs: 60_000 }
+    );
+    if (res.exitCode !== 0) {
+      // Most likely the dir doesn't exist on the remote yet — that's fine.
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+      continue;
+    }
+    // Merge tmpDir → localTarget (overwrite). We don't delete files that
+    // the remote removed; the user can clean up manually if needed —
+    // safer than wiping local results on a transient remote rename.
+    try {
+      const tmpInner = path.join(tmpDir, dir);
+      const src = fs.existsSync(tmpInner) ? tmpInner : tmpDir;
+      copyTree(src, localTarget);
+      pulled++;
+    } catch (err: any) {
+      opts.output.appendLine(`[sync] pull ${dir} merge failed: ${err?.message ?? err}`);
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  }
+  if (pulled > 0) {
+    opts.output.appendLine(`[sync] ▼ pulled ${pulled} output dir(s) from volume`);
+  }
+  return pulled;
 }
 
 export function deriveWorkspaceVolumeName(localDir: string): string {

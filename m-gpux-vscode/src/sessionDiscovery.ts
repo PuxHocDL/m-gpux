@@ -3,7 +3,7 @@
 // for ones the local persistence missed) and on demand via the
 // `M-GPUX: Discover Modal Apps` command.
 import * as vscode from "vscode";
-import { listApps, ModalAppEntry } from "./modalCli";
+import { listApps, ModalAppEntry, isAliveAppState } from "./modalCli";
 import { loadProfiles } from "./config";
 import { sessionStore, Session, SessionKind, sessionLogPath } from "./sessionStore";
 
@@ -46,8 +46,8 @@ export async function discoverApps(profiles: string[]): Promise<DiscoveredApp[]>
   for (const profile of profiles) {
     const apps = await listApps(profile);
     for (const a of apps) {
+      if (!isAliveAppState(a.state || "")) { continue; }
       const state = (a.state || "").toLowerCase();
-      if (state !== "running" && state !== "deployed") { continue; }
       if (!isMgpuxApp(a.name)) { continue; }
       out.push({
         profile,

@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
-import { loadProfiles, switchProfile, getActiveProfile } from "./config";
+import { loadProfiles, switchProfile, getActiveProfile, fetchFunctionWebUrl } from "./config";
 import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
+import { extractWebEndpoint } from "./modalCli";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -220,7 +221,7 @@ const STABLE_TTYD_FLAGS = [
   "-T", "xterm-256color",
 ];
 
-function jupyterScript(computeSpec: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[]): string {
+function jupyterScript(computeSpec: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[], minContainers: number, scaledownWindow: string): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
 import subprocess
@@ -280,7 +281,8 @@ def _start_workspace_autocommit(interval=5):
     image=image,
     ${computeSpec},
     timeout=24 * HOUR,
-    scaledown_window=60 * MINUTE,
+    scaledown_window=${scaledownWindow},
+    min_containers=${minContainers},
     max_containers=1,
     volumes={"/workspace": workspace_volume},
 )
@@ -420,7 +422,7 @@ def serve():
 `;
 }
 
-function vllmScript(gpu: string, pythonVersion: string, modelName: string): string {
+function vllmScript(computeSpec: string, pythonVersion: string, modelName: string, tensorParallel: number): string {
   return `import modal
 import subprocess
 
@@ -444,7 +446,7 @@ MINUTES = 60
 
 @app.function(
     image=vllm_image,
-    gpu="${gpu}",
+    ${computeSpec},
     timeout=24 * 60 * MINUTES,
     scaledown_window=5 * MINUTES,
     volumes={
@@ -463,7 +465,7 @@ def serve():
         "--host", "0.0.0.0",
         "--port", "8000",
         "--enforce-eager",
-        "--tensor-parallel-size", "1",
+        "--tensor-parallel-size", "${tensorParallel}",
     ]
     print("Starting vLLM:", " ".join(cmd))
     subprocess.Popen(" ".join(cmd), shell=True)
@@ -654,11 +656,15 @@ export async function runHubWizard(): Promise<void> {
   // Step 3: Compute type — vLLM is GPU-only, everything else can run on CPU.
   let computeSpec: string;
   let computeLabel: string;
+  let gpuCount = 1; // GPUs per container; >1 enables tensor parallelism / large models.
   if (action === "vllm") {
     const gpuPick = await pickGpu("M-GPUX Hub — Step 3/5: Choose GPU");
     if (!gpuPick) { return; }
-    computeSpec = `gpu="${gpuPick}"`;
-    computeLabel = gpuPick;
+    const count = await pickGpuCount();
+    if (count === undefined) { return; }
+    gpuCount = count;
+    computeSpec = gpuCount > 1 ? `gpu="${gpuPick}:${gpuCount}"` : `gpu="${gpuPick}"`;
+    computeLabel = gpuCount > 1 ? `${gpuPick} x${gpuCount}` : gpuPick;
   } else {
     const typePick = await vscode.window.showQuickPick(
       [
@@ -676,8 +682,11 @@ export async function runHubWizard(): Promise<void> {
     } else {
       const gpuPick = await pickGpu("M-GPUX Hub — Choose GPU");
       if (!gpuPick) { return; }
-      computeSpec = `gpu="${gpuPick}"`;
-      computeLabel = gpuPick;
+      const count = await pickGpuCount();
+      if (count === undefined) { return; }
+      gpuCount = count;
+      computeSpec = gpuCount > 1 ? `gpu="${gpuPick}:${gpuCount}"` : `gpu="${gpuPick}"`;
+      computeLabel = gpuCount > 1 ? `${gpuPick} x${gpuCount}` : gpuPick;
     }
   }
   const selectedGpu = computeLabel;
@@ -709,7 +718,9 @@ export async function runHubWizard(): Promise<void> {
       const pipSection = await askPipSection(localDir);
       const excludes = await askExcludePatterns(defaultExcludes);
       if (!excludes) { return; }
-      scriptContent = jupyterScript(computeSpec, pythonVersion, localDir, pipSection, excludes);
+      const persistence = await pickJupyterPersistence();
+      if (!persistence) { return; }
+      scriptContent = jupyterScript(computeSpec, pythonVersion, localDir, pipSection, excludes, persistence.minContainers, persistence.scaledownWindow);
       mode = "deploy";
       break;
     }
@@ -733,10 +744,9 @@ export async function runHubWizard(): Promise<void> {
     case "vllm": {
       const model = await pickVllmModel();
       if (!model) { return; }
-      // vLLM template still uses `gpu=...` directly — extract the GPU id from
-      // computeSpec which is guaranteed to be GPU-shape for this branch.
-      const gpuId = computeSpec.match(/gpu="([^"]+)"/)?.[1] ?? "L4";
-      scriptContent = vllmScript(gpuId, pythonVersion, model);
+      // computeSpec is guaranteed GPU-shape here (e.g. gpu="H100:2"); reuse it
+      // directly and run vLLM with tensor parallelism across the chosen GPUs.
+      scriptContent = vllmScript(computeSpec, pythonVersion, model, gpuCount);
       mode = "deploy";
       break;
     }
@@ -772,6 +782,41 @@ async function pickGpu(title: string): Promise<string | undefined> {
     { title, placeHolder: "Select an NVIDIA GPU accelerator" }
   );
   return pick?.label;
+}
+
+async function pickGpuCount(): Promise<number | undefined> {
+  // Modal pins multiple GPUs to one container via `gpu="<type>:<count>"`.
+  const input = await vscode.window.showInputBox({
+    title: "M-GPUX Hub — Number of GPUs",
+    value: "1",
+    prompt: "How many GPUs to attach to the container? (1–8). Multiple GPUs enable tensor parallelism / larger models.",
+    validateInput: (value) => {
+      const n = Number(value.trim());
+      return Number.isInteger(n) && n >= 1 && n <= 8
+        ? undefined
+        : "Enter a whole number between 1 and 8";
+    },
+  });
+  if (input === undefined) { return undefined; }
+  return Number(input.trim());
+}
+
+async function pickJupyterPersistence(): Promise<{ minContainers: number; scaledownWindow: string; label: string } | undefined> {
+  // Keep-warm pins one container so a long-running kernel survives browser
+  // disconnects; idle modes scale to zero after a quiet period to save cost.
+  const pick = await vscode.window.showQuickPick(
+    [
+      { label: "$(pin) Keep-warm (always on)", description: "Pin one container — long jobs survive disconnects. Costs run until you stop.", min: 1, win: "60 * MINUTE", id: "keep-warm" },
+      { label: "$(clock) Idle 1 hour", description: "Scale to zero after 1h with no activity (balanced).", min: 0, win: "60 * MINUTE", id: "idle-1h" },
+      { label: "$(watch) Idle 15 minutes", description: "Scale to zero quickly when idle (cheapest).", min: 0, win: "15 * MINUTE", id: "idle-15m" },
+    ],
+    {
+      title: "M-GPUX Hub — Notebook Session Persistence",
+      placeHolder: "How long should the kernel stay alive when no browser is connected?",
+    }
+  );
+  if (!pick) { return undefined; }
+  return { minContainers: (pick as any).min, scaledownWindow: (pick as any).win, label: (pick as any).id };
 }
 
 async function pickCpu(): Promise<{ spec: string; label: string } | undefined> {
@@ -897,7 +942,8 @@ async function showAndExecuteScript(
     return;
   }
 
-  const profileName = getActiveProfile()?.name ?? "default";
+  const activeProfile = getActiveProfile();
+  const profileName = activeProfile?.name ?? "default";
 
   // Output channel is silent — it is only revealed via "View Logs" on the session node.
   const outputChannel = vscode.window.createOutputChannel(`M-GPUX: ${actionType} (${gpu})`, "log");
@@ -1059,9 +1105,14 @@ async function showAndExecuteScript(
     if (!s) { return; }
     if (code === 0) {
       outputChannel.appendLine(`\n✓ Local process completed (code 0).`);
-      // `modal deploy` exits as soon as the app is deployed — the remote service
-      // keeps running. `modal run` (python) genuinely finished.
-      const stillUp = mode === "deploy" && gotAccessUrl;
+      // `modal deploy` exits 0 as soon as the app is accepted — the remote
+      // service keeps running independently of the local CLI process, so a
+      // clean exit means "deployed", regardless of whether we managed to
+      // scrape an access URL out of stdout (recent `modal` CLI versions no
+      // longer print the function's web URL during deploy, only the
+      // dashboard link — see `gotAppMeta` above). `modal run` (python) exiting
+      // 0 means the one-shot job genuinely finished.
+      const stillUp = mode === "deploy";
       sessionStore.update(sessionId, {
         status: stillUp ? "ready" : "stopped",
         proc: undefined,
@@ -1069,6 +1120,20 @@ async function showAndExecuteScript(
       if (!stillUp) {
         try { s.liveSync?.dispose(); } catch { /* ignore */ }
         sessionStore.update(sessionId, { liveSync: undefined });
+      } else if (!gotAccessUrl) {
+        // Best-effort: fetch the real web URL via the SDK since it wasn't in
+        // the CLI output. Non-blocking — the session is already "ready".
+        const endpoint = extractWebEndpoint(content);
+        if (endpoint && activeProfile?.token_id && activeProfile?.token_secret) {
+          fetchFunctionWebUrl(activeProfile.token_id, activeProfile.token_secret, endpoint.appName, endpoint.functionName)
+            .then((url) => {
+              if (url && sessionStore.get(sessionId)) {
+                sessionStore.update(sessionId, { accessUrl: url });
+                outputChannel.appendLine(`\n✓ Resolved access URL: ${url}`);
+              }
+            })
+            .catch(() => { /* best-effort */ });
+        }
       }
     } else if (s.status === "stopping") {
       outputChannel.appendLine(`\n• Local process exited after stop (code ${code}).`);

@@ -147,6 +147,12 @@
         "icon": "$(debug-stop)"
       },
       {
+        "command": "mgpux.syncSession",
+        "title": "Sync Session Data (Pull Outputs)",
+        "category": "M-GPUX",
+        "icon": "$(sync)"
+      },
+      {
         "command": "mgpux.removeSession",
         "title": "Remove Session from List",
         "category": "M-GPUX",
@@ -308,14 +314,19 @@
           "group": "inline@1"
         },
         {
+          "command": "mgpux.syncSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasVolume/",
+          "group": "inline@2"
+        },
+        {
           "command": "mgpux.stopSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(starting|ready|stopping)/",
-          "group": "inline@2"
+          "group": "inline@3"
         },
         {
           "command": "mgpux.viewSessionLogs",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\./",
-          "group": "inline@3"
+          "group": "inline@4"
         },
         {
           "command": "mgpux.copySessionUrl",
@@ -323,19 +334,24 @@
           "group": "actions@1"
         },
         {
+          "command": "mgpux.syncSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasVolume/",
+          "group": "actions@2"
+        },
+        {
           "command": "mgpux.viewSessionLogs",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\./",
-          "group": "actions@2"
+          "group": "actions@3"
         },
         {
           "command": "mgpux.stopSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(starting|ready|stopping)/",
-          "group": "actions@3"
+          "group": "actions@4"
         },
         {
           "command": "mgpux.removeSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(stopped|failed)/",
-          "group": "actions@4"
+          "group": "actions@5"
         },
         {
           "command": "mgpux.runPreset",

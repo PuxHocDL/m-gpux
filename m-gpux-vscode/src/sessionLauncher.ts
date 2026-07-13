@@ -14,8 +14,9 @@ import {
   sessionLogPath,
   appendSessionLog,
 } from "./sessionStore";
-import { activateProfile } from "./modalCli";
+import { activateProfile, extractWebEndpoint } from "./modalCli";
 import { LiveSyncDriver } from "./liveSync";
+import { loadProfiles, fetchFunctionWebUrl } from "./config";
 
 const { spawn } = require("child_process");
 
@@ -199,12 +200,32 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
     if (!s) { return; }
     if (code === 0) {
       output.appendLine(`\n✓ Local process completed (code 0).`);
-      const stillUp = opts.mode === "deploy" && gotAccessUrl;
+      // `modal deploy` exiting 0 means the deploy was accepted and the remote
+      // service keeps running independently — that holds regardless of
+      // whether stdout happened to contain a scrapeable access URL (recent
+      // `modal` CLI versions no longer print the function's web URL during
+      // deploy, only the dashboard link).
+      const stillUp = opts.mode === "deploy";
       sessionStore.update(sessionId, { status: stillUp ? "ready" : "stopped", proc: undefined });
       if (!stillUp) {
         // The remote is gone — there's nothing to sync against anymore.
         try { s.liveSync?.dispose(); } catch { /* ignore */ }
         sessionStore.update(sessionId, { liveSync: undefined });
+      } else if (!gotAccessUrl) {
+        // Best-effort: fetch the real web URL via the SDK since it wasn't in
+        // the CLI output. Non-blocking — the session is already "ready".
+        const endpoint = extractWebEndpoint(opts.scriptContent);
+        const profile = loadProfiles().find((p) => p.name === opts.profile);
+        if (endpoint && profile?.token_id && profile?.token_secret) {
+          fetchFunctionWebUrl(profile.token_id, profile.token_secret, endpoint.appName, endpoint.functionName)
+            .then((url) => {
+              if (url && sessionStore.get(sessionId)) {
+                sessionStore.update(sessionId, { accessUrl: url });
+                output.appendLine(`\n✓ Resolved access URL: ${url}`);
+              }
+            })
+            .catch(() => { /* best-effort */ });
+        }
       }
     } else if (s.status === "stopping") {
       output.appendLine(`\n• Local process exited after stop (code ${code}).`);

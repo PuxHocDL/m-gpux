@@ -52,6 +52,38 @@ export interface ModalAppEntry {
   state: string;
 }
 
+/** States `modal app list --json` can report (see `APP_STATE_TO_MESSAGE` in the
+ *  modal client's `cli/app.py`). Notably there is no "running" state — apps
+ *  launched via `modal run` show up as "ephemeral" (foreground) or
+ *  "ephemeral (detached)" (backgrounded with `--detach`), and `modal deploy`
+ *  apps show up as "deployed". Code that used to match only "running" /
+ *  "deployed" silently treated every ephemeral/detached/initializing app as
+ *  dead, which is why sessions that were still alive on Modal showed up as
+ *  "stopped" in the sidebar. */
+const ALIVE_APP_STATES = new Set([
+  "deployed",
+  "ephemeral",
+  "ephemeral (detached)",
+  "initializing...",
+]);
+
+export function isAliveAppState(state: string): boolean {
+  return ALIVE_APP_STATES.has(state.trim().toLowerCase());
+}
+
+/** Pull the App name and the web-endpoint function name out of a generated
+ *  `modal_runner.py` (all m-gpux templates follow `modal.App("name")` plus a
+ *  `@modal.web_server` / `@modal.asgi_app` / `@modal.wsgi_app` decorated
+ *  `def fn():`). Used to look up the deployed URL via the SDK when the
+ *  `modal deploy` CLI output doesn't contain it (see fetchFunctionWebUrl). */
+export function extractWebEndpoint(scriptContent: string): { appName: string; functionName: string } | undefined {
+  const appMatch = scriptContent.match(/modal\.App\(\s*"([^"]+)"/);
+  if (!appMatch) { return undefined; }
+  const fnMatch = scriptContent.match(/@modal\.(?:web_server|asgi_app|wsgi_app)\([^)]*\)\s*\r?\n(?:@[^\r\n]+\r?\n)*def\s+(\w+)\s*\(/);
+  if (!fnMatch) { return undefined; }
+  return { appName: appMatch[1], functionName: fnMatch[1] };
+}
+
 /** List Modal apps for a profile. Returns empty array if `modal` is not installed
  *  or the command fails. */
 export async function listApps(profile: string, env = "main"): Promise<ModalAppEntry[]> {

@@ -12,7 +12,7 @@ from rich.table import Table
 
 from m_gpux.core.console import console
 from m_gpux.core.plugin import PluginBase
-from m_gpux.core.runner import scan_apps_across_profiles
+from m_gpux.core.runner import ALIVE_APP_STATES, scan_apps_across_profiles
 
 
 def _scan_current_profile() -> list[tuple[str, str, str, str]]:
@@ -32,7 +32,7 @@ def _scan_current_profile() -> list[tuple[str, str, str, str]]:
             desc = a.get("Description", a.get("description", ""))
             state = a.get("State", a.get("state", ""))
             app_id = a.get("App ID", a.get("app_id", ""))
-            if desc.startswith("m-gpux") and state in ("deployed", "running"):
+            if desc.startswith("m-gpux") and state.strip().lower() in ALIVE_APP_STATES:
                 apps.append((current_profile, app_id, desc, state))
         return apps
     except Exception:

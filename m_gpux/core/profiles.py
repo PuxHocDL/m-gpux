@@ -124,6 +124,8 @@ def get_all_balances() -> list[tuple[str, float, float]]:
 
 def select_profile() -> Optional[str]:
     """Interactive picker. Returns selected profile name, or ``None``."""
+    if os.environ.get("MODAL_PROFILE"):
+        return os.environ.get("MODAL_PROFILE")
     from m_gpux.core.ui import arrow_select  # local import: avoid cycles
 
     profiles = load_profiles()

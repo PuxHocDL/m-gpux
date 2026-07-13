@@ -9,11 +9,12 @@ import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox } from "./composeActions";
-import { listApps, activateProfile, runCommand } from "./modalCli";
+import { listApps, activateProfile, runCommand, isAliveAppState } from "./modalCli";
 import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
+import { LiveSyncDriver, pullOutputDirsOnce } from "./liveSync";
 import {
   loadProfiles,
   addProfile,
@@ -426,6 +427,44 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.syncSession", async (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      if (!s) { return; }
+      if (!s.workspaceVolume) {
+        vscode.window.showInformationMessage(`${s.kind} has no workspace volume to sync.`);
+        return;
+      }
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `M-GPUX: syncing ${s.kind}...` },
+        async () => {
+          try {
+            if (s.liveSync instanceof LiveSyncDriver) {
+              const result = await s.liveSync.syncNow();
+              vscode.window.showInformationMessage(
+                `Synced ${s.kind}: pushed ${result.pushed} file(s)${result.failed ? `, ${result.failed} failed` : ""}, pulled ${result.pulled} output dir(s).`
+              );
+            } else {
+              // No live driver (restored after a VS Code restart, or adopted
+              // from a session launched elsewhere) — do a direct one-off pull.
+              const pulled = await pullOutputDirsOnce({
+                volumeName: s.workspaceVolume!,
+                workspaceDir: s.cwd,
+                profile: s.profile,
+                output: s.output,
+              });
+              vscode.window.showInformationMessage(`Pulled ${pulled} output dir(s) from ${s.kind} into ${s.cwd}.`);
+            }
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`M-GPUX: sync failed: ${err?.message ?? err}`);
+          }
+        }
+      );
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.stopSession", async (node?: SessionTreeNode) => {
       const id = resolveSessionId(node);
       if (!id) { return; }
@@ -677,7 +716,7 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
       for (const profile of profiles) {
         const apps = await listApps(profile);
         for (const a of apps) {
-          if (a.state === "running" || a.state === "deployed") {
+          if (isAliveAppState(a.state)) {
             plan.push({ profile, appId: a.appId, name: a.name || a.appId });
           }
         }
@@ -780,6 +819,7 @@ async function restoreSessions(): Promise<void> {
       cwd: p.cwd,
       detached: p.detached,
       logPath: p.logPath,
+      workspaceVolume: p.workspaceVolume,
       restored: true,
     });
   }
@@ -805,8 +845,8 @@ function fetchLiveApps(profile: string): Promise<string[]> {
         for (const a of apps) {
           const id = a["App ID"] ?? a.app_id ?? a.id;
           const name = a["Name"] ?? a.name ?? a.description;
-          const state = (a["State"] ?? a.state ?? "").toString().toLowerCase();
-          if (state === "running" || state === "deployed") {
+          const state = (a["State"] ?? a.state ?? "").toString();
+          if (isAliveAppState(state)) {
             if (id) { out.push(id); }
             if (name) { out.push(name); }
           }
