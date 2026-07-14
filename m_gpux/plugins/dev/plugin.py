@@ -12,6 +12,7 @@ from m_gpux.core.console import console
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.runner import execute_modal_temp_script
 from m_gpux.core.ui import arrow_select
+from m_gpux.core.ignore import to_recursive_ignore
 from m_gpux.plugins.hub.plugin import (
     AVAILABLE_CPUS,
     AVAILABLE_GPUS,
@@ -111,7 +112,7 @@ def dev_command(
         .replace("{python_version}", python_version)
         .replace("{local_dir}", local_dir_escaped)
         .replace("{workspace_volume}", workspace_volume)
-        .replace("{exclude_patterns}", repr(exclude_patterns))
+        .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
         .replace("{pip_section}", pip_section)
         .replace("{bashrc_b64}", _b64(_BASHRC))
         .replace("{tmux_b64}", _b64(_TMUX_CONF))

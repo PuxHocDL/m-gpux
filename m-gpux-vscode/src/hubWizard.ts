@@ -5,6 +5,7 @@ import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile, fetchFunctionWebUrl } from "./config";
 import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
 import { extractWebEndpoint } from "./modalCli";
+import { LiveSyncDriver } from "./liveSync";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -39,6 +40,28 @@ const PYTHON_VERSIONS = [
   { label: "3.14", description: "Latest runtime, package support may vary" },
   { label: "Custom", description: "Type a Modal-supported Python version" },
 ];
+
+// Turn user-facing exclude names into patterns Modal actually honours at every
+// depth.
+//
+// Image.add_local_dir(ignore=[...]) uses dockerignore-style matching, which
+// anchors a bare name to the root: "node_modules" excludes "./node_modules"
+// but NOT "m-gpux-vscode/node_modules". That silently shipped every nested
+// node_modules/.venv/__pycache__ into the workspace volume — in one real case
+// 8,153 files / 144 MB, of which only ~213 files / 2 MB were actual work.
+// Prefixing each name with a globstar matches at any depth (and still matches
+// the root).
+export function toRecursiveIgnore(patterns: string[]): string[] {
+  const out = new Set<string>();
+  for (const raw of patterns) {
+    // Strip a leading "./" and any trailing slash — but never leading dots,
+    // or dotfile excludes like ".venv" / ".git" would become "venv" / "git".
+    const p = raw.trim().replace(/^(?:\.\/)+/, "").replace(/\/+$/, "");
+    if (!p) { continue; }
+    out.add(p.startsWith("**/") ? p : `**/${p}`);
+  }
+  return Array.from(out);
+}
 
 // ---------------------------------------------------------------------------
 // Script templates (mirrors hub.py)
@@ -246,7 +269,7 @@ image = (
         # loading a stale snapshot from disk.
         "jupyter-collaboration>=3.0",
     )
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))})
 )
 
 MINUTE = 60
@@ -327,7 +350,7 @@ ${METRICS_SNIPPET}
 
 app = modal.App("m-gpux-runner")
 image = modal.Image.debian_slim(python_version="${pythonVersion}")${pipSection}.add_local_dir(
-    "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(excludePatterns)}
+    "${localDir}", remote_path="/workspace", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))}
 )
 
 @app.function(image=image, ${computeSpec}, timeout=86400)
@@ -365,7 +388,7 @@ image = (
         "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && chmod +x /usr/local/bin/ttyd",
         "mkdir -p /root/.config",
     )
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))})
 )
 
 MINUTE = 60
@@ -496,7 +519,7 @@ image = (
         "mkdir -p /root/.config",
     )
     ${pipSection}
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludePatterns)})
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))})
 )
 
 def _prepare_workspace():
@@ -1007,18 +1030,21 @@ async function showAndExecuteScript(
   // We start before spawning modal so the initial push happens while the
   // container is still building its image.
   if (workspaceVolume) {
-    try {
-      const { LiveSyncDriver } = require("./liveSync");
-      const driver = new LiveSyncDriver({
-        volumeName: workspaceVolume,
-        workspaceDir: localDir,
-        profile: profileName,
-        output: outputChannel,
-      });
-      driver.start();
-      sessionStore.update(sessionId, { liveSync: driver });
-    } catch (err: any) {
-      outputChannel.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+    if (!activeProfile?.token_id || !activeProfile?.token_secret) {
+      outputChannel.appendLine(`[sync] disabled: no credentials for profile '${profileName}'`);
+    } else {
+      try {
+        const driver = new LiveSyncDriver({
+          volumeName: workspaceVolume,
+          workspaceDir: localDir,
+          profile: activeProfile,
+          output: outputChannel,
+        });
+        driver.start();
+        sessionStore.update(sessionId, { liveSync: driver });
+      } catch (err: any) {
+        outputChannel.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+      }
     }
   }
 

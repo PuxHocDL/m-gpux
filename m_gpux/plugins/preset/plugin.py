@@ -28,6 +28,7 @@ from m_gpux.plugins.hub.plugin import (
     _workspace_volume_name,
 )
 from m_gpux.core.ui import arrow_select
+from m_gpux.core.ignore import to_recursive_ignore
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -54,7 +55,7 @@ def _script_from_preset(preset: dict, local_dir: str) -> tuple[str, str, str]:
         .replace("{python_version}", python_version)
         .replace("{local_dir}", local_dir_escaped)
         .replace("{workspace_volume}", workspace_volume)
-        .replace("{exclude_patterns}", repr(exclude_patterns))
+        .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
         .replace("{pip_section}", pip_section)
         .replace("{bashrc_b64}", _b64(_BASHRC))
         .replace("{tmux_b64}", _b64(_TMUX_CONF))

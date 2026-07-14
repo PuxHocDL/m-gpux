@@ -16,6 +16,7 @@ plugin only depends on the core surface.
 
 from m_gpux.core.console import console
 from m_gpux.core.gpus import AVAILABLE_GPUS, AVAILABLE_CPUS
+from m_gpux.core.ignore import to_recursive_ignore
 from m_gpux.core.metrics import FUNCTIONS as METRICS_FUNCTIONS
 from m_gpux.core.plugin import PluginBase, PluginRegistry, discover_plugins
 from m_gpux.core.profiles import (
@@ -45,6 +46,7 @@ __all__ = [
     "arrow_select",
     "AVAILABLE_GPUS",
     "AVAILABLE_CPUS",
+    "to_recursive_ignore",
     "METRICS_FUNCTIONS",
     "MODAL_CONFIG_PATH",
     "MONTHLY_CREDIT",

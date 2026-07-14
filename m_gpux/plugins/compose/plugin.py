@@ -922,7 +922,7 @@ image = (
     .entrypoint([])
     .apt_install({repr(apt_list)})
     {pre_add_pip}
-    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={repr(exclude_patterns)}{add_local_extra})
+    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={repr(to_recursive_ignore(exclude_patterns))}{add_local_extra})
     {post_add_pip}
 )
 
@@ -2093,7 +2093,7 @@ workspace_volume = modal.Volume.from_name("{workspace_volume}", create_if_missin
 image = (
     {image_line}
     .entrypoint([]){apt_line}{pip_line}
-    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={repr(exclude_patterns)})
+    .add_local_dir("{local_dir}", remote_path="/workspace_seed", ignore={repr(to_recursive_ignore(exclude_patterns))})
 )
 
 # Service command registry
@@ -2712,7 +2712,7 @@ def _resolve_service_image(
             # Only add extra ignore patterns if no .dockerignore exists
             dockerignore_path = os.path.join(context_full, ".dockerignore")
             if exclude_patterns and not os.path.exists(dockerignore_path):
-                lines.append(f'        ignore={repr(exclude_patterns)},')
+                lines.append(f'        ignore={repr(to_recursive_ignore(exclude_patterns))},')
             lines.append(f'    ).entrypoint([])')
             return "\n    ".join(lines)
 
@@ -4064,6 +4064,7 @@ print(f"\\nTerminated {count} sandbox(es).")
 
 # ─── Plugin registration ──────────────────────────────────────
 from m_gpux.core.plugin import PluginBase as _PluginBase
+from m_gpux.core.ignore import to_recursive_ignore
 
 
 class ComposePlugin(_PluginBase):

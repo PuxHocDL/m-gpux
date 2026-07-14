@@ -7,6 +7,7 @@ import * as crypto from "crypto";
 import { loadPresets, savePresets, deletePreset, Preset } from "./presetsTree";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
 import { launchModalScript } from "./sessionLauncher";
+import { toRecursiveIgnore } from "./hubWizard";
 
 const CPU_OPTIONS = [
   { label: "1 core / 512 MB",   spec: "cpu=1, memory=512",  compute: "CPU (1 core, 512 MB)" },
@@ -201,7 +202,7 @@ image = (
     modal.Image.debian_slim(python_version="${pythonVersion}")
     ${pipSection}
     .pip_install("jupyterlab>=4.2", "jupyter-server>=2.14", "ipywidgets", "jupyter-collaboration>=3.0")
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludes)})
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludes))})
 )
 MINUTE = 60; HOUR = 60 * MINUTE
 
@@ -252,7 +253,7 @@ image = (
         "mkdir -p /root/.config",
     )
     ${pipSection}
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(excludes)})
+    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludes))})
 )
 MINUTE = 60; HOUR = 60 * MINUTE
 

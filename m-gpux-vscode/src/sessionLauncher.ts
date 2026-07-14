@@ -40,12 +40,9 @@ export interface LaunchOptions {
   runnerFilename?: string;
   /** Name of the Modal Volume mounted at /workspace in the running container.
    *  When set, the launcher starts a LiveSyncDriver that pushes local edits
-   *  every 5s and pulls outputs back. Leave undefined for sessions without
+   *  and pulls remote changes back. Leave undefined for sessions without
    *  a workspace volume (e.g. one-shot python runs, vllm serves). */
   workspaceVolume?: string;
-  /** Output directories on the remote volume that should be pulled back
-   *  during live sync. Defaults to outputs/ runs/ checkpoints/ logs/. */
-  syncOutputDirs?: string[];
 }
 
 export async function launchModalScript(opts: LaunchOptions): Promise<void> {
@@ -126,18 +123,22 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   // happens while the container is still building its image — by the
   // time the function executes, the volume contents are already current.
   if (opts.workspaceVolume) {
-    try {
-      const driver = new LiveSyncDriver({
-        volumeName: opts.workspaceVolume,
-        workspaceDir: opts.cwd,
-        profile: opts.profile,
-        output,
-        outputDirs: opts.syncOutputDirs,
-      });
-      driver.start();
-      sessionStore.update(sessionId, { liveSync: driver });
-    } catch (err: any) {
-      output.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+    const syncProfile = loadProfiles().find((p) => p.name === opts.profile);
+    if (!syncProfile?.token_id || !syncProfile?.token_secret) {
+      output.appendLine(`[sync] disabled: no credentials for profile '${opts.profile}'`);
+    } else {
+      try {
+        const driver = new LiveSyncDriver({
+          volumeName: opts.workspaceVolume,
+          workspaceDir: opts.cwd,
+          profile: syncProfile,
+          output,
+        });
+        driver.start();
+        sessionStore.update(sessionId, { liveSync: driver });
+      } catch (err: any) {
+        output.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+      }
     }
   }
 

@@ -47,3 +47,7 @@ test_inference.py
 .tmp_smoke/
 
 CLAUDE.md
+# Jupyter session artifacts pulled back from Modal workspaces
+.ipynb_checkpoints/
+.jupyter/
+Untitled.ipynb

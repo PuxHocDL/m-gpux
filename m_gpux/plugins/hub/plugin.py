@@ -907,7 +907,7 @@ def hub_main():
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
-            .replace("{exclude_patterns}", repr(exclude_patterns))
+            .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
             .replace("{pip_section}", pip_section)
             .replace("{min_containers}", min_containers)
             .replace("{scaledown_window}", scaledown_window))
@@ -1016,7 +1016,7 @@ def hub_main():
                     .replace("{local_dir}", local_dir_escaped)
                     .replace("{workspace_volume}", workspace_volume)
                     .replace("{script_name}", base_script_name)
-                    .replace("{exclude_patterns}", repr(exclude_patterns))
+                    .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
                     .replace("{pip_section}", pip_section)
                     .replace("{bashrc_b64}", _b64(_BASHRC))
                     .replace("{tmux_b64}", _b64(_TMUX_CONF))
@@ -1060,7 +1060,7 @@ def hub_main():
                     .replace("{python_version}", python_version)
                     .replace("{local_dir}", local_dir_escaped)
                     .replace("{script_name}", base_script_name)
-                    .replace("{exclude_patterns}", repr(exclude_patterns))
+                    .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
                     .replace("{pip_section}", pip_section)
                     .replace("{stdin_input}", stdin_input_repr))
                 execute_modal_temp_script(script, f"Script {script_path} on {compute_label}")
@@ -1073,7 +1073,7 @@ def hub_main():
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{script_name}", base_script_name)
-            .replace("{exclude_patterns}", repr(exclude_patterns))
+            .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
             .replace("{pip_section}", pip_section)
             .replace("{stdin_input}", "None"))
         execute_modal_temp_script(script, f"Script {script_path} on {compute_label}")
@@ -1143,7 +1143,7 @@ def hub_main():
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
             .replace("{workspace_volume}", workspace_volume)
-            .replace("{exclude_patterns}", repr(exclude_patterns))
+            .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
             .replace("{pip_section}", pip_section)
             .replace("{bashrc_b64}", _b64(_BASHRC))
             .replace("{tmux_b64}", _b64(_TMUX_CONF))
@@ -1236,6 +1236,7 @@ def hub_main():
 
 # ─── Plugin registration ──────────────────────────────────────
 from m_gpux.core.plugin import PluginBase as _PluginBase
+from m_gpux.core.ignore import to_recursive_ignore
 
 
 class HubPlugin(_PluginBase):

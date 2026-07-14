@@ -14,7 +14,7 @@ import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
-import { pullWorkspaceOnce, deriveWorkspaceVolumeName } from "./liveSync";
+import { pullWorkspace, deriveWorkspaceVolumeName, formatBytes } from "./liveSync";
 import {
   loadProfiles,
   addProfile,
@@ -457,24 +457,31 @@ export function activate(context: vscode.ExtensionContext) {
         target = folder;
       }
 
+      const syncProfile = loadProfiles().find((p) => p.name === s.profile);
+      if (!syncProfile?.token_id || !syncProfile?.token_secret) {
+        vscode.window.showErrorMessage(`M-GPUX: no credentials for profile '${s.profile}'.`);
+        return;
+      }
+
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `M-GPUX: pulling ${s.kind} workspace from Modal...` },
         async () => {
           try {
-            const pulled = await pullWorkspaceOnce({
+            const res = await pullWorkspace({
               volumeName: volume!,
               workspaceDir: target,
-              profile: s.profile,
+              profile: syncProfile,
               output: s.output,
             });
-            if (pulled > 0) {
+            if (res.pulled > 0) {
               vscode.window.showInformationMessage(
-                `Pulled ${pulled} item(s) from ${s.kind} into ${target}.`,
+                `Pulled ${res.pulled} file(s) (${formatBytes(res.bytes)}) into ${target}. ` +
+                `${res.skipped} already up to date.`,
                 "View Logs"
               ).then((c) => { if (c === "View Logs") { s.output.show(true); } });
             } else {
               vscode.window.showInformationMessage(
-                `Nothing pulled — the volume '${volume}' is empty or doesn't match this session.`
+                `Already up to date — nothing new on the volume (${res.skipped} file(s) unchanged).`
               );
             }
           } catch (err: any) {

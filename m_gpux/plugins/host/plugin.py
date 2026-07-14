@@ -36,6 +36,7 @@ from m_gpux.core.plugin import PluginBase
 from m_gpux.core.profiles import activate_profile, select_profile
 from m_gpux.core.runner import execute_modal_temp_script
 from m_gpux.core.ui import arrow_select
+from m_gpux.core.ignore import to_recursive_ignore
 
 app = typer.Typer(
     help=(
@@ -295,7 +296,7 @@ def host_asgi(
         entry=entry,
         pip_section=pip_section,
         local_dir=os.path.abspath(".").replace("\\", "/"),
-        exclude_patterns=repr(excludes),
+        exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
     _deploy_or_run(script, mode, f"ASGI app '{slug}' on {compute_label}")
 
@@ -323,7 +324,7 @@ def host_wsgi(
         entry=entry,
         pip_section=pip_section,
         local_dir=os.path.abspath(".").replace("\\", "/"),
-        exclude_patterns=repr(excludes),
+        exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
     _deploy_or_run(script, mode, f"WSGI app '{slug}' on {compute_label}")
 
@@ -353,7 +354,7 @@ def host_static(
         min_containers=keep_warm,
         max_concurrent=100,
         local_dir=os.path.abspath(target).replace("\\", "/"),
-        exclude_patterns=repr(excludes),
+        exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
     _deploy_or_run(script, mode, f"Static site '{slug}' on {compute_label}")
 

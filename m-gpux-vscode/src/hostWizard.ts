@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
 import { launchModalScript } from "./sessionLauncher";
+import { toRecursiveIgnore } from "./hubWizard";
 
 type HostKind = "asgi" | "wsgi" | "static";
 
@@ -41,7 +42,7 @@ app = modal.App("m-gpux-host-${v.slug}")
 image = (
     modal.Image.debian_slim(python_version="${v.pythonVersion}")
     ${v.pipSection}
-    .add_local_dir("${v.localDir}", remote_path="/app", ignore=${JSON.stringify(v.excludePatterns)})
+    .add_local_dir("${v.localDir}", remote_path="/app", ignore=${JSON.stringify(toRecursiveIgnore(v.excludePatterns))})
 )
 
 @app.function(
@@ -69,7 +70,7 @@ app = modal.App("m-gpux-host-${v.slug}")
 image = (
     modal.Image.debian_slim(python_version="${v.pythonVersion}")
     ${v.pipSection}
-    .add_local_dir("${v.localDir}", remote_path="/app", ignore=${JSON.stringify(v.excludePatterns)})
+    .add_local_dir("${v.localDir}", remote_path="/app", ignore=${JSON.stringify(toRecursiveIgnore(v.excludePatterns))})
 )
 
 @app.function(
@@ -97,7 +98,7 @@ import subprocess
 app = modal.App("m-gpux-host-${v.slug}")
 image = (
     modal.Image.debian_slim(python_version="${v.pythonVersion}")
-    .add_local_dir("${v.localDir}", remote_path="/site", ignore=${JSON.stringify(v.excludePatterns)})
+    .add_local_dir("${v.localDir}", remote_path="/site", ignore=${JSON.stringify(toRecursiveIgnore(v.excludePatterns))})
 )
 
 PORT = 8000
