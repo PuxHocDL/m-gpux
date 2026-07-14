@@ -1,3 +1,3 @@
 """m_gpux package."""
 
-__version__ = "2.9.2"
+__version__ = "2.9.3"

@@ -805,10 +805,24 @@ async function restoreSessions(): Promise<void> {
     byProfile.get(p.profile)!.push(p);
   }
 
-  const liveIdsOrNames = new Set<string>();
-  for (const [profile, _entries] of byProfile) {
-    const ids = await fetchLiveApps(profile);
-    for (const id of ids) { liveIdsOrNames.add(id); }
+  // Live app ids/names, scoped per profile — the same app name ("m-gpux-jupyter")
+  // exists on many accounts, so a global set would let a session on one profile
+  // look alive because a different profile has that app.
+  const liveByProfile = new Map<string, Set<string>>();
+  for (const [profile] of byProfile) {
+    liveByProfile.set(profile, new Set(await fetchLiveApps(profile)));
+  }
+
+  // Deploys reuse one App name per kind and `modal deploy` replaces the app of
+  // that name, so several persisted sessions can share an appId. Only the most
+  // recent one in each (profile, appId) group can be the live app; the rest were
+  // superseded. Without this, every past Jupyter session restores as "ready".
+  const newestByKey = new Map<string, number>();
+  for (const p of persisted) {
+    if (!p.appId) { continue; }
+    const key = `${p.profile} ${p.appId}`;
+    const best = newestByKey.get(key);
+    if (best === undefined || p.startedAt > best) { newestByKey.set(key, p.startedAt); }
   }
 
   for (const p of persisted) {
@@ -817,7 +831,9 @@ async function restoreSessions(): Promise<void> {
     // app's declared name).
     let status: Session["status"] = p.status;
     if (p.appId) {
-      status = liveIdsOrNames.has(p.appId) ? "ready" : "stopped";
+      const live = liveByProfile.get(p.profile)?.has(p.appId) ?? false;
+      const isNewest = newestByKey.get(`${p.profile} ${p.appId}`) === p.startedAt;
+      status = live && isNewest ? "ready" : "stopped";
     } else if (status === "starting") {
       status = "failed";
     }
