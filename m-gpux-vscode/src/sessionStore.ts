@@ -5,7 +5,10 @@ import { save as persistSessions, logPathFor } from "./sessionPersistence";
 
 export type SessionKind = "jupyter" | "python" | "bash" | "vllm";
 
-export type SessionStatus = "starting" | "ready" | "stopping" | "stopped" | "failed";
+// "idle" = the app is still deployed on Modal but has no container running
+// (scaled to zero). It's reachable — opening the URL cold-starts it — but it is
+// NOT running your kernel/shell, so reporting it as "ready" is a lie.
+export type SessionStatus = "starting" | "ready" | "idle" | "stopping" | "stopped" | "failed";
 
 export interface Session {
   id: string;

@@ -50,6 +50,10 @@ export interface ModalAppEntry {
   appId: string;
   name: string;
   state: string;
+  /** Running container count. A "deployed" app persists in Modal forever, so
+   *  state alone says nothing about whether anything is actually running —
+   *  a Jupyter that scaled to zero is still "deployed" with tasks=0. */
+  tasks: number;
 }
 
 /** States `modal app list --json` can report (see `APP_STATE_TO_MESSAGE` in the
@@ -103,6 +107,7 @@ export async function listApps(profile: string, env = "main"): Promise<ModalAppE
       // discovery found zero apps → live sessions all got marked "stopped".
       name: a["Name"] ?? a.name ?? a["Description"] ?? a.description ?? "",
       state: (a["State"] ?? a.state ?? "").toString().toLowerCase(),
+      tasks: Number(a["Tasks"] ?? a.tasks ?? a.n_running_tasks ?? 0) || 0,
     })).filter((a: ModalAppEntry) => a.appId);
   } catch {
     return [];

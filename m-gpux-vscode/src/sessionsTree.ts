@@ -14,6 +14,7 @@ const KIND_ICON: Record<string, string> = {
 const STATUS_ICON: Record<SessionStatus, string> = {
   starting: "loading~spin",
   ready: "pass-filled",
+  idle: "debug-pause",
   stopping: "loading~spin",
   stopped: "circle-slash",
   failed: "error",
@@ -118,6 +119,7 @@ function describeStatus(s: Session, age: string): string {
   switch (s.status) {
     case "starting": return `starting • ${age}${tag}`;
     case "ready": return `ready • ${age}${tag}`;
+    case "idle": return `idle • deployed, 0 containers${tag}`;
     case "stopping": return `stopping…`;
     case "stopped": return `stopped${tag}`;
     case "failed": return `failed${tag}`;

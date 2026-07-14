@@ -362,16 +362,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.refreshSessions", async () => {
-      // Manual refresh: also re-query Modal so the user can recover apps
-      // that drifted (e.g., stopped from outside the extension).
+      // Re-query Modal so statuses reflect reality (e.g. an app stopped from
+      // outside the extension). This does NOT import untracked apps — see
+      // mgpux.discoverApps for that.
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: "M-GPUX: refreshing sessions from Modal..." },
         async () => {
           try {
-            const { refreshed, markedStopped, adopted } = await refreshFromModal();
+            const { refreshed, markedStopped } = await refreshFromModal();
             const parts: string[] = [];
             if (refreshed)     { parts.push(`${refreshed} refreshed`); }
-            if (adopted)       { parts.push(`${adopted} adopted`); }
             if (markedStopped) { parts.push(`${markedStopped} marked stopped`); }
             vscode.window.showInformationMessage(
               parts.length ? `M-GPUX: ${parts.join(" • ")}.` : "M-GPUX: no changes."
@@ -386,7 +386,28 @@ export function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.discoverApps", async () => {
-      await vscode.commands.executeCommand("mgpux.refreshSessions");
+      // Explicit, user-initiated import of m-gpux apps running on Modal that
+      // this window isn't tracking. Only this command adopts — the background
+      // tick must not, or forgotten apps across every profile keep reappearing
+      // in the sidebar on their own.
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "M-GPUX: discovering Modal apps..." },
+        async () => {
+          try {
+            const { refreshed, markedStopped, adopted } = await refreshFromModal({ adopt: true });
+            const parts: string[] = [];
+            if (adopted)       { parts.push(`${adopted} adopted`); }
+            if (refreshed)     { parts.push(`${refreshed} refreshed`); }
+            if (markedStopped) { parts.push(`${markedStopped} marked stopped`); }
+            vscode.window.showInformationMessage(
+              parts.length ? `M-GPUX: ${parts.join(" • ")}.` : "M-GPUX: no m-gpux apps found on Modal."
+            );
+          } catch (e: any) {
+            vscode.window.showWarningMessage(`M-GPUX: discovery failed — ${e?.message ?? e}`);
+          }
+        }
+      );
+      sessionsTree.refresh();
     })
   );
 
@@ -808,9 +829,9 @@ async function restoreSessions(): Promise<void> {
   // Live app ids/names, scoped per profile — the same app name ("m-gpux-jupyter")
   // exists on many accounts, so a global set would let a session on one profile
   // look alive because a different profile has that app.
-  const liveByProfile = new Map<string, Set<string>>();
+  const liveByProfile = new Map<string, Map<string, number>>();
   for (const [profile] of byProfile) {
-    liveByProfile.set(profile, new Set(await fetchLiveApps(profile)));
+    liveByProfile.set(profile, await fetchLiveApps(profile));
   }
 
   // Deploys reuse one App name per kind and `modal deploy` replaces the app of
@@ -831,9 +852,12 @@ async function restoreSessions(): Promise<void> {
     // app's declared name).
     let status: Session["status"] = p.status;
     if (p.appId) {
-      const live = liveByProfile.get(p.profile)?.has(p.appId) ?? false;
+      const tasks = liveByProfile.get(p.profile)?.get(p.appId);
       const isNewest = newestByKey.get(`${p.profile} ${p.appId}`) === p.startedAt;
-      status = live && isNewest ? "ready" : "stopped";
+      // Alive on Modal AND not superseded by a newer deploy of the same app.
+      // Even then it's only "ready" if a container is actually up — a deployed
+      // app that scaled to zero is "idle", not running your kernel.
+      status = tasks !== undefined && isNewest ? (tasks > 0 ? "ready" : "idle") : "stopped";
     } else if (status === "starting") {
       status = "failed";
     }
@@ -869,39 +893,17 @@ async function restoreSessions(): Promise<void> {
   }
 }
 
-function fetchLiveApps(profile: string): Promise<string[]> {
-  return new Promise((resolve) => {
-    const proc = spawn(
-      "modal",
-      ["app", "list", "--env", "main", "--json"],
-      {
-        shell: true,
-        env: { ...process.env, MODAL_PROFILE: profile, PYTHONIOENCODING: "utf-8" },
-      }
-    );
-    let stdout = "";
-    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.on("error", () => resolve([]));
-    proc.on("close", () => {
-      try {
-        const apps = JSON.parse(stdout || "[]");
-        const out: string[] = [];
-        for (const a of apps) {
-          const id = a["App ID"] ?? a.app_id ?? a.id;
-          // "Description" (capital D) is the real key; see note in modalCli.listApps.
-          const name = a["Name"] ?? a.name ?? a["Description"] ?? a.description;
-          const state = (a["State"] ?? a.state ?? "").toString();
-          if (isAliveAppState(state)) {
-            if (id) { out.push(id); }
-            if (name) { out.push(name); }
-          }
-        }
-        resolve(out);
-      } catch {
-        resolve([]);
-      }
-    });
-  });
+/** Live m-gpux-or-not apps on a profile, mapped from App ID *and* app name to
+ *  the number of containers actually running. Deploy sessions key on the name,
+ *  run sessions on the `ap-XXXXX` id, so both are indexed. */
+async function fetchLiveApps(profile: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const a of await listApps(profile)) {
+    if (!isAliveAppState(a.state)) { continue; }
+    if (a.appId) { out.set(a.appId, a.tasks); }
+    if (a.name) { out.set(a.name, a.tasks); }
+  }
+  return out;
 }
 
 function buildProbeScript(gpu: string): string {
