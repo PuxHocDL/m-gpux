@@ -5,7 +5,7 @@ import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile, fetchFunctionWebUrl } from "./config";
 import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
 import { extractWebEndpoint } from "./modalCli";
-import { LiveSyncDriver } from "./liveSync";
+import { startLiveSync } from "./liveSync";
 
 // ---------------------------------------------------------------------------
 // GPU catalogue (mirrors CLI)
@@ -1029,24 +1029,13 @@ async function showAndExecuteScript(
   // Start bidirectional sync if this action mounts a workspace volume.
   // We start before spawning modal so the initial push happens while the
   // container is still building its image.
-  if (workspaceVolume) {
-    if (!activeProfile?.token_id || !activeProfile?.token_secret) {
-      outputChannel.appendLine(`[sync] disabled: no credentials for profile '${profileName}'`);
-    } else {
-      try {
-        const driver = new LiveSyncDriver({
-          volumeName: workspaceVolume,
-          workspaceDir: localDir,
-          profile: activeProfile,
-          output: outputChannel,
-        });
-        driver.start();
-        sessionStore.update(sessionId, { liveSync: driver });
-      } catch (err: any) {
-        outputChannel.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
-      }
-    }
-  }
+  const driver = startLiveSync({
+    volumeName: workspaceVolume,
+    workspaceDir: localDir,
+    profile: activeProfile,
+    output: outputChannel,
+  });
+  if (driver) { sessionStore.update(sessionId, { liveSync: driver }); }
 
   // Reveal the sidebar so the user sees the new session
   vscode.commands.executeCommand("mgpux.sessionsView.focus").then(undefined, () => {/* ignore */});

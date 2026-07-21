@@ -14,7 +14,14 @@ import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
 import { resolvePython, clearPythonCache } from "./pythonResolver";
-import { pullWorkspace, deriveWorkspaceVolumeName, formatBytes } from "./liveSync";
+import {
+  pullWorkspace,
+  pushWorkspace,
+  deriveWorkspaceVolumeName,
+  formatBytes,
+  startLiveSync,
+  isAutoSyncEnabled,
+} from "./liveSync";
 import {
   loadProfiles,
   addProfile,
@@ -447,56 +454,56 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  /** Resolve the volume + local dir + credentials a manual sync needs. */
+  function resolveSyncTarget(s: Session):
+    { volume: string; target: string; profile: ReturnType<typeof loadProfiles>[number] } | undefined {
+    let volume = s.workspaceVolume;
+    let target = s.cwd;
+    if (!volume) {
+      // Adopted/CLI sessions don't carry a volume name. Fall back to the volume
+      // derived from the currently open workspace folder — that's the one a
+      // Jupyter/bash session launched from this folder would mount.
+      const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      if (!folder) {
+        vscode.window.showInformationMessage(
+          `${s.kind} has no workspace volume and no folder is open — nothing to sync.`
+        );
+        return undefined;
+      }
+      volume = deriveWorkspaceVolumeName(folder);
+      target = folder;
+    }
+    const profile = loadProfiles().find((p) => p.name === s.profile);
+    if (!profile?.token_id || !profile?.token_secret) {
+      vscode.window.showErrorMessage(`M-GPUX: no credentials for profile '${s.profile}'.`);
+      return undefined;
+    }
+    return { volume, target, profile };
+  }
+
   context.subscriptions.push(
+    // Pull: bring the whole /workspace volume (notebooks, scripts, generated
+    // files) back down. Deliberately does NOT push first — that would risk
+    // overwriting fresh remote edits with a stale local copy, the opposite of
+    // what "get my work back" means.
     vscode.commands.registerCommand("mgpux.syncSession", async (node?: SessionTreeNode) => {
       const id = resolveSessionId(node);
       if (!id) { return; }
       const s = sessionStore.get(id);
       if (!s) { return; }
-
-      // The manual sync is pull-dominant: it brings the whole /workspace volume
-      // (notebooks, scripts, generated files — everything the user did in
-      // Jupyter/bash) back down to the local folder. We do NOT push local up
-      // first; that's what the background live-sync already does continuously
-      // for running sessions, and pushing here would risk clobbering fresh
-      // remote edits with a stale local copy — the opposite of what the user
-      // wants when they click "pull my work back".
-      let volume = s.workspaceVolume;
-      let target = s.cwd;
-      if (!volume) {
-        // Adopted/CLI sessions don't carry a volume name. Fall back to the
-        // volume derived from the currently open workspace folder — that's the
-        // one a Jupyter/bash session launched from this folder would mount.
-        const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        if (!folder) {
-          vscode.window.showInformationMessage(
-            `${s.kind} has no workspace volume and no folder is open — nothing to sync.`
-          );
-          return;
-        }
-        volume = deriveWorkspaceVolumeName(folder);
-        target = folder;
-      }
-
-      const syncProfile = loadProfiles().find((p) => p.name === s.profile);
-      if (!syncProfile?.token_id || !syncProfile?.token_secret) {
-        vscode.window.showErrorMessage(`M-GPUX: no credentials for profile '${s.profile}'.`);
-        return;
-      }
+      const t = resolveSyncTarget(s);
+      if (!t) { return; }
 
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `M-GPUX: pulling ${s.kind} workspace from Modal...` },
         async () => {
           try {
             const res = await pullWorkspace({
-              volumeName: volume!,
-              workspaceDir: target,
-              profile: syncProfile,
-              output: s.output,
+              volumeName: t.volume, workspaceDir: t.target, profile: t.profile, output: s.output,
             });
             if (res.pulled > 0) {
               vscode.window.showInformationMessage(
-                `Pulled ${res.pulled} file(s) (${formatBytes(res.bytes)}) into ${target}. ` +
+                `Pulled ${res.pulled} file(s) (${formatBytes(res.bytes)}) into ${t.target}. ` +
                 `${res.skipped} already up to date.`,
                 "View Logs"
               ).then((c) => { if (c === "View Logs") { s.output.show(true); } });
@@ -506,10 +513,94 @@ export function activate(context: vscode.ExtensionContext) {
               );
             }
           } catch (err: any) {
-            vscode.window.showErrorMessage(`M-GPUX: sync failed: ${err?.message ?? err}`);
+            vscode.window.showErrorMessage(`M-GPUX: pull failed: ${err?.message ?? err}`);
           }
         }
       );
+    })
+  );
+
+  context.subscriptions.push(
+    // Push: send local edits up to the running container on demand.
+    vscode.commands.registerCommand("mgpux.pushSession", async (node?: SessionTreeNode) => {
+      const id = resolveSessionId(node);
+      if (!id) { return; }
+      const s = sessionStore.get(id);
+      if (!s) { return; }
+      const t = resolveSyncTarget(s);
+      if (!t) { return; }
+
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `M-GPUX: pushing workspace to ${s.kind}...` },
+        async () => {
+          try {
+            const res = await pushWorkspace({
+              volumeName: t.volume, workspaceDir: t.target, profile: t.profile, output: s.output,
+            });
+            vscode.window.showInformationMessage(
+              res.pushed > 0
+                ? `Pushed ${res.pushed} file(s) (${formatBytes(res.bytes)}) to ${s.kind}. ${res.skipped} unchanged.`
+                : `Already up to date — nothing to push (${res.skipped} file(s) unchanged).`
+            );
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`M-GPUX: push failed: ${err?.message ?? err}`);
+          }
+        }
+      );
+    })
+  );
+
+  // Auto-sync toggle. Off by default; flipping it starts/stops the background
+  // loop for every session that has a workspace volume, so the change takes
+  // effect immediately instead of only for the next launch.
+  async function applyAutoSyncState(enabled: boolean): Promise<void> {
+    vscode.commands.executeCommand("setContext", "mgpux.autoSyncEnabled", enabled);
+    for (const s of sessionStore.list()) {
+      if (enabled) {
+        if (s.liveSync || !s.workspaceVolume) { continue; }
+        if (s.status !== "ready" && s.status !== "idle" && s.status !== "starting") { continue; }
+        const driver = startLiveSync({
+          volumeName: s.workspaceVolume,
+          workspaceDir: s.cwd,
+          profile: loadProfiles().find((p) => p.name === s.profile),
+          output: s.output,
+          force: true,
+        });
+        if (driver) { sessionStore.update(s.id, { liveSync: driver }); }
+      } else if (s.liveSync) {
+        try { s.liveSync.dispose(); } catch { /* ignore */ }
+        sessionStore.update(s.id, { liveSync: undefined });
+      }
+    }
+    sessionsTree.refresh();
+  }
+
+  applyAutoSyncState(isAutoSyncEnabled());
+
+  const toggleAutoSync = async () => {
+    const cfg = vscode.workspace.getConfiguration("mgpux");
+    const next = !cfg.get<boolean>("autoSync", false);
+    await cfg.update("autoSync", next, vscode.ConfigurationTarget.Global);
+    await applyAutoSyncState(next);
+    vscode.window.showInformationMessage(
+      next
+        ? "M-GPUX: auto-sync ON — workspace changes sync continuously while a session runs."
+        : "M-GPUX: auto-sync OFF — use the Push / Pull buttons on a session to sync."
+    );
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.toggleAutoSync", toggleAutoSync),
+    // Same action; a second id only so the title-bar button can show a
+    // different icon/label depending on the current state.
+    vscode.commands.registerCommand("mgpux.toggleAutoSyncOn", toggleAutoSync)
+  );
+
+  // Keep the button in sync if the setting is changed from the Settings UI.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("mgpux.autoSync")) {
+        applyAutoSyncState(isAutoSyncEnabled());
+      }
     })
   );
 

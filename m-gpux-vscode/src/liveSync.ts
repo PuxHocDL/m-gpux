@@ -161,11 +161,70 @@ function isExcluded(rel: string): boolean {
   return rel.split("/").some((part) => part && SYNC_EXCLUDES.includes(part));
 }
 
+/** Whether background auto-sync is enabled. Off by default: a loop that pushes
+ *  the workspace every few seconds is intrusive and surprising, so syncing is
+ *  something the user triggers (the Push / Pull buttons on a session) unless
+ *  they explicitly opt into the live loop. */
+export function isAutoSyncEnabled(): boolean {
+  return vscode.workspace.getConfiguration("mgpux").get<boolean>("autoSync", false);
+}
+
+/** Start the live-sync loop for a session, if auto-sync is on and the profile
+ *  has usable credentials. Returns the driver so the caller can store it on the
+ *  session (and dispose it later); undefined when sync isn't applicable. */
+export function startLiveSync(opts: {
+  volumeName?: string;
+  workspaceDir: string;
+  profile: ModalProfile | undefined;
+  output: vscode.OutputChannel;
+  /** Bypass the setting — used by the "turn auto-sync on" command. */
+  force?: boolean;
+}): LiveSyncDriver | undefined {
+  if (!opts.volumeName) { return undefined; }
+  if (!opts.force && !isAutoSyncEnabled()) {
+    opts.output.appendLine(
+      `[sync] auto-sync is off — use the session's Push/Pull buttons, ` +
+      `or enable "mgpux.autoSync" to sync continuously.`
+    );
+    return undefined;
+  }
+  if (!opts.profile?.token_id || !opts.profile?.token_secret) {
+    opts.output.appendLine(`[sync] disabled: no credentials for this profile`);
+    return undefined;
+  }
+  try {
+    const driver = new LiveSyncDriver({
+      volumeName: opts.volumeName,
+      workspaceDir: opts.workspaceDir,
+      profile: opts.profile,
+      output: opts.output,
+    });
+    driver.start();
+    return driver;
+  } catch (err: any) {
+    opts.output.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
+    return undefined;
+  }
+}
+
 export interface PullOptions {
   volumeName: string;
   workspaceDir: string;
   profile: ModalProfile;
   output: vscode.OutputChannel;
+}
+
+/** Push the local workspace up to the session's Volume, on demand. */
+export async function pushWorkspace(opts: PullOptions): Promise<{ pushed: number; skipped: number; bytes: number }> {
+  const res = await runVolumeSync({
+    mode: "push",
+    volumeName: opts.volumeName,
+    localDir: opts.workspaceDir,
+    tokenId: opts.profile.token_id,
+    tokenSecret: opts.profile.token_secret,
+    output: opts.output,
+  });
+  return { pushed: res.pushed, skipped: res.skipped, bytes: res.bytes };
 }
 
 /** Pull the workspace Volume down into the local folder. Only files that are

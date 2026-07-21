@@ -15,7 +15,7 @@ import {
   appendSessionLog,
 } from "./sessionStore";
 import { activateProfile, extractWebEndpoint } from "./modalCli";
-import { LiveSyncDriver } from "./liveSync";
+import { startLiveSync } from "./liveSync";
 import { loadProfiles, fetchFunctionWebUrl } from "./config";
 
 const { spawn } = require("child_process");
@@ -122,25 +122,13 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   // intentionally start it before spawning modal so the initial push
   // happens while the container is still building its image — by the
   // time the function executes, the volume contents are already current.
-  if (opts.workspaceVolume) {
-    const syncProfile = loadProfiles().find((p) => p.name === opts.profile);
-    if (!syncProfile?.token_id || !syncProfile?.token_secret) {
-      output.appendLine(`[sync] disabled: no credentials for profile '${opts.profile}'`);
-    } else {
-      try {
-        const driver = new LiveSyncDriver({
-          volumeName: opts.workspaceVolume,
-          workspaceDir: opts.cwd,
-          profile: syncProfile,
-          output,
-        });
-        driver.start();
-        sessionStore.update(sessionId, { liveSync: driver });
-      } catch (err: any) {
-        output.appendLine(`[sync] failed to start: ${err?.message ?? err}`);
-      }
-    }
-  }
+  const driver = startLiveSync({
+    volumeName: opts.workspaceVolume,
+    workspaceDir: opts.cwd,
+    profile: loadProfiles().find((p) => p.name === opts.profile),
+    output,
+  });
+  if (driver) { sessionStore.update(sessionId, { liveSync: driver }); }
 
   const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {

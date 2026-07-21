@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.9.4",
+  "version": "2.10.0",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -148,9 +148,27 @@
       },
       {
         "command": "mgpux.syncSession",
-        "title": "Sync Session Data (Pull Workspace from Modal)",
+        "title": "Pull Workspace from Modal",
         "category": "M-GPUX",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mgpux.pushSession",
+        "title": "Push Workspace to Modal",
+        "category": "M-GPUX",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "mgpux.toggleAutoSync",
+        "title": "Toggle Auto-Sync",
+        "category": "M-GPUX",
+        "icon": "$(sync-ignored)"
+      },
+      {
+        "command": "mgpux.toggleAutoSyncOn",
+        "title": "Auto-Sync: ON (click to disable)",
+        "category": "M-GPUX",
+        "icon": "$(sync)"
       },
       {
         "command": "mgpux.removeSession",
@@ -257,6 +275,11 @@
           "default": "",
           "scope": "machine-overridable",
           "description": "Path or command to a Python interpreter with `modal` installed (used for billing). Leave empty to auto-detect across py launcher / python3.13 / python3.12 / ... / python."
+        },
+        "mgpux.autoSync": {
+          "type": "boolean",
+          "default": false,
+          "description": "Continuously sync the workspace with a running session's Modal Volume (pushes local edits, pulls remote changes back). Off by default — use the Push / Pull buttons on a session to sync only when you want to."
         }
       }
     },
@@ -276,6 +299,16 @@
           "command": "mgpux.openHub",
           "when": "view == mgpux.sessionsView",
           "group": "navigation@1"
+        },
+        {
+          "command": "mgpux.toggleAutoSync",
+          "when": "view == mgpux.sessionsView && !mgpux.autoSyncEnabled",
+          "group": "navigation@0"
+        },
+        {
+          "command": "mgpux.toggleAutoSyncOn",
+          "when": "view == mgpux.sessionsView && mgpux.autoSyncEnabled",
+          "group": "navigation@0"
         },
         {
           "command": "mgpux.discoverApps",
@@ -319,6 +352,11 @@
           "group": "inline@2"
         },
         {
+          "command": "mgpux.pushSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasVolume/",
+          "group": "inline@3"
+        },
+        {
           "command": "mgpux.stopSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(starting|ready|idle|stopping)/",
           "group": "inline@3"
@@ -335,6 +373,11 @@
         },
         {
           "command": "mgpux.syncSession",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasVolume/",
+          "group": "actions@2"
+        },
+        {
+          "command": "mgpux.pushSession",
           "when": "view == mgpux.sessionsView && viewItem =~ /^session\\..*hasVolume/",
           "group": "actions@2"
         },
