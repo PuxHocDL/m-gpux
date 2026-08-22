@@ -943,26 +943,28 @@ def _setup_volume_mounts():
     """Setup volume mounts (model_repository, etc.)."""
 {volume_setup_code if volume_setup_code else "    pass"}
 
-def _start_workspace_autocommit(interval=20):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception:
-                pass
-    threading.Thread(target=_loop, daemon=True).start()
+def _install_sync_helper():
+    # No background auto-commit on purpose: re-uploading multi-GB artifacts
+    # every few seconds is slow and wastes bandwidth. Push when you want it --
+    # run `msync` inside the container (`msync pull` for the other direction).
+    # Modal still commits the volume once when the container exits.
+    helper = """#!/usr/bin/env python3
+import sys
+import modal
 
-def _start_workspace_autoreload(interval=3):
-    """Periodically reload the volume to pick up external changes (from compose sync)."""
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.reload()
-            except Exception:
-                pass
-    threading.Thread(target=_loop, daemon=True).start()
+vol = modal.Volume.from_name("{workspace_volume}")
+mode = (sys.argv[1:] or ["push"])[0]
+if mode in ("pull", "down"):
+    vol.reload()
+    print("[sync] volume -> /workspace")
+else:
+    vol.commit()
+    print("[sync] /workspace -> volume")
+"""
+    with open("/usr/local/bin/msync", "w") as f:
+        f.write(helper)
+    os.chmod("/usr/local/bin/msync", 0o755)
+    print("[COMPOSE] manual sync: 'msync' pushes /workspace to the volume, 'msync pull' loads it", flush=True)
 
 def _write_hosts():
     """Add service name entries to /etc/hosts for local resolution."""
@@ -1119,8 +1121,7 @@ def run_compose():
     _print_metrics()
     _prepare_workspace()
     _setup_volume_mounts()
-    _start_workspace_autocommit()
-    _start_workspace_autoreload()
+    _install_sync_helper()
 
     # Setup hostname resolution and environment
     _write_hosts()
@@ -1602,8 +1603,9 @@ def compose_sync(
     Watch local files and sync changes to the running Modal container's volume.
 
     Monitors your project directory for changes and pushes modified files
-    to the Modal Volume used by `compose up`. The container sees changes
-    immediately since the volume is mounted at /workspace.
+    to the Modal Volume used by `compose up`. Nothing is synced automatically
+    on the container side, so run `msync pull` inside the container when you
+    want it to pick the pushed files up.
 
     Tip: Use with `--reload` in your app (e.g. uvicorn --reload) for hot-reload.
     """
@@ -1613,7 +1615,8 @@ def compose_sync(
 
     console.print(Panel.fit(
         "[bold magenta]m-gpux Compose Sync[/bold magenta]\n"
-        "Watch local files → push to Modal Volume → container sees changes",
+        "Watch local files → push to Modal Volume "
+        "(run [bold]msync pull[/bold] in the container to load them)",
         border_style="cyan",
     ))
 

@@ -7,7 +7,7 @@ import * as crypto from "crypto";
 import { loadPresets, savePresets, deletePreset, Preset } from "./presetsTree";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
 import { launchModalScript } from "./sessionLauncher";
-import { toRecursiveIgnore } from "./hubWizard";
+import { toRecursiveIgnore, syncHelperBlock } from "./hubWizard";
 
 const CPU_OPTIONS = [
   { label: "1 core / 512 MB",   spec: "cpu=1, memory=512",  compute: "CPU (1 core, 512 MB)" },
@@ -191,8 +191,9 @@ function buildScript(preset: Preset, localDir: string): string {
   const action = preset.action ?? "bash";
 
   // Both bash and jupyter scripts are condensed equivalents of the
-  // hubWizard.ts templates, with workspace volume + autocommit so the user
-  // can pick up where they left off when they re-run the preset.
+  // hubWizard.ts templates, with the same workspace volume so the user can
+  // pick up where they left off when they re-run the preset. Syncing back to
+  // the volume is manual (`msync`) -- see syncHelperBlock in hubWizard.ts.
   if (action === "jupyter") {
     return `import modal, os, subprocess, threading, time
 
@@ -211,21 +212,12 @@ def _prep():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _autocommit(interval=5):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try: workspace_volume.commit()
-            except Exception as e: print(f"[sync] commit {e}")
-            try: workspace_volume.reload()
-            except Exception as e: print(f"[sync] reload {e}")
-    threading.Thread(target=_loop, daemon=True).start()
-
+${syncHelperBlock(workspaceVolume)}
 @app.function(image=image, ${computeSpec}, timeout=24 * HOUR, scaledown_window=60 * MINUTE, max_containers=1, volumes={"/workspace": workspace_volume})
 @modal.concurrent(max_inputs=100)
 @modal.web_server(port=8888, startup_timeout=10 * MINUTE)
 def serve():
-    _prep(); _autocommit()
+    _prep(); _install_sync_helper()
     subprocess.Popen([
         "jupyter", "lab", "--no-browser", "--allow-root",
         "--ip=0.0.0.0", "--port", "8888",
@@ -262,21 +254,12 @@ def _prep():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _autocommit(interval=5):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try: workspace_volume.commit()
-            except Exception as e: print(f"[sync] commit {e}")
-            try: workspace_volume.reload()
-            except Exception as e: print(f"[sync] reload {e}")
-    threading.Thread(target=_loop, daemon=True).start()
-
+${syncHelperBlock(workspaceVolume)}
 @app.function(image=image, ${computeSpec}, timeout=24 * HOUR, scaledown_window=60 * MINUTE, max_containers=1, volumes={"/workspace": workspace_volume})
 @modal.concurrent(max_inputs=50)
 @modal.web_server(port=8888, startup_timeout=5 * MINUTE)
 def serve():
-    _prep(); _autocommit()
+    _prep(); _install_sync_helper()
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     subprocess.Popen(
         ["ttyd", "-W", "-P", "120", "-T", "xterm-256color", "-p", "8888",

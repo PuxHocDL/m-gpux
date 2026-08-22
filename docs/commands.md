@@ -148,7 +148,7 @@ The dev container uses the same Web Bash terminal as Hub, but optimizes the flow
 - uploads the current folder into `/workspace_seed`
 - mounts `/workspace` on a Modal Volume
 - copies local files into `/workspace` on every launch, overwriting matching paths
-- auto-commits remote changes roughly every 20 seconds
+- installs `msync` so you can push remote changes to the Volume when you want them (no timer-driven uploads of multi-GB checkpoints)
 - tracks the session locally for `m-gpux sessions`
 
 At the end of the wizard, `m-gpux` asks whether you want to save the workload as a preset.
@@ -238,7 +238,7 @@ Prompts for a local `.py` filename. The script is uploaded and executed on the s
 
 Opens a VS Code-like terminal session in the browser. The shell now starts as direct `bash` for smoother typing, cleaner rendering, scrollback support, and optional manual `tmux` when you want detachable sessions.
 
-The remote `/workspace` is backed by a Modal Volume. Files keep the same relative paths as your local workspace and are auto-committed about every 20 seconds. On a new launch, local files overwrite matching paths in the Volume, while remote-only outputs remain. The terminal prints a `modal volume get ...` command you can run later to pull remote changes back to your machine.
+The remote `/workspace` is backed by a Modal Volume. Files keep the same relative paths as your local workspace. Commits are on demand: run `msync` in the shell to push `/workspace` to the Volume, or `msync pull` to pick up changes pushed from elsewhere; Modal commits once more when the container exits. On a new launch, local files overwrite matching paths in the Volume, while remote-only outputs remain. The terminal prints a `modal volume get ...` command you can run later to pull remote changes back to your machine.
 
 #### Interactive terminal for `input()` scripts
 
@@ -411,7 +411,7 @@ Typical flow:
 m-gpux compose sync
 ```
 
-Watches local files and syncs changes into the workspace volume used by the running compose deployment.
+Watches local files and syncs changes into the workspace volume used by the running compose deployment. The container does not reload on its own — run `msync pull` inside it when you want the pushed files loaded.
 
 ### vm check
 

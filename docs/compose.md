@@ -74,7 +74,7 @@ Runs the single-container workflow. `m-gpux` will:
 m-gpux compose sync
 ```
 
-Watches local files and syncs changed content into the workspace volume used by a running compose deployment.
+Watches local files and syncs changed content into the workspace volume used by a running compose deployment. Nothing is loaded automatically on the container side: run `msync pull` inside the container to pick the changes up, and `msync` to push container-side changes back to the volume.
 
 Use this when the stack is already up and you want to iterate on application code without redeploying from scratch.
 

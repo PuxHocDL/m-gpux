@@ -184,8 +184,6 @@ JUPYTER_SCRIPT = """
 import modal
 import os
 import subprocess
-import threading
-import time
 
 # __METRICS__
 
@@ -214,15 +212,28 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
+def _install_sync_helper():
+    # No background auto-commit on purpose: re-uploading multi-GB checkpoints
+    # every few seconds is slow and wastes bandwidth. Sync when you actually
+    # want it -- `msync` pushes /workspace to the volume, `msync pull` brings
+    # remote changes in. Modal still commits the volume when the container exits.
+    helper = '''#!/usr/bin/env python3
+import sys
+import modal
+
+vol = modal.Volume.from_name("{workspace_volume}")
+mode = (sys.argv[1:] or ["push"])[0]
+if mode in ("pull", "down"):
+    vol.reload()
+    print("[sync] volume -> /workspace")
+else:
+    vol.commit()
+    print("[sync] /workspace -> volume")
+'''
+    with open("/usr/local/bin/msync", "w") as f:
+        f.write(helper)
+    os.chmod("/usr/local/bin/msync", 0o755)
+    print("[sync] manual sync only: run 'msync' to push, 'msync pull' to pull", flush=True)
 
 @app.function(
     image=image,
@@ -238,7 +249,7 @@ def _start_workspace_autocommit(interval=20):
 def serve():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     subprocess.Popen(
         [
             "jupyter", "lab",
@@ -571,8 +582,6 @@ import base64
 import modal
 import os
 import subprocess
-import threading
-import time
 
 # __METRICS__
 
@@ -603,21 +612,34 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
+def _install_sync_helper():
+    # No background auto-commit on purpose: re-uploading multi-GB checkpoints
+    # every few seconds is slow and wastes bandwidth. Sync when you actually
+    # want it -- `msync` pushes /workspace to the volume, `msync pull` brings
+    # remote changes in. Modal still commits the volume when the container exits.
+    helper = '''#!/usr/bin/env python3
+import sys
+import modal
+
+vol = modal.Volume.from_name("{workspace_volume}")
+mode = (sys.argv[1:] or ["push"])[0]
+if mode in ("pull", "down"):
+    vol.reload()
+    print("[sync] volume -> /workspace")
+else:
+    vol.commit()
+    print("[sync] /workspace -> volume")
+'''
+    with open("/usr/local/bin/msync", "w") as f:
+        f.write(helper)
+    os.chmod("/usr/local/bin/msync", 0o755)
+    print("[sync] manual sync only: run 'msync' to push, 'msync pull' to pull", flush=True)
 
 @app.function(image=image, {compute_spec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_interactive():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     os.makedirs("/root/.config", exist_ok=True)
     with open("/root/.bashrc", "wb") as f:
         f.write(base64.b64decode(_BASHRC_B64))
@@ -633,7 +655,7 @@ def run_interactive():
         print("URL: " + tunnel.url)
         print("Workspace: /workspace   Run: python {script_name}")
         print("Session: tmux 'main' (close & reopen URL to reattach running jobs)")
-        print("Sync volume: {workspace_volume} (auto-commit every ~20s)")
+        print("Sync volume: {workspace_volume} (manual: msync / msync pull)")
         print("Pull later: modal volume get {workspace_volume} / ./m-gpux-workspace\\n", flush=True)
         proc = subprocess.Popen(
             ["ttyd", *{ttyd_flags}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
@@ -696,8 +718,6 @@ import base64
 import modal
 import os
 import subprocess
-import threading
-import time
 
 # __METRICS__
 
@@ -730,15 +750,28 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=20):
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
+def _install_sync_helper():
+    # No background auto-commit on purpose: re-uploading multi-GB checkpoints
+    # every few seconds is slow and wastes bandwidth. Sync when you actually
+    # want it -- `msync` pushes /workspace to the volume, `msync pull` brings
+    # remote changes in. Modal still commits the volume when the container exits.
+    helper = '''#!/usr/bin/env python3
+import sys
+import modal
+
+vol = modal.Volume.from_name("{workspace_volume}")
+mode = (sys.argv[1:] or ["push"])[0]
+if mode in ("pull", "down"):
+    vol.reload()
+    print("[sync] volume -> /workspace")
+else:
+    vol.commit()
+    print("[sync] /workspace -> volume")
+'''
+    with open("/usr/local/bin/msync", "w") as f:
+        f.write(helper)
+    os.chmod("/usr/local/bin/msync", 0o755)
+    print("[sync] manual sync only: run 'msync' to push, 'msync pull' to pull", flush=True)
 
 @app.function(
     image=image,
@@ -753,7 +786,7 @@ def _start_workspace_autocommit(interval=20):
 def serve():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     os.makedirs("/root/.config", exist_ok=True)
     with open("/root/.bashrc", "wb") as f:
         f.write(base64.b64decode(_BASHRC_B64))

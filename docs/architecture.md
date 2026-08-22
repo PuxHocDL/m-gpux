@@ -102,7 +102,7 @@ The important choices are:
 - `ttyd` launches `bash --login` directly by default.
 - The prompt is simple ASCII, not a powerline or emoji-heavy prompt.
 - Browser scrollback is enabled with a larger 10,000-line buffer and wheel scrolling.
-- `/workspace` is backed by a Modal Volume for Jupyter, Web Bash, and interactive terminals, with auto-commit roughly every 20 seconds.
+- `/workspace` is backed by a Modal Volume for Jupyter, Web Bash, and interactive terminals. Nothing is committed on a timer: run `msync` inside the session to push `/workspace` to the Volume (`msync pull` for the other direction). Modal also commits once when the container exits.
 - `tmux` is still installed and configured, but users start it manually when they need detachable sessions.
 - Terminal rendering options favor stable glyph layout and repaint behavior.
 

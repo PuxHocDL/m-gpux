@@ -17,7 +17,7 @@ m-gpux dev
 - the current folder available at `/workspace`
 - local files refreshed into `/workspace` on each launch
 - a Modal Volume behind `/workspace`
-- remote edits and outputs auto-committed roughly every 20 seconds
+- remote edits and outputs pushed to the Volume when you run `msync` (plus once on container exit)
 - session metadata saved locally for `m-gpux sessions`
 
 ## Local Files Win On Launch

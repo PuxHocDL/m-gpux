@@ -6,9 +6,11 @@
 //     single batched upload.
 //   - Every 30 seconds pull remote changes back so artifacts the container
 //     produced (training outputs, new notebooks) show up locally.
-//   - The remote container script (hubWizard / presetWizard) calls
-//     volume.commit() + volume.reload() every 5 seconds so its view of
-//     /workspace stays in sync with what we push.
+//   - The remote container never syncs on a timer (that re-uploaded multi-GB
+//     checkpoints every few seconds). Syncing there is the user's call: run
+//     `msync` in the session to push /workspace into the volume before
+//     pulling, and `msync pull` to load what we just pushed. Modal also
+//     commits the volume once when the container exits.
 //
 // All transfers go through volumeSync.ts, which drives the Modal Python SDK in
 // a single process. The previous implementation shelled out to `modal volume

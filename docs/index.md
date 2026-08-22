@@ -165,7 +165,7 @@ m-gpux compose vm check
 m-gpux compose vm up
 ```
 
-If you keep editing local code after launch, `m-gpux compose sync` can stream changes into the running workspace volume.
+If you keep editing local code after launch, `m-gpux compose sync` can stream changes into the running workspace volume; run `msync pull` inside the container to load them.
 
 ### 7. Save A Reusable Workload Preset
 

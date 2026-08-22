@@ -244,6 +244,38 @@ const STABLE_TTYD_FLAGS = [
   "-T", "xterm-256color",
 ];
 
+// ---------------------------------------------------------------------------
+// Container-side workspace sync
+// ---------------------------------------------------------------------------
+// The container used to commit() + reload() the volume every 5 seconds. On a
+// real workspace that re-uploads multi-GB checkpoints over and over, which is
+// slow and mostly pointless. Nothing syncs on a timer any more -- the user
+// decides when, from inside the session:
+//   - `msync`      push /workspace -> volume (in a notebook cell: !msync)
+//   - `msync pull` pull volume -> /workspace (after a push from the extension)
+// Modal still commits the volume once when the container exits.
+export function syncHelperBlock(workspaceVolume: string): string {
+  return `def _install_sync_helper():
+    helper = """#!/usr/bin/env python3
+import sys
+import modal
+
+vol = modal.Volume.from_name("${workspaceVolume}")
+mode = (sys.argv[1:] or ["push"])[0]
+if mode in ("pull", "down"):
+    vol.reload()
+    print("[sync] volume -> /workspace")
+else:
+    vol.commit()
+    print("[sync] /workspace -> volume")
+"""
+    with open("/usr/local/bin/msync", "w") as f:
+        f.write(helper)
+    os.chmod("/usr/local/bin/msync", 0o755)
+    print("[sync] manual sync only: run 'msync' to push, 'msync pull' to pull", flush=True)
+`;
+}
+
 function jupyterScript(computeSpec: string, pythonVersion: string, localDir: string, pipSection: string, excludePatterns: string[], minContainers: number, scaledownWindow: string): string {
   const workspaceVolume = workspaceVolumeName(localDir);
   return `import modal
@@ -281,25 +313,7 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=5):
-    # Bidirectional: commit() pushes container-side changes (training
-    # outputs, notebook checkpoints) into the volume so the local
-    # extension can run 'modal volume get' them. reload() pulls anything
-    # the extension just 'modal volume put'-ed so the user's freshly
-    # edited code shows up inside the running session.
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-            try:
-                workspace_volume.reload()
-            except Exception as exc:
-                print(f"[sync] workspace reload failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
-
+${syncHelperBlock(workspaceVolume)}
 @app.function(
     image=image,
     ${computeSpec},
@@ -314,7 +328,7 @@ def _start_workspace_autocommit(interval=5):
 def serve():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     subprocess.Popen(
         [
             "jupyter", "lab",
@@ -400,25 +414,7 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=5):
-    # Bidirectional: commit() pushes container-side changes (training
-    # outputs, notebook checkpoints) into the volume so the local
-    # extension can run 'modal volume get' them. reload() pulls anything
-    # the extension just 'modal volume put'-ed so the user's freshly
-    # edited code shows up inside the running session.
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-            try:
-                workspace_volume.reload()
-            except Exception as exc:
-                print(f"[sync] workspace reload failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
-
+${syncHelperBlock(workspaceVolume)}
 @app.function(
     image=image,
     ${computeSpec},
@@ -432,7 +428,7 @@ def _start_workspace_autocommit(interval=5):
 def serve():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     with open("/root/.bashrc", "w", encoding="utf-8") as f:
         f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
@@ -528,30 +524,12 @@ def _prepare_workspace():
     subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
     workspace_volume.commit()
 
-def _start_workspace_autocommit(interval=5):
-    # Bidirectional: commit() pushes container-side changes (training
-    # outputs, notebook checkpoints) into the volume so the local
-    # extension can run 'modal volume get' them. reload() pulls anything
-    # the extension just 'modal volume put'-ed so the user's freshly
-    # edited code shows up inside the running session.
-    def _loop():
-        while True:
-            time.sleep(interval)
-            try:
-                workspace_volume.commit()
-            except Exception as exc:
-                print(f"[sync] workspace commit failed: {exc}", flush=True)
-            try:
-                workspace_volume.reload()
-            except Exception as exc:
-                print(f"[sync] workspace reload failed: {exc}", flush=True)
-    threading.Thread(target=_loop, daemon=True).start()
-
+${syncHelperBlock(workspaceVolume)}
 @app.function(image=image, ${computeSpec}, timeout=86400, volumes={"/workspace": workspace_volume})
 def run_interactive():
     _print_metrics()
     _prepare_workspace()
-    _start_workspace_autocommit()
+    _install_sync_helper()
     port = 8888
     env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
     with open("/root/.bashrc", "w", encoding="utf-8") as f:
