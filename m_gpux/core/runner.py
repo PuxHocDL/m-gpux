@@ -27,6 +27,7 @@ from rich.table import Table
 from m_gpux.core.console import console
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.profiles import get_all_profiles
+from m_gpux.core.modal_cli import deploy_cmd, stop_app
 from m_gpux.core.state import save_session, update_session
 
 # States `modal app list --json` can report (see `APP_STATE_TO_MESSAGE` in the
@@ -90,12 +91,14 @@ def execute_modal_temp_script(
     detach: bool = False,
     session_metadata: dict | None = None,
     deploy: bool = False,
+    deploy_strategy: Optional[str] = None,
 ) -> None:
     """Materialise *content* as ``modal_runner.py``, summarise it, then execute.
 
     The string ``# __METRICS__`` inside *content* is replaced with the metrics
     helper functions (so generated scripts can call ``_print_metrics`` and
-    ``_monitor_metrics``).
+    ``_monitor_metrics``). *deploy_strategy* (``rolling``/``recreate``) is passed
+    to ``modal deploy --strategy`` when deploying.
     """
     content = content.replace("# __METRICS__", _METRICS_FUNCTIONS)
     runner_file = "modal_runner.py"
@@ -140,7 +143,7 @@ def execute_modal_temp_script(
             continue
 
     if deploy:
-        cmd = ["modal", "deploy", runner_file]
+        cmd = deploy_cmd(runner_file, deploy_strategy)
     elif detach:
         cmd = ["modal", "run", "--detach", runner_file]
     else:
@@ -271,12 +274,18 @@ def execute_modal_temp_script(
     if stop_choice.lower() == "y":
         app_name = _read_app_name()
         if app_name:
-            subprocess.run(["modal", "app", "stop", app_name], capture_output=True)
-            console.print(f"[green]App '{app_name}' stopped. GPU released.[/green]")
-            if tracked_session_id:
-                update_session(tracked_session_id, state="stopped")
-            elif session_metadata and session_metadata.get("id"):
-                update_session(str(session_metadata["id"]), state="stopped")
+            result = stop_app(app_name)
+            if result.returncode == 0:
+                console.print(f"[green]App '{app_name}' stopped. GPU released.[/green]")
+                if tracked_session_id:
+                    update_session(tracked_session_id, state="stopped")
+                elif session_metadata and session_metadata.get("id"):
+                    update_session(str(session_metadata["id"]), state="stopped")
+            else:
+                console.print(
+                    f"[red]Could not stop '{app_name}': {(result.stderr or '').strip()}[/red]\n"
+                    f"[dim]Try: m-gpux stop[/dim]"
+                )
         else:
             console.print("[yellow]Could not determine app name. Stop manually: modal app stop <name>[/yellow]")
 
@@ -291,29 +300,38 @@ def execute_modal_temp_script(
             pass
 
 
-def scan_apps_across_profiles() -> list[tuple[str, str, str, str]]:
-    """Scan every configured profile for running m-gpux apps.
+def _scan_profile_apps(profile: str) -> list[tuple[str, str, str, str]]:
+    found: list[tuple[str, str, str, str]] = []
+    try:
+        result = subprocess.run(
+            ["modal", "app", "list", "--env", "main", "--json"],
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, "MODAL_PROFILE": profile},
+        )
+        if result.returncode != 0:
+            return found
+        apps = json.loads(result.stdout) if result.stdout.strip() else []
+        for a in apps:
+            desc = a.get("Description", a.get("description", ""))
+            state = a.get("State", a.get("state", ""))
+            app_id = a.get("App ID", a.get("app_id", ""))
+            if desc.startswith("m-gpux") and state.strip().lower() in ALIVE_APP_STATES:
+                found.append((profile, app_id, desc, state))
+    except Exception:
+        pass
+    return found
+
+
+def scan_apps_across_profiles(profiles: Optional[list[str]] = None) -> list[tuple[str, str, str, str]]:
+    """Scan configured profiles (all by default, in parallel) for running m-gpux apps.
 
     Returns a list of ``(profile, app_id, description, state)`` tuples.
     """
-    profiles = get_all_profiles()
-    found: list[tuple[str, str, str, str]] = []
-    for profile in profiles:
-        try:
-            result = subprocess.run(
-                ["modal", "app", "list", "--env", "main", "--json"],
-                capture_output=True, text=True, timeout=15,
-                env={**os.environ, "MODAL_PROFILE": profile},
-            )
-            if result.returncode != 0:
-                continue
-            apps = json.loads(result.stdout) if result.stdout.strip() else []
-            for a in apps:
-                desc = a.get("Description", a.get("description", ""))
-                state = a.get("State", a.get("state", ""))
-                app_id = a.get("App ID", a.get("app_id", ""))
-                if desc.startswith("m-gpux") and state.strip().lower() in ALIVE_APP_STATES:
-                    found.append((profile, app_id, desc, state))
-        except Exception:
-            continue
-    return found
+    from concurrent.futures import ThreadPoolExecutor
+
+    profiles = get_all_profiles() if profiles is None else profiles
+    if not profiles:
+        return []
+    with ThreadPoolExecutor(max_workers=min(8, len(profiles))) as pool:
+        per_profile = list(pool.map(_scan_profile_apps, profiles))
+    return [app for apps in per_profile for app in apps]

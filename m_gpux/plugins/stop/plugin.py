@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 
 import typer
@@ -11,6 +10,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from m_gpux.core.console import console
+from m_gpux.core.modal_cli import stop_app
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.runner import ALIVE_APP_STATES, scan_apps_across_profiles
 
@@ -78,19 +78,17 @@ def stop_command(
             console.print("[red]Invalid choice.[/red]")
             return
 
+    stopped = 0
     for profile, app_id, desc, _ in targets:
         console.print(f"  [cyan]Stopping {desc} on {profile}...[/cyan]")
-        result = subprocess.run(
-            ["modal", "app", "stop", app_id],
-            capture_output=True, text=True,
-            env={**os.environ, "MODAL_PROFILE": profile},
-        )
+        result = stop_app(app_id, profile=profile)
         if result.returncode == 0:
+            stopped += 1
             console.print(f"  [green]Stopped {desc}[/green]")
         else:
             console.print(f"  [red]Failed: {result.stderr.strip()}[/red]")
 
-    console.print(f"\n[bold green]Done. {len(targets)} app(s) stopped.[/bold green]")
+    console.print(f"\n[bold green]Done. {stopped}/{len(targets)} app(s) stopped.[/bold green]")
 
 
 class StopPlugin(PluginBase):

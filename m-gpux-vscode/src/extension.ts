@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { gpuQuickPickItems } from "./gpus";
 import { AccountTreeProvider, AccountItem } from "./accountTree";
 import { ActionsTreeProvider } from "./actionsTree";
 import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
@@ -308,13 +309,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.loadProbe", async () => {
       const gpuPick = await vscode.window.showQuickPick(
-        [
-          { label: "T4", description: "16 GB — budget" },
-          { label: "L4", description: "24 GB — balanced" },
-          { label: "A10G", description: "24 GB" },
-          { label: "A100", description: "40 GB SXM" },
-          { label: "H100", description: "80 GB" },
-        ],
+        gpuQuickPickItems(),
         { title: "Probe Hardware — Select GPU", placeHolder: "Which GPU to probe?" }
       );
       if (!gpuPick) { return; }
@@ -664,7 +659,7 @@ export function activate(context: vscode.ExtensionContext) {
           });
 
           const result = await new Promise<{ code: number; out: string }>((resolve) => {
-            const p = spawn("modal", ["app", "stop", s.appId!], {
+            const p = spawn("modal", ["app", "stop", "--yes", s.appId!], {
               cwd: s.cwd,
               shell: true,
               env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
@@ -894,7 +889,7 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
           increment: 100 / plan.length,
         });
         await activateProfile(entry.profile);
-        const res = await runCommand("modal", ["app", "stop", entry.appId], {});
+        const res = await runCommand("modal", ["app", "stop", "--yes", entry.appId], {});
         if (res.exitCode === 0) { ok++; } else { failed++; }
         done++;
       }

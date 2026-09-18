@@ -92,69 +92,24 @@ SERVICE_INSTALLERS: dict[str, dict] = {
 
 
 def _load_profiles():
-    """Load all profiles from ~/.modal.toml."""
-    import tomlkit
-    if not os.path.exists(MODAL_CONFIG_PATH):
-        return []
-    with open(MODAL_CONFIG_PATH, "r", encoding="utf-8") as f:
-        doc = tomlkit.load(f)
-    profiles = []
-    for name in doc:
-        is_active = doc[name].get("active", False)
-        profiles.append((name, is_active))
-    return profiles
+    """Deprecated shim — use :func:`m_gpux.core.profiles.load_profiles`."""
+    from m_gpux.core.profiles import load_profiles
+
+    return load_profiles()
 
 
 def _select_profile() -> Optional[str]:
-    """Interactive profile picker."""
-    profiles = _load_profiles()
-    if not profiles:
-        console.print("[yellow]No Modal profiles found. Run `m-gpux account add` to configure.[/yellow]")
-        return None
-    if len(profiles) == 1:
-        name, _ = profiles[0]
-        console.print(f"  Using profile: [bold cyan]{name}[/bold cyan]")
-        return name
+    """Shim over :func:`m_gpux.core.profiles.select_profile` (AUTO, budgets, low-credit switch)."""
+    from m_gpux.core.profiles import select_profile
 
-    env_profile = os.environ.get("MGPUX_PROFILE", "").strip()
-    if env_profile:
-        names = [name for name, _ in profiles]
-        if env_profile in names:
-            console.print(f"  Using profile from MGPUX_PROFILE: [bold cyan]{env_profile}[/bold cyan]")
-            return env_profile
-        console.print(f"[yellow]MGPUX_PROFILE={env_profile!r} not found among configured profiles, falling back to picker.[/yellow]")
-
-    console.print("\n[bold cyan]Select Workspace / Profile[/bold cyan]")
-    profile_options = [("AUTO", "Smart pick (most credit remaining)")]
-    for name, is_active in profiles:
-        marker = " (active)" if is_active else ""
-        profile_options.append((name, f"Modal profile{marker}"))
-
-    choice_idx = arrow_select(profile_options, title="Select Workspace", default=0)
-    if choice_idx == 0:
-        from m_gpux.core.profiles import get_best_profile
-        console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
-        best_name, best_remaining = get_best_profile()
-        if best_name is None:
-            console.print("[bold red]Could not determine best profile.[/bold red]")
-            return None
-        console.print(f"  [bold green]Auto-selected: {best_name} (${best_remaining:.2f} remaining)[/bold green]")
-        return best_name
-
-    selected_name, _ = profiles[choice_idx - 1]
-    console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
-    return selected_name
+    return select_profile()
 
 
 def _activate_profile(profile_name: str):
-    """Activate the given profile via `modal profile activate`."""
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-    subprocess.run(
-        ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True, env=env,
-    )
+    """Shim over :func:`m_gpux.core.profiles.activate_profile`."""
+    from m_gpux.core.profiles import activate_profile
+
+    activate_profile(profile_name)
 
 
 def _find_compose_file() -> Optional[str]:
@@ -798,7 +753,7 @@ def _build_compose_script(
     if use_tunnel:
         if len(tunnel_services) == 1:
             tunnel_block = f"""
-    with modal.forward({main_port}, unencrypted=True) as tunnel:
+    with modal.forward({main_port}) as tunnel:
         print("\\n" + "=" * 60)
         print(f"[COMPOSE READY] {{tunnel.url}}")
         print(f"  Main service: {main_service} (port {main_port})")
@@ -818,7 +773,7 @@ def _build_compose_script(
     with ExitStack() as stack:
         tunnels = {{}}
         for svc_name, port in tunnel_ports:
-            tun = stack.enter_context(modal.forward(port, unencrypted=True))
+            tun = stack.enter_context(modal.forward(port))
             tunnels[svc_name] = (port, tun.url)
 
         print("\\n" + "=" * 60)
@@ -1179,16 +1134,7 @@ def run_compose():
 # ---------------------------------------------------------------------------
 # Available GPU/CPU specs (mirrored from hub plugin for consistency)
 # ---------------------------------------------------------------------------
-AVAILABLE_GPUS = {
-    "1":  ("T4",            "Light inference/exploration (16GB)"),
-    "2":  ("L4",            "Balance of cost/performance (24GB)"),
-    "3":  ("A10G",          "Good alternative for training/inference (24GB)"),
-    "4":  ("L40S",          "Ada Lovelace, great for inference (48GB)"),
-    "5":  ("A100",          "High performance (40GB, default SXM)"),
-    "6":  ("A100-80GB",     "Extreme performance (80GB)"),
-    "7":  ("H100",          "Hopper architecture (80GB)"),
-    "8":  ("H200",          "Next-gen Hopper with HBM3e (141GB)"),
-}
+from m_gpux.core.gpus import AVAILABLE_GPUS  # noqa: E402
 
 AVAILABLE_CPUS = {
     "1":  (2,   2048,   "2 cores, 2 GB"),
@@ -2048,7 +1994,7 @@ def _build_vm_compose_script(
     if len(tunnel_ports) == 1:
         svc_name, port = tunnel_ports[0]
         tunnel_block = f'''
-    with modal.forward({port}, unencrypted=True) as tunnel:
+    with modal.forward({port}) as tunnel:
         print("\\n" + "=" * 60)
         print(f"[VM READY] {{tunnel.url}}")
         print(f"  Service: {svc_name} (port {port})")
@@ -2064,7 +2010,7 @@ def _build_vm_compose_script(
     with ExitStack() as stack:
         tunnels = {{}}
         for svc_name, port in tunnel_ports:
-            tun = stack.enter_context(modal.forward(port, unencrypted=True))
+            tun = stack.enter_context(modal.forward(port))
             tunnels[svc_name] = (port, tun.url)
 
         print("\\n" + "=" * 60)
@@ -2504,6 +2450,29 @@ def compose_vm_check(
 # Each Docker Compose service runs in its own Modal Sandbox for true isolation.
 # Uses Image.from_dockerfile when available, Sandbox.exec for commands,
 # readiness probes for dependency ordering, and tunnels for networking.
+
+SANDBOX_APP_NAME = "m-gpux-compose-sandbox"
+# Sandbox tag holding the compose service name; ps/exec/logs look services up by it.
+SANDBOX_SERVICE_TAG = "m-gpux-service"
+
+
+def _run_sandbox_helper(script: str, runner_file: str, capture: bool = False) -> subprocess.CompletedProcess:
+    """Run a small local Modal SDK script (the sandbox ps/exec/logs/down helpers)."""
+    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+    try:
+        return subprocess.run(
+            [sys.executable, runner_file], env=env,
+            capture_output=capture, text=capture,
+        )
+    finally:
+        try:
+            os.remove(runner_file)
+        except OSError:
+            pass
 
 
 def _dockerfile_has_python(dockerfile_path: str) -> bool:
@@ -3084,6 +3053,9 @@ SERVICE_META = {{
 SERVICE_ORDER = {repr(ordered)}
 GPU_SPEC = "{gpu_spec_str}"
 VOLUME_NAME = "{workspace_volume_name}"
+SERVICE_TAG = "{SANDBOX_SERVICE_TAG}"
+# Raw-TCP ports get plain TCP tunnels (host:port); everything else gets an HTTPS URL.
+TCP_PORTS = {{1883, 2181, 3306, 5432, 5672, 6379, 8001, 9042, 9092, 11211, 27017, 50051}}
 
 IDLE_CMDS = ("sleep ", "sleep infinity", "tail -f", "cat")
 IDLE_CMDS_EXACT = ("bash", "/bin/bash", "sh", "/bin/sh")
@@ -3100,20 +3072,25 @@ def _is_idle_command(cmd: str) -> bool:
 
 
 def _resolve_env(env_dict, tunnel_urls_map):
-    """Replace service hostname references with tunnel URLs."""
+    """Replace service hostname references with tunnel addresses."""
     resolved = dict(env_dict)
     for k, v in resolved.items():
         if not v:
             continue
         for svc_name, urls in tunnel_urls_map.items():
-            if svc_name in v:
-                for port, url in urls.items():
+            if svc_name not in v:
+                continue
+            for port, url in urls.items():
+                if url.startswith("tcp://"):
+                    hostport = url[len("tcp://"):]
+                    v = v.replace(f"{{svc_name}}:{{port}}", hostport)
+                else:
+                    host = url.split("://", 1)[-1]
                     v = v.replace(f"http://{{svc_name}}:{{port}}", url)
-                    v = v.replace(f"{{svc_name}}:{{port}}", url.replace("http://", ""))
-                if svc_name in v:
-                    primary_url = list(urls.values())[0] if urls else ""
-                    if primary_url:
-                        v = v.replace(svc_name, primary_url.replace("http://", "").replace("https://", ""))
+                    v = v.replace(f"{{svc_name}}:{{port}}", f"{{host}}:443")
+            if svc_name in v and urls:
+                primary = list(urls.values())[0].split("://", 1)[-1]
+                v = v.replace(svc_name, primary.split(":")[0])
         resolved[k] = v
     return resolved
 
@@ -3143,7 +3120,15 @@ def _create_sandbox(svc_name, meta, resolved_env, sb_app, workspace_vol):
         sb_kwargs["gpu"] = GPU_SPEC
 
     if ports:
-        sb_kwargs["unencrypted_ports"] = ports
+        http_ports = [p for p in ports if p not in TCP_PORTS]
+        tcp_ports = [p for p in ports if p in TCP_PORTS]
+        if http_ports:
+            sb_kwargs["encrypted_ports"] = http_ports
+        if tcp_ports:
+            sb_kwargs["unencrypted_ports"] = tcp_ports
+        # Lets dependants block on sb.wait_until_ready() instead of polling (modal>=1.4.1).
+        if command and not _is_idle_command(command) and hasattr(modal, "Probe"):
+            sb_kwargs["readiness_probe"] = modal.Probe.with_tcp(ports[0])
 
     if command and not _is_idle_command(command):
         try:
@@ -3153,6 +3138,12 @@ def _create_sandbox(svc_name, meta, resolved_env, sb_app, workspace_vol):
         sb = modal.Sandbox.create(*cmd_parts, **sb_kwargs)
     else:
         sb = modal.Sandbox.create("sleep", "86400", **sb_kwargs)
+
+    # `compose sandbox ps/exec/logs` find a service's sandbox by this tag.
+    try:
+        sb.set_tags({{SERVICE_TAG: svc_name}})
+    except Exception as e:
+        print(f"[{{svc_name}}] WARNING: could not tag sandbox: {{e}}", flush=True)
 
     return sb
 
@@ -3236,7 +3227,13 @@ def main():
                         print(f"[{{svc_name}}] Waiting for {{dep_name}} ports {{dep_ports}}...", flush=True)
                         deadline = time.time() + 120
                         ready = False
-                        while time.time() < deadline:
+                        try:
+                            # Readiness probe set in _create_sandbox; falls back to polling.
+                            dep_sb.wait_until_ready(timeout=120)
+                            ready = True
+                        except Exception:
+                            pass
+                        while not ready and time.time() < deadline:
                             try:
                                 check_cmd = " && ".join(
                                     f"(echo > /dev/tcp/127.0.0.1/{{p}}) 2>/dev/null"
@@ -3274,8 +3271,13 @@ def main():
                     tunnels = sb.tunnels(timeout=60)
                     svc_tunnels = {{}}
                     for port_num, tunnel_obj in tunnels.items():
-                        svc_tunnels[port_num] = tunnel_obj.url
-                        print(f"[{{svc_name}}] Port {{port_num}} → {{tunnel_obj.url}}", flush=True)
+                        if tunnel_obj.unencrypted_host:
+                            host, tport = tunnel_obj.tcp_socket
+                            addr = f"tcp://{{host}}:{{tport}}"
+                        else:
+                            addr = f"https://{{tunnel_obj.host}}"
+                        svc_tunnels[port_num] = addr
+                        print(f"[{{svc_name}}] Port {{port_num}} → {{addr}}", flush=True)
                     tunnel_urls[svc_name] = svc_tunnels
                 except Exception as e:
                     print(f"[{{svc_name}}] WARNING: Could not get tunnels: {{e}}", flush=True)
@@ -3302,11 +3304,7 @@ def main():
             json.dump({{"app_name": "m-gpux-compose-sandbox", "sandboxes": sb_ids}}, f, indent=2)
         print(f"[SANDBOX COMPOSE] Sandbox IDs saved to {{ids_file}}", flush=True)
 
-        # ─── Phase 3: Stream logs and monitor ────────────────────────
-        for svc_name, sb in sandboxes.items():
-            t = threading.Thread(target=_stream_logs, args=(svc_name, sb), daemon=True)
-            t.start()
-
+        # ─── Phase 3: Monitor (log streams were started in Phase 1) ─────
         print("[SANDBOX COMPOSE] Streaming logs... Press Ctrl+C to detach.\\n", flush=True)
 
         while True:
@@ -3844,123 +3842,137 @@ def compose_sandbox_up(
 
 def compose_sandbox_exec(
     service: str = typer.Argument(..., help="Service name to exec into"),
-    command: str = typer.Argument("bash", help="Command to run"),
+    command: list[str] = typer.Argument(None, help="Command to run (default: bash)"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="Path to docker-compose.yml"),
 ):
     """
     Execute a command in a running Sandbox service.
 
     Similar to `docker compose exec`, this runs a command inside
-    a running Sandbox container.
+    a running Sandbox container, with an interactive terminal.
 
     Examples:
         m-gpux compose sandbox exec redis redis-cli
         m-gpux compose sandbox exec prod bash
+        m-gpux compose sandbox exec web -- ls -la /app
     """
-    console.print(f"[cyan]Looking for sandbox: compose-{service}[/cyan]")
+    console.print(f"[cyan]Looking for sandbox of service: {service}[/cyan]")
+    script = _SANDBOX_LOOKUP_PRELUDE + '''
+matches = [sb for sb in _service_sandboxes(SERVICE) if sb.poll() is None]
+if not matches:
+    raise SystemExit(2)
+print(matches[0].object_id)
+'''
+    script = script.replace("__SERVICE__", repr(service))
+    result = _run_sandbox_helper(script, "modal_sandbox_exec.py", capture=True)
+    sandbox_id = (result.stdout or "").strip().splitlines()[-1:] if result.returncode == 0 else []
+    if not sandbox_id:
+        console.print(f"[red]No running sandbox found for service '{service}'.[/red]")
+        console.print("[dim]Start the stack with: m-gpux compose sandbox up[/dim]")
+        if result.stderr:
+            console.print(f"[dim]{result.stderr.strip()}[/dim]")
+        raise typer.Exit(1)
 
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-
-    # Find the sandbox by listing all sandboxes for the app
-    script = f'''
+    console.print(f"[green]Found sandbox:[/green] {sandbox_id[0]}")
+    if not command and os.name != "nt":
+        # Interactive shell: `modal shell` takes sandbox IDs (sb-…) but isn't supported on Windows.
+        subprocess.run(["modal", "shell", sandbox_id[0]])
+        return
+    if not command:
+        console.print("[yellow]Interactive shells aren't supported by Modal on Windows. "
+                      "Pass a command instead, e.g. `m-gpux compose sandbox exec "
+                      f"{service} -- ls -la`.[/yellow]")
+        raise typer.Exit(1)
+    # One-off command through the SDK — works on every OS.
+    script = '''
+import sys
 import modal
 
-sb_app = modal.App.lookup("m-gpux-compose-sandbox")
-try:
-    sb = modal.Sandbox.from_name("m-gpux-compose-sandbox", "compose-{service}")
-    print(f"Found sandbox: {{sb.object_id}}")
-    p = sb.exec("{command}", timeout=3600, pty=True)
-    for line in p.stdout:
-        print(line, end="")
-    p.wait()
-    print(f"\\nExit code: {{p.returncode}}")
-except modal.exception.NotFoundError:
-    print(f"ERROR: No running sandbox found for service '{service}'")
-    print("Make sure the compose stack is running: m-gpux compose sandbox up")
-'''
-
-    runner_file = "modal_sandbox_exec.py"
-    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
-        f.write(script)
-
-    try:
-        subprocess.run(["python", runner_file], env=env)
-    finally:
-        try:
-            os.remove(runner_file)
-        except OSError:
-            pass
+sb = modal.Sandbox.from_id(__ID__)
+p = sb.exec(*__CMD__, timeout=3600)
+for line in p.stdout:
+    sys.stdout.write(line)
+for line in p.stderr:
+    sys.stderr.write(line)
+p.wait()
+raise SystemExit(p.returncode)
+'''.replace("__ID__", repr(sandbox_id[0])).replace("__CMD__", repr(list(command)))
+    result = _run_sandbox_helper(script, "modal_sandbox_exec_cmd.py")
+    raise typer.Exit(result.returncode)
 
 
 def compose_sandbox_logs(
     service: str = typer.Argument(None, help="Service name (omit for all)"),
+    follow: bool = typer.Option(True, "--follow/--no-follow", help="Keep streaming new output"),
+    tail: int = typer.Option(
+        100, "--tail", "-n",
+        help="With --no-follow: how many recent entries to show (needs modal>=1.5.5)",
+    ),
 ):
     """
-    Stream logs from a running Sandbox service.
+    Stream logs from running Sandbox services.
 
     Examples:
         m-gpux compose sandbox logs
         m-gpux compose sandbox logs redis
+        m-gpux compose sandbox logs redis --no-follow --tail 200
     """
-    script = f'''
-import modal
+    script = _SANDBOX_LOOKUP_PRELUDE + '''
 import threading
 
-sb_app = modal.App.lookup("m-gpux-compose-sandbox")
+FOLLOW = __FOLLOW__
+TAIL = __TAIL__
 
-def _stream(name, sb):
+targets = [sb for sb in _service_sandboxes(SERVICE) if not FOLLOW or sb.poll() is None]
+if not targets:
+    print("No running sandboxes found" + (f" for service '{SERVICE}'." if SERVICE else "."))
+    print("Start the stack with: m-gpux compose sandbox up")
+    raise SystemExit(1)
+
+
+def _pipe(name, stream, suffix=""):
     try:
-        for line in sb.stdout:
-            print(f"[{{name}}] {{line}}", end="")
+        for line in stream:
+            print(f"[{name}{suffix}] {line}", end="", flush=True)
     except Exception:
         pass
 
-target_service = {repr(service)}
 
-for sb in modal.Sandbox.list(app_id=sb_app.app_id):
-    tags = sb.get_tags()
-    # Sandboxes created with name= are findable
-    if sb.poll() is not None:
-        continue
-    # We use naming convention compose-<service>
-    if target_service:
-        try:
-            named_sb = modal.Sandbox.from_name("m-gpux-compose-sandbox", f"compose-{{target_service}}")
-            t = threading.Thread(target=_stream, args=(target_service, named_sb), daemon=True)
-            t.start()
-            t.join()
-        except modal.exception.NotFoundError:
-            print(f"No running sandbox found for service '{{target_service}}'")
-        break
+if not FOLLOW:
+    for sb in targets:
+        name = _service_name(sb)
+        if not hasattr(sb, "logs"):
+            print("Historical sandbox logs need modal>=1.5.5 (pip install -U modal).")
+            raise SystemExit(1)
+        for entry in sb.logs.tail(TAIL):
+            print(f"[{name}] {entry.message}", end="" if entry.message.endswith("\\n") else "\\n")
+    raise SystemExit(0)
 
-if not target_service:
-    print("Streaming logs from all services...")
-    print("(Use Ctrl+C to stop)")
-    try:
-        import time
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\\nStopped.")
+threads = []
+for sb in targets:
+    name = _service_name(sb)
+    for stream, suffix in ((sb.stdout, ""), (sb.stderr, ":err")):
+        t = threading.Thread(target=_pipe, args=(name, stream, suffix), daemon=True)
+        t.start()
+        threads.append(t)
+
+print(f"Streaming logs from {len(targets)} sandbox(es). Press Ctrl+C to stop.", flush=True)
+try:
+    while any(t.is_alive() for t in threads):
+        for t in threads:
+            t.join(timeout=0.5)
+except KeyboardInterrupt:
+    print("\\nStopped.")
 '''
-
-    runner_file = "modal_sandbox_logs.py"
-    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
-        f.write(script)
-
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-
+    script = (
+        script.replace("__SERVICE__", repr(service))
+        .replace("__FOLLOW__", repr(follow))
+        .replace("__TAIL__", repr(tail))
+    )
     try:
-        subprocess.run(["python", runner_file], env=env)
-    finally:
-        try:
-            os.remove(runner_file)
-        except OSError:
-            pass
+        _run_sandbox_helper(script, "modal_sandbox_logs.py")
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
 
 
 def compose_sandbox_ps(
@@ -3968,52 +3980,33 @@ def compose_sandbox_ps(
     """
     List running Sandbox services and their status.
 
-    Shows sandbox ID, status, ports, and tunnel URLs for each service.
+    Shows service name, status, sandbox ID and tunnel URLs for each service.
     Similar to `docker compose ps`.
     """
-    script = '''
-import modal
-
-try:
-    sb_app = modal.App.lookup("m-gpux-compose-sandbox")
-except modal.exception.NotFoundError:
-    print("No compose-sandbox app found. Run `m-gpux compose sandbox up` first.")
-    exit(1)
-
+    script = _SANDBOX_LOOKUP_PRELUDE + '''
 print(f"{'Service':<20} {'Status':<12} {'Sandbox ID':<30} {'Tunnels'}")
 print("-" * 90)
 
 found = False
-for sb in modal.Sandbox.list(app_id=sb_app.app_id):
+for sb in _service_sandboxes(None):
     found = True
     rc = sb.poll()
     status = "running" if rc is None else f"exited({rc})"
     try:
         tunnels = sb.tunnels(timeout=5) if rc is None else {}
-        tunnel_str = ", ".join(f"{p}→{t.url}" for p, t in tunnels.items()) if tunnels else "-"
+        tunnel_str = ", ".join(
+            f"{p}→tcp://{t.unencrypted_host}:{t.unencrypted_port}" if t.unencrypted_host
+            else f"{p}→https://{t.host}"
+            for p, t in tunnels.items()
+        ) if tunnels else "-"
     except Exception:
         tunnel_str = "-"
-    print(f"{'?':<20} {status:<12} {sb.object_id:<30} {tunnel_str}")
+    print(f"{_service_name(sb):<20} {status:<12} {sb.object_id:<30} {tunnel_str}")
 
 if not found:
     print("No sandboxes running.")
 '''
-
-    runner_file = "modal_sandbox_ps.py"
-    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
-        f.write(script)
-
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-
-    try:
-        subprocess.run(["python", runner_file], env=env)
-    finally:
-        try:
-            os.remove(runner_file)
-        except OSError:
-            pass
+    _run_sandbox_helper(script.replace("__SERVICE__", "None"), "modal_sandbox_ps.py")
 
 
 def compose_sandbox_down(
@@ -4026,43 +4019,53 @@ def compose_sandbox_down(
     """
     console.print("[bold cyan]Stopping all compose sandboxes...[/bold cyan]")
 
-    script = '''
-import modal
-
-try:
-    sb_app = modal.App.lookup("m-gpux-compose-sandbox")
-except modal.exception.NotFoundError:
-    print("No compose-sandbox app found.")
-    exit(0)
-
+    script = _SANDBOX_LOOKUP_PRELUDE + '''
 count = 0
-for sb in modal.Sandbox.list(app_id=sb_app.app_id):
+for sb in _service_sandboxes(None):
     if sb.poll() is None:
-        print(f"Terminating {sb.object_id}...")
+        print(f"Terminating {_service_name(sb)} ({sb.object_id})...")
         sb.terminate()
         count += 1
     sb.detach()
 
 print(f"\\nTerminated {count} sandbox(es).")
 '''
-
-    runner_file = "modal_sandbox_down.py"
-    with open(runner_file, "w", encoding="utf-8", newline="\n") as f:
-        f.write(script)
-
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-
-    try:
-        subprocess.run(["python", runner_file], env=env)
-    finally:
-        try:
-            os.remove(runner_file)
-        except OSError:
-            pass
-
+    _run_sandbox_helper(script.replace("__SERVICE__", "None"), "modal_sandbox_down.py")
     console.print("[bold green]Done.[/bold green]")
+
+
+# Shared prelude for the sandbox helper scripts. `__SERVICE__` is substituted
+# with the repr() of the requested service name (or None).
+_SANDBOX_LOOKUP_PRELUDE = (
+    '''
+import modal
+import modal.exception
+
+APP_NAME = "__APP__"
+SERVICE_TAG = "__TAG__"
+SERVICE = __SERVICE__
+
+try:
+    sb_app = modal.App.lookup(APP_NAME)
+except modal.exception.NotFoundError:
+    print("No compose-sandbox app found. Run `m-gpux compose sandbox up` first.")
+    raise SystemExit(1)
+
+
+def _service_name(sb):
+    try:
+        return sb.get_tags().get(SERVICE_TAG, "?")
+    except Exception:
+        return "?"
+
+
+def _service_sandboxes(service):
+    tags = {SERVICE_TAG: service} if service else None
+    return list(modal.Sandbox.list(app_id=sb_app.app_id, tags=tags))
+'''
+    .replace("__APP__", SANDBOX_APP_NAME)
+    .replace("__TAG__", SANDBOX_SERVICE_TAG)
+)
 
 
 # ─── Plugin registration ──────────────────────────────────────

@@ -11,13 +11,14 @@ Welcome to the official docs for **m-gpux**, a production-focused CLI toolkit fo
 | Capability | Description |
 |---|---|
 | **Multi-profile management** | Add, switch, and remove Modal identities, all stored in `~/.modal.toml` |
-| **Dev Container Mode** | Turn the current folder into a persistent Modal CPU/GPU devbox with Volume-backed `/workspace` |
+| **Dev Boxes** | GPU/CPU boxes on Modal Sandboxes with SSH / VS Code Remote-SSH, pause & resume, and file sync |
+| **Budgets & Prices** | $/hour in every picker, per-account monthly budgets with auto-stop, live price table |
+| **Published Images** | Build dependencies once, start in seconds on every account |
 | **Interactive GPU Hub** | Guided wizard to launch Jupyter Lab, run Python scripts, or open a web shell on any GPU |
 | **Session Manager** | Track running Hub/dev sessions, pull remote workspaces, view logs, and stop apps |
 | **Workload Presets** | Save repeatable compute, dependency, and exclude settings for common workloads |
 | **Web Hosting** | Deploy ASGI apps, WSGI apps, and static sites with generated Modal templates, dependency prompts, and deploy/run modes |
 | **Docker Compose Lift-and-Shift** | Analyze local Compose files, generate Modal deployments, and sync app code into running stacks |
-| **Vision Training** | Generate sample image data, then train classification models from local folders with configurable model, GPU, optimizer, scheduler, and checkpointing |
 | **LLM API Server** | Deploy any HuggingFace model as an OpenAI-compatible endpoint with Bearer token auth, streaming, and warm containers |
 | **API Key Management** | Create, list, show, and revoke `sk-mgpux-*` keys stored locally in `~/.m-gpux/api_keys.json` |
 | **Billing Dashboard** | Inspect 7/30/90-day usage per profile or aggregated across all accounts |
@@ -46,26 +47,28 @@ cd m-gpux && pip install -e .
 |---|---|
 | [Getting Started](getting-started.md) | Install, add your first profile, and launch a GPU session in 5 minutes |
 | [Command Reference](commands.md) | Every command, flag, and option with examples |
-| [Dev Container Mode](dev-container.md) | Use `m-gpux dev` as a persistent Modal-powered project workspace |
+| [Dev Boxes](dev-container.md) | SSH / VS Code into a GPU box, pause and resume it |
+| [Costs, Budgets & Images](costs.md) | GPU catalog, prices, budgets, published images |
 | [Session Manager](sessions.md) | Manage tracked dev and Hub sessions |
 | [Workload Presets](presets.md) | Save and rerun common launch configs |
 | [Recipes](recipes.md) | Practical flows for devboxes, RL training, hosting, and file recovery |
 | [Web Hosting](web-hosting.md) | Host FastAPI, Flask, Django, or static sites on Modal with `m-gpux host` |
 | [Docker Compose](compose.md) | Analyze, deploy, and sync Compose stacks on Modal |
-| [Vision Training](vision.md) | End-to-end image classification workflow on Modal GPUs |
 | [Architecture](architecture.md) | How m-gpux works internally: proxy layer, template generation, profile resolution |
 | [FAQ & Troubleshooting](faq.md) | Common errors and how to fix them |
 
 ## Common Workflows
 
-### 1. Open A Modal Dev Container
+### 1. Open A Dev Box
 
 ```bash
 cd my-project
-m-gpux dev
+m-gpux dev up
+m-gpux dev code     # VS Code Remote-SSH into /workspace
+m-gpux dev pause    # snapshot + stop; `dev resume` continues later
 ```
 
-`m-gpux dev` launches a browser terminal backed by a Modal Volume. Local files refresh into `/workspace` every launch, while remote-only outputs stay available until you pull or clean them.
+`m-gpux dev up` starts a Modal Sandbox with your folder in `/workspace` and writes an `m-gpux-<name>` host to `~/.ssh/config`. The classic browser terminal is still available as `m-gpux dev web`.
 
 ```bash
 m-gpux sessions list
@@ -106,27 +109,7 @@ After deploy, monitor your server with the live dashboard:
 m-gpux serve dashboard
 ```
 
-### 4. Train an image classification model
-
-```bash
-m-gpux vision sample-data
-m-gpux vision train --dataset ./data/m-gpux-vision-sample
-```
-
-The vision wizard walks through:
-
-1. **Dataset folder**  accepts `train/`, `val/`, optional `test/` splits or a single root folder with class subdirectories
-2. **Model**  choose from many TorchVision backbones such as ResNet, EfficientNet, ConvNeXt, DenseNet, ViT, Swin, and more
-3. **Training knobs**  GPU, epochs, batch size, image size, optimizer, scheduler, augmentation, mixed precision, and early stopping
-4. **Artifacts**  checkpoints and metrics are persisted in a Modal Volume for later download with `modal volume get`
-
-After training, run inference on fresh local images:
-
-```bash
-m-gpux vision predict
-```
-
-### 5. Host a web app on Modal
+### 4. Host a web app on Modal
 
 ```bash
 m-gpux host asgi --entry main:app
@@ -150,7 +133,7 @@ During the wizard, `m-gpux` asks for:
 !!! note "Full web guide"
     The complete walkthrough lives in [Web Hosting](web-hosting.md), including project layouts, generated Modal patterns, scaling behavior, and troubleshooting.
 
-### 6. Lift a Docker Compose stack onto Modal
+### 5. Lift a Docker Compose stack onto Modal
 
 ```bash
 cd my-compose-project
@@ -167,7 +150,7 @@ m-gpux compose vm up
 
 If you keep editing local code after launch, `m-gpux compose sync` can stream changes into the running workspace volume; run `msync pull` inside the container to load them.
 
-### 7. Save A Reusable Workload Preset
+### 6. Save A Reusable Workload Preset
 
 ```bash
 m-gpux preset create
@@ -176,7 +159,7 @@ m-gpux preset run rl-a100
 
 Hub and dev mode can also ask whether you want to save a preset after you configure a workload.
 
-### 8. Check costs across all accounts
+### 7. Check costs across all accounts
 
 ```bash
 m-gpux billing usage --days 7 --all
@@ -184,7 +167,7 @@ m-gpux billing usage --days 7 --all
 
 Aggregates compute spend from every configured profile into a single Rich table.
 
-### 9. Stop running apps and release GPUs
+### 8. Stop running apps and release GPUs
 
 ```bash
 m-gpux stop --all

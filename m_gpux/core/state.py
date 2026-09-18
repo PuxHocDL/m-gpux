@@ -11,6 +11,7 @@ from typing import Any
 STATE_DIR = Path.home() / ".m-gpux"
 SESSIONS_PATH = STATE_DIR / "sessions.json"
 PRESETS_PATH = STATE_DIR / "presets.json"
+SERVE_PATH = STATE_DIR / "serve.json"
 
 
 def utc_now() -> str:
@@ -118,3 +119,13 @@ def delete_preset(name: str) -> bool:
     del presets[name]
     _write_json(PRESETS_PATH, presets)
     return True
+
+
+def get_serve_endpoint() -> dict[str, Any] | None:
+    """Return the last ``serve deploy`` endpoint (``url``, ``model``, ``profile``)."""
+    data = _read_json(SERVE_PATH, None)
+    return data if isinstance(data, dict) and data.get("url") else None
+
+
+def save_serve_endpoint(url: str, **extra: Any) -> None:
+    _write_json(SERVE_PATH, {"url": url, **extra, "updated_at": utc_now()})

@@ -5,7 +5,7 @@ from rich.prompt import Prompt
 import os
 import re
 import tomlkit
-from datetime import datetime, timezone
+from datetime import datetime
 
 MONTHLY_CREDIT = 30.0
 
@@ -28,21 +28,6 @@ def save_config(doc):
     with open(MODAL_CONFIG_PATH, "w", encoding="utf-8") as f:
         tomlkit.dump(doc, f)
 
-def _get_month_usage(token_id: str, token_secret: str) -> float:
-    """Fetch usage cost for the current billing month (since 1st of the month)."""
-    try:
-        from modal.billing import workspace_billing_report
-        from modal.client import Client
-
-        now = datetime.now(timezone.utc)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        client = Client.from_credentials(str(token_id), str(token_secret))
-        reports = workspace_billing_report(start=month_start, resolution="d", client=client)
-        return sum(float(r.get("cost", 0)) for r in reports)
-    except Exception:
-        return -1.0  # signal fetch failure
-
-
 @app.command("list", help="Display all configured Modal profiles and current active status.")
 def list_accounts():
     """List all available Modal profiles with remaining monthly credits."""
@@ -53,43 +38,41 @@ def list_accounts():
         console.print("[yellow]No profiles found. Run `m-gpux account add` to configure.[/yellow]")
         return
 
+    from m_gpux.core.budget import budget_for, load_budgets
+    from m_gpux.core.profiles import get_all_balances
+
     console.print("[cyan]Fetching billing data...[/cyan]")
+    balances = {name: (used, left) for name, used, left in get_all_balances()}
+    budgets = load_budgets()
 
     table = Table(title="Modal Workspaces (Profiles)")
     table.add_column("Profile Name", style="cyan")
     table.add_column("Status", style="green")
     table.add_column("Used", style="red", justify="right")
-    table.add_column("Remaining", style="green", justify="right")
+    table.add_column("Budget", style="magenta", justify="right")
+    table.add_column("Spendable", style="green", justify="right")
 
     total_remaining = 0.0
 
     for p in profiles:
-        is_active = doc[p].get("active", False)
-        status = "[bold green]Active[/bold green]" if is_active else ""
-
-        token_id = doc[p].get("token_id")
-        token_secret = doc[p].get("token_secret")
-
-        if token_id and token_secret:
-            used = _get_month_usage(token_id, token_secret)
-            if used < 0:
-                used_str = "[yellow]Error[/yellow]"
-                remaining_str = "[yellow]?[/yellow]"
-            else:
-                remaining = max(MONTHLY_CREDIT - used, 0)
-                total_remaining += remaining
-                used_str = f"${used:.2f}"
-                if remaining < 5:
-                    remaining_str = f"[bold red]${remaining:.2f}[/bold red]"
-                elif remaining < 15:
-                    remaining_str = f"[yellow]${remaining:.2f}[/yellow]"
-                else:
-                    remaining_str = f"[green]${remaining:.2f}[/green]"
+        status = "[bold green]Active[/bold green]" if doc[p].get("active", False) else ""
+        limit = budget_for(p, budgets)
+        budget_str = f"${limit:.2f}" if limit is not None else f"[dim]${MONTHLY_CREDIT:.0f} credit[/dim]"
+        if p not in balances:
+            table.add_row(p, status, "[dim]N/A[/dim]", budget_str, "[dim]N/A[/dim]")
+            continue
+        used, remaining = balances[p]
+        if used < 0:
+            table.add_row(p, status, "[yellow]Error[/yellow]", budget_str, "[yellow]?[/yellow]")
+            continue
+        total_remaining += remaining
+        if remaining < 5:
+            remaining_str = f"[bold red]${remaining:.2f}[/bold red]"
+        elif remaining < 15:
+            remaining_str = f"[yellow]${remaining:.2f}[/yellow]"
         else:
-            used_str = "[dim]N/A[/dim]"
-            remaining_str = "[dim]N/A[/dim]"
-
-        table.add_row(p, status, used_str, remaining_str)
+            remaining_str = f"[green]${remaining:.2f}[/green]"
+        table.add_row(p, status, f"${used:.2f}", budget_str, remaining_str)
 
     console.print(table)
     console.print(f"\n[bold]Total remaining across all profiles: [green]${total_remaining:.2f}[/green][/bold]")
@@ -97,48 +80,8 @@ def list_accounts():
     console.print(f"[dim]Credits reset on the 1st of each month ($30/account). Current period: {now.strftime('%B %Y')}[/dim]")
 
 
-def get_best_profile():
-    """Return the profile name with the most remaining credit, or None.
-    
-    Used by smart rotation to auto-pick the cheapest account.
-    Returns (profile_name, remaining_credit) or (None, 0).
-    """
-    doc = load_config()
-    best_name = None
-    best_remaining = 0.0
+from m_gpux.core.profiles import get_all_balances, get_best_profile  # noqa: E402,F401
 
-    for p in doc:
-        token_id = doc[p].get("token_id")
-        token_secret = doc[p].get("token_secret")
-        if not token_id or not token_secret:
-            continue
-        used = _get_month_usage(token_id, token_secret)
-        if used < 0:
-            continue
-        remaining = MONTHLY_CREDIT - used
-        if remaining > best_remaining:
-            best_remaining = remaining
-            best_name = p
-
-    return best_name, best_remaining
-
-
-def get_all_balances():
-    """Return list of (profile_name, used, remaining) for all profiles, sorted by remaining desc."""
-    doc = load_config()
-    results = []
-    for p in doc:
-        token_id = doc[p].get("token_id")
-        token_secret = doc[p].get("token_secret")
-        if not token_id or not token_secret:
-            continue
-        used = _get_month_usage(token_id, token_secret)
-        if used < 0:
-            results.append((p, -1, -1))
-        else:
-            results.append((p, used, max(MONTHLY_CREDIT - used, 0)))
-    results.sort(key=lambda x: x[2], reverse=True)
-    return results
     
 @app.command("switch", help="Switch the active global profile for Modal deployments.")
 def switch_account(name: str = typer.Argument(..., help="Target profile name to activate")):

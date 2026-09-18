@@ -10,17 +10,18 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 |---|---|
 | `m-gpux` | Show welcome screen with quick actions |
 | `m-gpux info` | Print version and framework metadata |
-| `m-gpux dev` | Launch a persistent Modal dev container for the current folder |
+| `m-gpux dev` | Dev boxes: SSH / VS Code Remote, pause & resume, file sync |
 | `m-gpux hub` | Interactive GPU session launcher |
 | `m-gpux sessions` | List, stop, inspect, and pull Hub/dev sessions |
 | `m-gpux preset` | Save and rerun common workload presets |
 | `m-gpux host` | Deploy ASGI, WSGI, or static web apps |
 | `m-gpux compose` | Analyze and deploy Docker Compose stacks on Modal |
-| `m-gpux vision` | Train computer vision models on Modal GPUs |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
 | `m-gpux stop` | Stop running m-gpux apps |
 | `m-gpux account` | Manage Modal profiles |
-| `m-gpux billing` | Track compute costs |
+| `m-gpux billing` | Track compute costs and prices |
+| `m-gpux budget` | Monthly spending limits per account, with auto-stop |
+| `m-gpux image` | Prebuild & publish reusable images |
 | `m-gpux load` | GPU hardware metrics probe |
 
 ---
@@ -122,36 +123,75 @@ m-gpux billing usage --all
 | `--days` | Lookback period in days | `30` |
 | `--account`, `-a` | Check a specific named profile | Active profile |
 | `--all` | Aggregate usage across all configured profiles | `false` |
+| `--resources`, `-r` | Add a cost breakdown by resource (CPU, memory, each GPU type) | `false` |
 
 **Example:**
 
 ```bash
-m-gpux billing usage --days 7 --all
+m-gpux billing usage --days 7 --all --resources
 ```
+
+### rates
+
+```bash
+m-gpux billing rates
+m-gpux billing rates --refresh
+```
+
+Prices per GPU-hour, CPU core-hour and GiB-hour (Functions vs. Sandboxes) used for the estimates in every picker. `--refresh` fetches live prices (`modal>=1.5.4`).
+
+### summary
+
+```bash
+m-gpux billing summary
+m-gpux billing summary --all
+```
+
+Shows the current billing cycle per account: metered cost, credits and other adjustments, the amount actually billed, and the spending category (deployed apps, notebooks, volumes…) that cost the most. Requires `modal>=1.5.3`.
 
 ---
 
 ## dev
 
-Launch a persistent Modal dev container for the current folder.
+Persistent dev boxes on Modal Sandboxes.
 
 ```bash
-m-gpux dev
-m-gpux dev --preset rl-a100
+m-gpux dev up [--name NAME] [--image IMG] [--hours 12] [--lock-ip] [--no-ssh]
+m-gpux dev list
+m-gpux dev ssh | code | shell [NAME]
+m-gpux dev sync push [--all] | pull [--to DIR]
+m-gpux dev pause [NAME] [--keep-days 30]
+m-gpux dev resume [NAME] [--hours N]
+m-gpux dev down [NAME]
+m-gpux dev web            # classic browser terminal
+m-gpux dev --preset NAME  # classic mode from a preset
 ```
 
-The dev container uses the same Web Bash terminal as Hub, but optimizes the flow for day-to-day remote development:
+See [Dev Boxes](dev-container.md) for the full guide.
 
-- selects a Modal profile
-- selects CPU or GPU compute
-- installs `requirements.txt` or extra packages
-- uploads the current folder into `/workspace_seed`
-- mounts `/workspace` on a Modal Volume
-- copies local files into `/workspace` on every launch, overwriting matching paths
-- installs `msync` so you can push remote changes to the Volume when you want them (no timer-driven uploads of multi-GB checkpoints)
-- tracks the session locally for `m-gpux sessions`
+---
 
-At the end of the wizard, `m-gpux` asks whether you want to save the workload as a preset.
+## budget
+
+```bash
+m-gpux budget set 20 [-a ACCOUNT]
+m-gpux budget show
+m-gpux budget check [--stop]
+m-gpux budget watch [--interval 600] [--no-stop]
+m-gpux budget clear [-a ACCOUNT]
+```
+
+See [Costs, Budgets & Images](costs.md).
+
+---
+
+## image
+
+```bash
+m-gpux image build NAME [--python 3.12] [-r requirements.txt] [--pip a,b] [--apt x,y] [-a ACCOUNT | --all]
+m-gpux image list [--remote]
+m-gpux image forget NAME
+```
 
 ---
 
@@ -175,6 +215,13 @@ The most common workflow is:
 m-gpux sessions list
 m-gpux sessions pull sess-1234abcd --to ./m-gpux-workspace
 m-gpux sessions stop sess-1234abcd
+```
+
+`sessions logs` streams by default. Use `--no-follow` with `--tail`, `--since` or `--search` to read history instead:
+
+```bash
+m-gpux sessions logs sess-1234abcd --no-follow --tail 500
+m-gpux sessions logs sess-1234abcd --since 2h --search error
 ```
 
 Sessions are recorded as soon as a detached Hub/dev app starts successfully. If you stop it at the final prompt, the tracked state changes to `stopped`.
@@ -268,6 +315,8 @@ The host command group supports:
 - `m-gpux host asgi` for FastAPI, Starlette, Quart, and Django ASGI
 - `m-gpux host wsgi` for Flask and Django WSGI
 - `m-gpux host static` for static HTML, CSS, and JavaScript folders
+
+Every host command accepts `--server` to run on Modal's low-latency `@app.server()` primitive (`modal>=1.5.1`; ASGI via uvicorn, WSGI via gunicorn, static via `http.server`; URLs end in `.modal.direct`), and `--strategy rolling|recreate` for redeploys. `rolling` (default) keeps the old version serving until new containers are ready; `recreate` stops old containers immediately so the next request is guaranteed to hit the new code.
 
 ### asgi
 
@@ -429,6 +478,19 @@ m-gpux compose vm up
 
 Uses the VM-oriented generator for workloads that need fuller image behavior, tunneled ports, or custom Dockerfile semantics.
 
+### sandbox
+
+```bash
+m-gpux compose sandbox up
+m-gpux compose sandbox ps
+m-gpux compose sandbox logs [service]
+m-gpux compose sandbox logs redis --no-follow --tail 200
+m-gpux compose sandbox exec web -- ls -la /app
+m-gpux compose sandbox down
+```
+
+Each service runs in its own Modal Sandbox, tagged with its service name so `ps`, `logs` and `exec` can find it. Services wait for their dependencies with readiness probes. HTTP ports get HTTPS URLs; raw TCP ports (Redis, Postgres, …) get `tcp://host:port` tunnels, and `service:port` references in environment variables are rewritten to them. `exec SERVICE -- CMD` runs a command on any OS; `exec SERVICE` without a command opens an interactive shell (not on Windows, where `modal shell` is unsupported). `logs --no-follow` reads stored history and needs `modal>=1.5.5`.
+
 ### Compose notes
 
 - Supported file discovery: `docker-compose.yml`, `docker-compose.yaml`, `compose.yml`, `compose.yaml`
@@ -436,92 +498,6 @@ Uses the VM-oriented generator for workloads that need fuller image behavior, tu
 - `x-mgpux` metadata can override base image, apt packages, and related generation details
 
 For the full workflow, see [Docker Compose](compose.md).
-
----
-
-## vision
-
-Train image classification models on Modal GPUs from local datasets.
-
-```bash
-m-gpux vision sample-data
-m-gpux vision train
-m-gpux vision predict
-m-gpux vision evaluate
-m-gpux vision export
-```
-
-### sample-data
-
-```bash
-m-gpux vision sample-data
-m-gpux vision sample-data --output ./data/demo-shapes --image-size 160
-m-gpux vision sample-data --layout single-root --images-per-class 30
-```
-
-Generate or refresh a small local image-classification dataset for demos and smoke tests.
-
-| Option | Description | Default |
-|---|---|---|
-| `--output`, `-o` | Destination folder | `data/m-gpux-vision-sample` |
-| `--layout` | Dataset layout: `split` or `single-root` | `split` |
-| `--image-size` | Generated image size in pixels | `128` |
-| `--images-per-class` | Images per class for single-root layout | `24` |
-| `--train-per-class` | Training images per class for split layout | `12` |
-| `--val-per-class` | Validation images per class for split layout | `4` |
-| `--test-per-class` | Test images per class for split layout | `4` |
-| `--seed` | Random seed for deterministic sample images | `42` |
-| `--force` | Overwrite files in the destination folder | `false` |
-
-### train
-
-```bash
-m-gpux vision train
-m-gpux vision train --dataset ./data/cats-vs-dogs --model resnet50 --gpu A10G
-```
-
-| Option | Description | Default |
-|---|---|---|
-| `--dataset`, `-d` | Local dataset folder | `./data` if it exists, otherwise current directory |
-| `--model`, `-m` | TorchVision image-classification model builder | Interactive chooser |
-| `--gpu`, `-g` | Modal GPU type | Interactive chooser |
-| `--epochs` | Number of training epochs | `10` |
-| `--batch-size` | Batch size | Suggested interactively |
-| `--image-size` | Input image resolution | Suggested interactively |
-| `--learning-rate`, `--lr` | Optimizer learning rate | `3e-4` |
-| `--validation-split` | Validation fraction for non-pre-split datasets | `0.2` |
-| `--pretrained/--no-pretrained` | Initialize from pretrained ImageNet weights | `--pretrained` |
-| `--mixed-precision/--no-mixed-precision` | Use AMP on GPU | `--mixed-precision` |
-| `--artifact-volume` | Modal Volume name for checkpoints and metrics | `m-gpux-vision-artifacts` |
-
-### predict
-
-```bash
-m-gpux vision predict
-m-gpux vision predict --input ./samples --run-name imgclf-resnet50-20260420-113500 --gpu T4
-```
-
-Load a saved checkpoint from the artifact volume and run inference on a local image file or folder.
-
-### evaluate
-
-```bash
-m-gpux vision evaluate
-m-gpux vision evaluate --dataset ./data/cats-vs-dogs --run-name imgclf-resnet50-20260420-113500 --split test --gpu T4
-```
-
-Evaluate a saved checkpoint on a local dataset and persist a detailed metrics report.
-
-### export
-
-```bash
-m-gpux vision export
-m-gpux vision export --run-name imgclf-resnet50-20260420-113500 --format all
-```
-
-Export a saved checkpoint into deployment-friendly formats such as ONNX and TorchScript.
-
-For the full training workflow, dataset layouts, and artifact structure, see [Vision Training](vision.md).
 
 ---
 
@@ -550,6 +526,12 @@ Interactive wizard to deploy a model:
 | 5 | Min containers / keep warm | `1` |
 | 6 | API key | First active key |
 
+| Option | Description | Default |
+|---|---|---|
+| `--strategy` | `rolling` keeps old containers serving during a redeploy; `recreate` replaces them immediately | `rolling` |
+
+The endpoint URL is read from the deploy output and saved to `~/.m-gpux/serve.json`, so `dashboard` and `warmup` find it without `--url`.
+
 What gets deployed:
 
 - an auth proxy on port `8000`
@@ -567,7 +549,7 @@ m-gpux serve dashboard --interval 5
 
 | Option | Description | Default |
 |---|---|---|
-| `--url`, `-u` | Base URL of the deployed API | Auto-detected from profiles |
+| `--url`, `-u` | Base URL of the deployed API | Last deployed URL, else guessed from profiles |
 | `--interval`, `-i` | Refresh interval in seconds | `3.0` |
 
 Displays a live terminal dashboard for GPU, system, traffic, latency, and token metrics.
@@ -576,9 +558,17 @@ Displays a live terminal dashboard for GPU, system, traffic, latency, and token 
 
 ```bash
 m-gpux serve logs
+m-gpux serve logs --no-follow --tail 300
+m-gpux serve logs --since 1h --search "CUDA out of memory"
 ```
 
-Streams live logs from the deployed `m-gpux-llm-api` app.
+| Option | Description | Default |
+|---|---|---|
+| `--follow/--no-follow` | Keep streaming new lines | `--follow` |
+| `--tail`, `-n` | Only the last N entries | all / 100 |
+| `--since` | Start of range (`2h`, `2026-09-01T05:00`) | — |
+| `--search`, `-s` | Only lines containing this text | — |
+| `--source` | `stdout`, `stderr` or `system` | all |
 
 ### stop
 
@@ -587,6 +577,15 @@ m-gpux serve stop
 ```
 
 Stops the `m-gpux-llm-api` app on the current Modal profile.
+
+### restart
+
+```bash
+m-gpux serve restart
+m-gpux serve restart --strategy rolling
+```
+
+Replaces the server's containers with fresh ones without redeploying code (`modal app rollover`). Handy after a hung vLLM engine or a changed Secret. `recreate` (default) swaps everything immediately; `rolling` avoids downtime.
 
 ### warmup
 

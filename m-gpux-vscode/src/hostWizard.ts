@@ -1,6 +1,7 @@
 // Mirrors the CLI's `m-gpux host {asgi,wsgi,static}` plugin — generates a
 // modal_runner.py for ASGI/WSGI/static hosting and deploys (or runs) it.
 import * as vscode from "vscode";
+import { gpuQuickPickItems } from "./gpus";
 import * as fs from "fs";
 import * as path from "path";
 import { loadProfiles, switchProfile, getActiveProfile } from "./config";
@@ -22,13 +23,7 @@ const CPU_OPTIONS = [
   { label: "8 cores / 4096 MB", spec: "cpu=8, memory=4096",  compute: "CPU (8 cores, 4096 MB)" },
 ];
 
-const GPU_OPTIONS = [
-  { label: "T4",   spec: 'gpu="T4"',   description: "16 GB — light inference" },
-  { label: "L4",   spec: 'gpu="L4"',   description: "24 GB — balanced" },
-  { label: "A10G", spec: 'gpu="A10G"', description: "24 GB — training" },
-  { label: "A100", spec: 'gpu="A100"', description: "40 GB SXM" },
-  { label: "H100", spec: 'gpu="H100"', description: "80 GB" },
-];
+const GPU_OPTIONS = gpuQuickPickItems();
 
 function slugify(s: string): string {
   const safe = s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");

@@ -27,6 +27,7 @@ from m_gpux.plugins.hub.plugin import (
     _session_metadata,
     _workspace_volume_name,
 )
+from m_gpux.core.gpus import ask_gpu_count
 from m_gpux.core.ui import arrow_select
 from m_gpux.core.ignore import to_recursive_ignore
 
@@ -160,7 +161,7 @@ def create_command() -> None:
     else:
         gpu_values = list(AVAILABLE_GPUS.values())
         gpu_idx = arrow_select([(gpu, desc) for gpu, desc in gpu_values], title="GPU", default=1)
-        gpu = gpu_values[gpu_idx][0]
+        gpu = ask_gpu_count(gpu_values[gpu_idx][0])
         compute_spec = f'gpu="{gpu}"'
         compute_label = gpu
 

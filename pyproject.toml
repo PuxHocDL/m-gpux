@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m-gpux"
-version = "2.11.0"
+version = "3.0.0"
 description = "Professional CLI toolkit for Modal GPU workflows, account management, and billing visibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
 dependencies = [
-    "modal>=0.62.0",
+    "modal>=1.4.2",
     "typer>=0.12.0",
     "rich>=13.0.0",
     "tomlkit>=0.12.0",
@@ -51,16 +51,16 @@ include = ["m_gpux*"]
 [project.entry-points."m_gpux.plugins"]
 account = "m_gpux.plugins.account.plugin:AccountPlugin"
 billing = "m_gpux.plugins.billing.plugin:BillingPlugin"
+budget = "m_gpux.plugins.budget.plugin:BudgetPlugin"
 compose = "m_gpux.plugins.compose.plugin:ComposePlugin"
 dev = "m_gpux.plugins.dev.plugin:DevPlugin"
 hub = "m_gpux.plugins.hub.plugin:HubPlugin"
+image = "m_gpux.plugins.image.plugin:ImagePlugin"
 host = "m_gpux.plugins.host.plugin:HostPlugin"
 load = "m_gpux.plugins.load.plugin:LoadPlugin"
 preset = "m_gpux.plugins.preset.plugin:PresetPlugin"
 serve = "m_gpux.plugins.serve.plugin:ServePlugin"
 sessions = "m_gpux.plugins.sessions.plugin:SessionsPlugin"
-video = "m_gpux.plugins.video.plugin:VideoPlugin"
-vision = "m_gpux.plugins.vision.plugin:VisionPlugin"
 info = "m_gpux.plugins.info.plugin:InfoPlugin"
 stop = "m_gpux.plugins.stop.plugin:StopPlugin"
 

@@ -37,6 +37,7 @@ from m_gpux.core.profiles import activate_profile, select_profile
 from m_gpux.core.runner import execute_modal_temp_script
 from m_gpux.core.ui import arrow_select
 from m_gpux.core.ignore import to_recursive_ignore
+from m_gpux.core.modal_cli import DEPLOY_STRATEGIES, deploy_cmd
 
 app = typer.Typer(
     help=(
@@ -137,6 +138,58 @@ def web():
 '''
 
 
+# `@app.server()` (modal>=1.5.1): a low-latency HTTP primitive. Modal proxies
+# straight to the process listening on PORT instead of wrapping it in a Function.
+_SERVER_HEAD = '''\
+import subprocess
+
+import modal
+
+app = modal.App("m-gpux-host-{slug}")
+image = (
+    modal.Image.debian_slim(python_version="3.12")
+    {server_pip}
+    {pip_section}
+    .add_local_dir("{local_dir}", remote_path="{remote_dir}", ignore={exclude_patterns})
+)
+
+PORT = 8000
+
+
+@app.server(
+    image=image,
+    {compute_spec},
+    port=PORT,
+    unauthenticated=True,
+    startup_timeout=120,
+    scaledown_window={scaledown},
+    min_containers={min_containers},
+)
+class Web:
+    @modal.enter()
+    def start(self):
+        subprocess.Popen({server_cmd}, cwd="{remote_dir}")
+'''
+
+SERVER_VARIANTS = {
+    "asgi": {
+        "server_pip": '.pip_install("uvicorn[standard]")',
+        "remote_dir": "/app",
+        "server_cmd": '["python", "-m", "uvicorn", "{entry}", "--host", "0.0.0.0", "--port", str(PORT)]',
+    },
+    "wsgi": {
+        "server_pip": '.pip_install("gunicorn")',
+        "remote_dir": "/app",
+        "server_cmd": '["gunicorn", "--bind", f"0.0.0.0:{PORT}", "--workers", "2", "{entry}"]',
+    },
+    "static": {
+        "server_pip": "",
+        "remote_dir": "/site",
+        "server_cmd": '["python", "-m", "http.server", str(PORT), "--directory", "/site"]',
+    },
+}
+
+
 # ─── Helpers ──────────────────────────────────────────────────
 
 
@@ -216,15 +269,47 @@ def _ask_keep_warm() -> int:
     return idx  # 0 → auto-scale, 1 → keep one warm
 
 
-def _build_script(kind: str, **vars) -> str:
-    tpl = {"asgi": ASGI_TEMPLATE, "wsgi": WSGI_TEMPLATE, "static": STATIC_TEMPLATE}[kind]
-    out = tpl
+def _build_script(kind: str, server: bool = False, **vars) -> str:
+    if server:
+        out = _SERVER_HEAD
+        for k, v in SERVER_VARIANTS[kind].items():
+            out = out.replace("{" + k + "}", v)
+        vars.setdefault("pip_section", "")
+        vars.setdefault("entry", "")
+    else:
+        out = {"asgi": ASGI_TEMPLATE, "wsgi": WSGI_TEMPLATE, "static": STATIC_TEMPLATE}[kind]
     for k, v in vars.items():
         out = out.replace("{" + k + "}", str(v))
     return out
 
 
-def _deploy_or_run(script: str, mode: str, description: str) -> None:
+def _server_option():
+    return typer.Option(
+        False, "--server",
+        help="Use Modal's low-latency @app.server() primitive (modal>=1.5.1) instead of a web Function.",
+    )
+
+
+def _check_server_support(server: bool) -> None:
+    if server:
+        import modal
+
+        if not hasattr(modal.App, "server"):
+            console.print("[red]--server needs modal>=1.5.1. Run: pip install -U modal[/red]")
+            raise typer.Exit(1)
+
+
+def _strategy_option():
+    return typer.Option(
+        "rolling", "--strategy",
+        help="Redeploy strategy: 'rolling' (zero downtime) or 'recreate' (stop old containers now).",
+    )
+
+
+def _deploy_or_run(script: str, mode: str, description: str, strategy: str = "rolling") -> None:
+    if strategy not in DEPLOY_STRATEGIES:
+        console.print(f"[red]--strategy must be one of: {', '.join(DEPLOY_STRATEGIES)}[/red]")
+        raise typer.Exit(1)
     if mode == "run":
         execute_modal_temp_script(script, description)
         return
@@ -244,9 +329,13 @@ def _deploy_or_run(script: str, mode: str, description: str) -> None:
         return
     console.print(f"[bold green]Deploying {description}…[/bold green]")
     try:
-        subprocess.run(["modal", "deploy", runner_file])
+        result = subprocess.run(deploy_cmd(runner_file, strategy))
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted.[/yellow]")
+        return
+    if result.returncode != 0:
+        console.print(f"[red]modal deploy failed (exit code {result.returncode}). See the output above.[/red]")
+        raise typer.Exit(result.returncode)
     console.print(
         "[green]Done.[/green] URL is shown above. Stop the app any time with "
         "[bold yellow]m-gpux stop[/bold yellow]."
@@ -276,6 +365,8 @@ def host_asgi(
         "-e",
         help="Python entry point, e.g. 'main:app' for `app = FastAPI()` in main.py",
     ),
+    strategy: str = _strategy_option(),
+    server: bool = _server_option(),
 ):
     """Deploy an ASGI web app."""
     slug, compute_spec, compute_label = _common_setup("my-app")
@@ -286,8 +377,10 @@ def host_asgi(
     keep_warm = _ask_keep_warm()
     mode = _ask_deploy_mode()
 
+    _check_server_support(server)
     script = _build_script(
         "asgi",
+        server=server,
         slug=slug,
         compute_spec=compute_spec,
         scaledown=300,
@@ -298,12 +391,14 @@ def host_asgi(
         local_dir=os.path.abspath(".").replace("\\", "/"),
         exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
-    _deploy_or_run(script, mode, f"ASGI app '{slug}' on {compute_label}")
+    _deploy_or_run(script, mode, f"ASGI app '{slug}' on {compute_label}", strategy)
 
 
 @app.command("wsgi", help="Host a Flask / Django / any WSGI app.")
 def host_wsgi(
     entry: str = typer.Option(None, "--entry", "-e", help="WSGI entry, e.g. 'app:app'"),
+    strategy: str = _strategy_option(),
+    server: bool = _server_option(),
 ):
     """Deploy a WSGI web app."""
     slug, compute_spec, compute_label = _common_setup("my-app")
@@ -314,8 +409,10 @@ def host_wsgi(
     keep_warm = _ask_keep_warm()
     mode = _ask_deploy_mode()
 
+    _check_server_support(server)
     script = _build_script(
         "wsgi",
+        server=server,
         slug=slug,
         compute_spec=compute_spec,
         scaledown=300,
@@ -326,7 +423,7 @@ def host_wsgi(
         local_dir=os.path.abspath(".").replace("\\", "/"),
         exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
-    _deploy_or_run(script, mode, f"WSGI app '{slug}' on {compute_label}")
+    _deploy_or_run(script, mode, f"WSGI app '{slug}' on {compute_label}", strategy)
 
 
 @app.command("static", help="Host a static site (HTML/JS/CSS) from a directory.")
@@ -334,6 +431,8 @@ def host_static(
     directory: str = typer.Option(
         None, "--dir", "-d", help="Directory to serve (defaults to current)"
     ),
+    strategy: str = _strategy_option(),
+    server: bool = _server_option(),
 ):
     """Deploy a directory as a static website."""
     slug, compute_spec, compute_label = _common_setup("my-site")
@@ -346,8 +445,10 @@ def host_static(
     keep_warm = _ask_keep_warm()
     mode = _ask_deploy_mode()
 
+    _check_server_support(server)
     script = _build_script(
         "static",
+        server=server,
         slug=slug,
         compute_spec=compute_spec,
         scaledown=300,
@@ -356,7 +457,7 @@ def host_static(
         local_dir=os.path.abspath(target).replace("\\", "/"),
         exclude_patterns=repr(to_recursive_ignore(excludes)),
     )
-    _deploy_or_run(script, mode, f"Static site '{slug}' on {compute_label}")
+    _deploy_or_run(script, mode, f"Static site '{slug}' on {compute_label}", strategy)
 
 
 @app.callback(invoke_without_command=True)

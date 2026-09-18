@@ -8,7 +8,7 @@ This guide gets you from zero to running GPU workloads and hosted web apps on Mo
 |---|---|
 | Python 3.10+ | Runtime for the CLI |
 | Modal account | You need `token_id` and `token_secret` from [modal.com/settings](https://modal.com/settings) |
-| `modal` CLI | Must be installed and available in PATH (`pip install modal`) |
+| `modal` CLI | Version 1.4.2 or newer, installed and on PATH (`pip install -U modal`) |
 
 ## Install
 

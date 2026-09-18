@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { GPU_CATALOG, gpuDescription } from "./gpus";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
@@ -16,21 +17,9 @@ interface GpuOption {
   description: string;
 }
 
-const AVAILABLE_GPUS: GpuOption[] = [
-  { id: "T4", label: "T4", description: "Light inference / exploration (16 GB)" },
-  { id: "L4", label: "L4", description: "Balance of cost / performance (24 GB)" },
-  { id: "A10G", label: "A10G", description: "Training / inference (24 GB)" },
-  { id: "L40S", label: "L40S", description: "Ada Lovelace, great for inference (48 GB)" },
-  { id: "A100", label: "A100", description: "High performance (40 GB SXM)" },
-  { id: "A100-40GB", label: "A100-40GB", description: "Ampere 40 GB variant" },
-  { id: "A100-80GB", label: "A100-80GB", description: "Extreme performance (80 GB)" },
-  { id: "RTX-PRO-6000", label: "RTX-PRO-6000", description: "Pro workstation GPU (48 GB)" },
-  { id: "H100", label: "H100", description: "Hopper architecture (80 GB)" },
-  { id: "H100!", label: "H100!", description: "H100 priority / reserved" },
-  { id: "H200", label: "H200", description: "Next-gen Hopper HBM3e (141 GB)" },
-  { id: "B200", label: "B200", description: "Blackwell — latest gen" },
-  { id: "B200+", label: "B200+", description: "B200 priority / reserved" },
-];
+const AVAILABLE_GPUS: GpuOption[] = GPU_CATALOG.map((g) => ({
+  id: g.id, label: g.id, description: gpuDescription(g),
+}));
 
 const PYTHON_VERSIONS = [
   { label: "3.12", description: "Default, broadly compatible" },
@@ -900,10 +889,10 @@ async function pickPythonFile(localDir: string): Promise<string | undefined> {
 async function pickVllmModel(): Promise<string | undefined> {
   const models = [
     { label: "Qwen/Qwen2.5-1.5B-Instruct", description: "Tiny 1.5B — T4/L4 friendly, fast" },
-    { label: "Qwen/Qwen2.5-7B-Instruct", description: "7B — A10G/A100, good quality" },
-    { label: "meta-llama/Llama-3.1-8B-Instruct", description: "Llama 8B — A10G/A100" },
-    { label: "google/gemma-2-9b-it", description: "Gemma 9B — A10G/A100" },
-    { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10G/A100" },
+    { label: "Qwen/Qwen2.5-7B-Instruct", description: "7B — A10/A100, good quality" },
+    { label: "meta-llama/Llama-3.1-8B-Instruct", description: "Llama 8B — A10/A100" },
+    { label: "google/gemma-2-9b-it", description: "Gemma 9B — A10/A100" },
+    { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10/A100" },
   ];
   const pick = await vscode.window.showQuickPick(models, {
     title: "Select model to serve",

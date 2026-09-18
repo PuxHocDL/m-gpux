@@ -1,5 +1,5 @@
 export const STATS = [
-  { value: 9, suffix: "", label: "Command groups", hint: "accounts → vision → serve" },
+  { value: 12, suffix: "", label: "Command groups", hint: "accounts → hub → serve" },
   { value: 30, suffix: "+", label: "VS Code actions", hint: "the Hub, in your editor" },
   { value: 6, suffix: "", label: "Python runtimes", hint: "3.10 → 3.14 + custom" },
   { value: 0, suffix: "→∞", label: "Scale to zero", hint: "pay only when busy" },
@@ -27,9 +27,9 @@ export const FEATURES = [
     body: "Analyze services, ports and volumes, then deploy via subprocess, VM or isolated Sandbox modes — Triton-aware and BuildKit-friendly.",
   },
   {
-    icon: "Image",
-    title: "Vision workflows",
-    body: "Sample data, train a TorchVision backbone on a GPU, evaluate, predict and export to ONNX or TorchScript — all from local image folders.",
+    icon: "Bookmark",
+    title: "Presets & sessions",
+    body: "Save any workload as a preset and replay it in one command. Every Hub and dev session is tracked so you can reopen, tail logs, pull files or stop it later.",
   },
   {
     icon: "Gauge",
@@ -40,4 +40,4 @@ export const FEATURES = [
 
 export const RUNTIMES = ["3.10", "3.11", "3.12", "3.13", "3.14", "custom"];
 
-export const GPUS = ["T4", "L4", "A10G", "A100", "H100", "L40S", "CPU"];
+export const GPUS = ["T4", "L4", "A10", "L40S", "A100", "H100", "H200", "B200", "B300", "CPU"];

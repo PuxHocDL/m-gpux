@@ -14,6 +14,10 @@ from datetime import datetime
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core import _select_profile, _activate_profile, AVAILABLE_GPUS, AVAILABLE_CPUS
 from m_gpux.core.ui import arrow_select
+from m_gpux.core.modal_cli import DEPLOY_STRATEGIES, app_logs_cmd, deploy_cmd, stop_app
+from m_gpux.core.state import get_serve_endpoint, save_serve_endpoint
+
+SERVE_APP_NAME = "m-gpux-llm-api"
 
 app = typer.Typer(
     help="Deploy LLMs as OpenAI-compatible APIs with API key authentication.",
@@ -641,24 +645,33 @@ def serve():
 
 SERVE_MODELS = {
     "1":  ("Qwen/Qwen2.5-1.5B-Instruct",          "1.5B — T4/L4 friendly, fast",       "T4",        "4096"),
-    "2":  ("Qwen/Qwen2.5-7B-Instruct",             "7B — A10G/A100",                    "A10G",      "8192"),
-    "3":  ("Qwen/Qwen3-8B",                         "Qwen3 8B — A10G/A100",             "A10G",      "8192"),
+    "2":  ("Qwen/Qwen2.5-7B-Instruct",             "7B — A10/A100",                    "A10",       "8192"),
+    "3":  ("Qwen/Qwen3-8B",                         "Qwen3 8B — A10/A100",             "A10",       "8192"),
     "4":  ("Qwen/Qwen3.5-35B-A3B",                  "Qwen3.5 35B MoE — A100-80GB/H100", "A100-80GB", "32768"),
-    "5":  ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B — A10G/A100",         "A10G",      "8192"),
-    "6":  ("google/gemma-2-9b-it",                   "Gemma 2 9B — A10G/A100",           "A10G",      "8192"),
-    "7":  ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B — A10G/A100",           "A10G",      "8192"),
+    "5":  ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B — A10/A100",         "A10",       "8192"),
+    "6":  ("google/gemma-2-9b-it",                   "Gemma 2 9B — A10/A100",           "A10",       "8192"),
+    "7":  ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B — A10/A100",           "A10",       "8192"),
     "8":  ("Qwen/Qwen2.5-72B-Instruct-AWQ",        "72B AWQ quant — H100/A100-80GB",   "A100-80GB", "16384"),
     "9":  ("meta-llama/Llama-3.1-70B-Instruct",     "Llama 70B — H100/A100-80GB",       "H100",      "16384"),
     "10": ("deepseek-ai/DeepSeek-V2-Lite-Chat",     "DeepSeek V2 Lite 16B — A100",      "A100",      "8192"),
-    "11": ("microsoft/Phi-3-medium-4k-instruct",    "Phi-3 Medium 14B — A10G/A100",     "A10G",      "4096"),
+    "11": ("microsoft/Phi-3-medium-4k-instruct",    "Phi-3 Medium 14B — A10/A100",     "A10",       "4096"),
 }
 
 # ─── Deploy command ───────────────────────────────────────────
 
 
 @app.command("deploy")
-def deploy():
+def deploy(
+    strategy: str = typer.Option(
+        "rolling", "--strategy",
+        help="Redeploy strategy: 'rolling' keeps old containers serving until new ones are up; "
+             "'recreate' stops them immediately so every request hits the new model.",
+    ),
+):
     """Deploy an LLM as an OpenAI-compatible API with API key authentication."""
+    if strategy not in DEPLOY_STRATEGIES:
+        console.print(f"[red]--strategy must be one of: {', '.join(DEPLOY_STRATEGIES)}[/red]")
+        raise typer.Exit(1)
 
     console.print(Panel.fit(
         "[bold magenta]M-GPUX LLM API Server[/bold magenta]\n"
@@ -942,24 +955,38 @@ def deploy():
     console.print("[dim]Subsequent cold starts will be faster (weights cached in Volume).[/dim]\n")
 
     try:
-        subprocess.run(["modal", "deploy", runner_file])
+        returncode, endpoint_url = _deploy_and_capture_url(deploy_cmd(runner_file, strategy))
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted. The remote deployment may still be in progress.[/yellow]")
         return
 
+    if returncode != 0:
+        console.print(f"[red]modal deploy failed (exit code {returncode}). See the output above.[/red]")
+        raise typer.Exit(returncode)
+
+    if endpoint_url:
+        save_serve_endpoint(endpoint_url, model=selected_model, profile=selected_profile)
+        url_line = (
+            f"[bold]Endpoint:[/bold] [bold cyan]{endpoint_url}[/bold cyan]\n"
+            f"[dim]Saved — `m-gpux serve dashboard` / `warmup` will use it automatically.[/dim]\n\n"
+        )
+    else:
+        url_line = "Check the output above for your endpoint URL (look for the web_server URL).\n\n"
+    shown_url = endpoint_url or "<YOUR_URL>"
+
     console.print(Panel(
         f"[bold green]Deployment complete![/bold green]\n\n"
-        f"Check the output above for your endpoint URL (look for the web_server URL).\n\n"
+        + url_line +
         f"[bold]Your API key:[/bold] [bold yellow]{first_key}[/bold yellow]\n"
         f"[bold]Model name:[/bold]  {selected_model}\n\n"
         f"[bold cyan]Test with curl:[/bold cyan]\n"
-        f'  curl <YOUR_URL>/v1/chat/completions \\\n'
+        f'  curl {shown_url}/v1/chat/completions \\\n'
         f'    -H "Authorization: Bearer {first_key}" \\\n'
         f'    -H "Content-Type: application/json" \\\n'
         f"    -d '{{\"model\": \"{selected_model}\", \"messages\": [{{\"role\": \"user\", \"content\": \"Hello!\"}}]}}'\n\n"
         f"[bold cyan]Python (openai client):[/bold cyan]\n"
         f'  from openai import OpenAI\n'
-        f'  client = OpenAI(base_url="<YOUR_URL>/v1", api_key="{first_key}")\n'
+        f'  client = OpenAI(base_url="{shown_url}/v1", api_key="{first_key}")\n'
         f'  resp = client.chat.completions.create(\n'
         f'      model="{selected_model}",\n'
         f'      messages=[{{"role": "user", "content": "Hello!"}}]\n'
@@ -987,24 +1014,52 @@ def deploy():
         border_style="cyan",
     ))
     try:
-        subprocess.run(["modal", "app", "logs", "m-gpux-llm-api"])
+        subprocess.run(app_logs_cmd(SERVE_APP_NAME, follow=True))
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped watching logs.[/dim]")
+
+
+def _deploy_and_capture_url(cmd: list[str]) -> tuple[int, str | None]:
+    """Run ``modal deploy`` echoing its output, and return (exit code, endpoint URL)."""
+    import re
+
+    url_re = re.compile(r"https://[A-Za-z0-9.-]+\.modal\.(?:run|direct)")
+    endpoint_url = None
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", env=env,
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        print(line, end="", flush=True)
+        match = url_re.search(line)
+        if match and endpoint_url is None:
+            endpoint_url = match.group(0)
+    return proc.wait(), endpoint_url
 
 
 # ─── Logs command ─────────────────────────────────────────────
 
 
 @app.command("logs")
-def logs():
-    """Stream live logs from the deployed LLM API server."""
+def logs(
+    follow: bool = typer.Option(True, "--follow/--no-follow", help="Keep streaming new log lines"),
+    tail: int = typer.Option(None, "--tail", "-n", help="Show only the last N entries"),
+    since: str = typer.Option(None, "--since", help="Start of range, e.g. 2h or 2026-09-01T05:00"),
+    search: str = typer.Option(None, "--search", "-s", help="Only lines containing this text"),
+    source: str = typer.Option(None, "--source", help="stdout, stderr or system"),
+):
+    """Stream live (or fetch historical) logs from the deployed LLM API server."""
     console.print(Panel.fit(
-        "[bold cyan]Streaming logs from m-gpux-llm-api[/bold cyan]\n"
+        f"[bold cyan]{'Streaming' if follow else 'Fetching'} logs from {SERVE_APP_NAME}[/bold cyan]\n"
         "[dim]Press Ctrl+C to stop.[/dim]",
         border_style="cyan",
     ))
     try:
-        subprocess.run(["modal", "app", "logs", "m-gpux-llm-api"])
+        subprocess.run(app_logs_cmd(
+            SERVE_APP_NAME, follow=follow, tail=tail, since=since, search=search, source=source,
+        ))
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
     except FileNotFoundError:
@@ -1298,11 +1353,8 @@ def dashboard(
 @app.command("stop")
 def stop():
     """Stop the deployed LLM API server."""
-    console.print("[cyan]Stopping m-gpux-llm-api...[/cyan]")
-    result = subprocess.run(
-        ["modal", "app", "stop", "m-gpux-llm-api"],
-        capture_output=True, text=True,
-    )
+    console.print(f"[cyan]Stopping {SERVE_APP_NAME}...[/cyan]")
+    result = stop_app(SERVE_APP_NAME)
     if result.returncode == 0:
         console.print("[bold green]App stopped successfully.[/bold green]")
     else:
@@ -1311,6 +1363,29 @@ def stop():
             console.print("[yellow]No deployed app found (already stopped or never deployed).[/yellow]")
         else:
             console.print(f"[red]Error: {err}[/red]")
+
+
+# ─── Restart command ──────────────────────────────────────────
+
+
+@app.command("restart")
+def restart(
+    strategy: str = typer.Option(
+        "recreate", "--strategy",
+        help="'recreate' replaces all containers now; 'rolling' swaps them without downtime.",
+    ),
+):
+    """Replace the server's containers with fresh ones, without redeploying code."""
+    if strategy not in DEPLOY_STRATEGIES:
+        console.print(f"[red]--strategy must be one of: {', '.join(DEPLOY_STRATEGIES)}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[cyan]Rolling over {SERVE_APP_NAME} ({strategy})...[/cyan]")
+    result = subprocess.run(["modal", "app", "rollover", SERVE_APP_NAME, "--strategy", strategy])
+    if result.returncode == 0:
+        console.print("[bold green]Rollover triggered. New containers will load the model on next request.[/bold green]")
+    else:
+        console.print("[red]Rollover failed — is the server deployed? Check `m-gpux serve logs`.[/red]")
+        raise typer.Exit(result.returncode)
 
 
 # ─── Warmup / ping command ────────────────────────────────────
@@ -1383,28 +1458,27 @@ def warmup(
 
 
 def _load_profiles_for_url():
-    """Try to build endpoint URLs from known Modal profiles."""
-    import tomlkit
-    config_path = os.path.expanduser("~/.modal.toml")
-    if not os.path.exists(config_path):
+    """Candidate endpoint URLs: the one saved by the last deploy, then one per workspace
+    (active profile first) guessed from ``modal profile list --json``."""
+    saved = get_serve_endpoint()
+    if saved:
+        return [saved["url"]]
+    if not os.path.exists(os.path.expanduser("~/.modal.toml")):
         return []
     try:
         result = subprocess.run(
             ["modal", "profile", "list", "--json"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
-            import re
-            # Parse workspace names from the table output
-            lines = result.stdout.strip().split("\n")
-            urls = []
-            for line in lines:
-                # Try to find workspace column from profile list
-                parts = [p.strip() for p in line.split("|") if p.strip()]
-                if len(parts) >= 2 and parts[0] not in ("Profile", ""):
-                    workspace = parts[1] if len(parts) > 1 else parts[0]
-                    urls.append(f"https://{workspace}--m-gpux-llm-api-serve.modal.run")
-            return urls
+            # [{"name": ..., "workspace": ..., "active": bool}, ...]
+            profiles = json.loads(result.stdout or "[]")
+            profiles.sort(key=lambda p: not p.get("active"))
+            return [
+                f"https://{p['workspace']}--{SERVE_APP_NAME}-serve.modal.run"
+                for p in profiles
+                if p.get("workspace") and not str(p["workspace"]).startswith("Unknown")
+            ]
     except Exception:
         pass
     return []

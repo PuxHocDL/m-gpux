@@ -2,6 +2,7 @@
 // (~/.m-gpux/presets.json), so presets created here are visible from
 // `m-gpux preset list` and vice-versa.
 import * as vscode from "vscode";
+import { gpuQuickPickItems } from "./gpus";
 import * as path from "path";
 import * as crypto from "crypto";
 import { loadPresets, savePresets, deletePreset, Preset } from "./presetsTree";
@@ -16,13 +17,7 @@ const CPU_OPTIONS = [
   { label: "8 cores / 4096 MB", spec: "cpu=8, memory=4096", compute: "CPU (8 cores, 4096 MB)" },
 ];
 
-const GPU_OPTIONS = [
-  { label: "T4",   spec: 'gpu="T4"',   description: "16 GB — budget" },
-  { label: "L4",   spec: 'gpu="L4"',   description: "24 GB — balanced" },
-  { label: "A10G", spec: 'gpu="A10G"', description: "24 GB" },
-  { label: "A100", spec: 'gpu="A100"', description: "40 GB SXM" },
-  { label: "H100", spec: 'gpu="H100"', description: "80 GB" },
-];
+const GPU_OPTIONS = gpuQuickPickItems();
 
 export async function createPreset(): Promise<void> {
   const name = await vscode.window.showInputBox({

@@ -21,89 +21,27 @@ MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
 
 
 def _load_profiles():
-    """Load all profiles from ~/.modal.toml and return list of (name, is_active) tuples."""
-    if not os.path.exists(MODAL_CONFIG_PATH):
-        return []
-    with open(MODAL_CONFIG_PATH, "r", encoding="utf-8") as f:
-        doc = tomlkit.load(f)
-    profiles = []
-    for name in doc:
-        is_active = doc[name].get("active", False)
-        profiles.append((name, is_active))
-    return profiles
+    """Deprecated shim — use :func:`m_gpux.core.profiles.load_profiles`."""
+    from m_gpux.core.profiles import load_profiles
+
+    return load_profiles()
 
 
 def _select_profile() -> Optional[str]:
-    """Show interactive profile/workspace picker. Returns selected profile name or None."""
-    profiles = _load_profiles()
-    if not profiles:
-        console.print("[yellow]No Modal profiles found. Run `m-gpux account add` to configure.[/yellow]")
-        return None
-    if len(profiles) == 1:
-        name, _ = profiles[0]
-        console.print(f"  Using profile: [bold cyan]{name}[/bold cyan]")
-        return name
+    """Shim over :func:`m_gpux.core.profiles.select_profile` (AUTO, budgets, low-credit switch)."""
+    from m_gpux.core.profiles import select_profile
 
-    console.print("\n[bold cyan]Step 0: Select Workspace / Profile[/bold cyan]")
-    profile_options = [("AUTO", "Smart pick (most credit remaining)")]
-    for name, is_active in profiles:
-        marker = " (active)" if is_active else ""
-        profile_options.append((name, f"Modal profile{marker}"))
-
-    choice_idx = arrow_select(profile_options, title="Select Workspace", default=0)
-
-    if choice_idx == 0:
-        from m_gpux.core.profiles import get_best_profile
-        console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
-        best_name, best_remaining = get_best_profile()
-        if best_name is None:
-            console.print("[bold red]Could not determine best profile. Pick manually.[/bold red]")
-            return None
-        console.print(f"  [bold green]Auto-selected: {best_name} (${best_remaining:.2f} remaining)[/bold green]")
-        return best_name
-
-    selected_name, _ = profiles[choice_idx - 1]
-    console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
-    return selected_name
+    return select_profile()
 
 
 def _activate_profile(profile_name: str):
-    """Activate the given profile via `modal profile activate`."""
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-    result = subprocess.run(
-        ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True, env=env,
-    )
-    if result.returncode != 0:
-        console.print(f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]")
+    """Shim over :func:`m_gpux.core.profiles.activate_profile`."""
+    from m_gpux.core.profiles import activate_profile
 
-AVAILABLE_GPUS = {
-    "1":  ("T4",            "Light inference/exploration (16GB)"),
-    "2":  ("L4",            "Balance of cost/performance (24GB)"),
-    "3":  ("A10G",          "Good alternative for training/inference (24GB)"),
-    "4":  ("L40S",          "Ada Lovelace, great for inference (48GB)"),
-    "5":  ("A100",          "High performance (40GB, default SXM)"),
-    "6":  ("A100-40GB",     "Ampere 40GB variant"),
-    "7":  ("A100-80GB",     "Extreme performance (80GB)"),
-    "8":  ("RTX-PRO-6000",   "RTX PRO 6000 — pro workstation GPU (48GB)"),
-    "9":  ("H100",          "Hopper architecture (80GB)"),
-    "10": ("H100!",         "H100 priority/reserved — guaranteed availability"),
-    "11": ("H200",          "Next-gen Hopper with HBM3e (141GB)"),
-    "12": ("B200",          "Blackwell architecture — latest gen"),
-    "13": ("B200+",         "B200 priority/reserved — guaranteed availability"),
-}
+    activate_profile(profile_name)
 
-AVAILABLE_CPUS = {
-    "1":  (1,   512,    "1 core, 512 MB — minimal testing"),
-    "2":  (2,   1024,   "2 cores, 1 GB — light models"),
-    "3":  (4,   2048,   "4 cores, 2 GB — small models"),
-    "4":  (8,   4096,   "8 cores, 4 GB — medium models"),
-    "5":  (16,  8192,   "16 cores, 8 GB — larger models"),
-    "6":  (32,  16384,  "32 cores, 16 GB — large models"),
-    "7":  (64,  32768,  "64 cores, 32 GB — max performance"),
-}
+from m_gpux.core.gpus import AVAILABLE_CPUS, AVAILABLE_GPUS, GPU_MAX_COUNT  # noqa: E402
+from m_gpux.core.images import apply_base_image, pick_published_image  # noqa: E402
 
 AVAILABLE_PYTHON_VERSIONS = [
     ("3.12", "Default, broadly compatible"),
@@ -853,7 +791,7 @@ def hub_main():
         gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
         gpu_idx = arrow_select(gpu_options, title="Select GPU", default=1)
         selected_gpu = list(AVAILABLE_GPUS.values())[gpu_idx][0]
-        gpu_count = _select_gpu_count()
+        gpu_count = _select_gpu_count(GPU_MAX_COUNT.get(selected_gpu, 8))
         if gpu_count > 1:
             compute_spec = f'gpu="{selected_gpu}:{gpu_count}"'
             compute_label = f"{selected_gpu} x{gpu_count}"
@@ -872,6 +810,8 @@ def hub_main():
     action_idx = arrow_select(action_options, title="Select Action", default=0)
     action_choice = str(action_idx + 1)
     python_version = _select_python_version()
+    # vLLM uses its own CUDA image; other actions can start from a published image.
+    base_image = None if action_choice == "4" else pick_published_image(selected_profile, python_version)
     
     if action_choice == "1":
         # --- Environment Setup ---
@@ -935,7 +875,7 @@ def hub_main():
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
-        script = (JUPYTER_SCRIPT
+        script = (apply_base_image(JUPYTER_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
@@ -1042,7 +982,7 @@ def hub_main():
             handle_choice = str(handle_idx + 1)
             
             if handle_choice == "1":
-                script = (INTERACTIVE_SCRIPT
+                script = (apply_base_image(INTERACTIVE_SCRIPT, base_image)
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
                     .replace("{python_version}", python_version)
@@ -1087,7 +1027,7 @@ def hub_main():
                     resp = Prompt.ask(f"  Response #{i+1}")
                     responses.append(resp)
                 stdin_input_repr = repr("\n".join(responses) + "\n")
-                script = (WRAPPER_SCRIPT
+                script = (apply_base_image(WRAPPER_SCRIPT, base_image)
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
                     .replace("{python_version}", python_version)
@@ -1100,7 +1040,7 @@ def hub_main():
                 return
             # else: handle_choice == "3", fall through to normal run
         
-        script = (WRAPPER_SCRIPT
+        script = (apply_base_image(WRAPPER_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{compute_label}", compute_label)
             .replace("{python_version}", python_version)
@@ -1171,7 +1111,7 @@ def hub_main():
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
-        script = (BASH_SCRIPT
+        script = (apply_base_image(BASH_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
@@ -1201,10 +1141,10 @@ def hub_main():
     elif action_choice == "4":
         models = {
             "1": ("Qwen/Qwen2.5-1.5B-Instruct", "Tiny 1.5B — T4/L4 friendly, fast"),
-            "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10G/A100, good quality"),
-            "3": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 8B — A10G/A100"),
-            "4": ("google/gemma-2-9b-it", "Gemma 9B — A10G/A100"),
-            "5": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10G/A100"),
+            "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10/A100, good quality"),
+            "3": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 8B — A10/A100"),
+            "4": ("google/gemma-2-9b-it", "Gemma 9B — A10/A100"),
+            "5": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10/A100"),
         }
         model_options = [(name, desc) for name, desc in models.values()]
         model_idx = arrow_select(model_options, title="Select model to serve", default=0)
