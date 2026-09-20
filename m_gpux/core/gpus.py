@@ -11,20 +11,20 @@ from m_gpux.core.pricing import cpu_hourly, fmt_hourly, gpu_hourly, load_rates
 
 # (Modal gpu= string, VRAM per GPU in GB, max GPUs per container, description)
 GPU_CATALOG: list[tuple[str, int, int, str]] = [
-    ("T4",           16,  8, "Turing — light inference / exploration"),
-    ("L4",           24,  8, "Ada — best price/performance for inference"),
-    ("A10",          24,  4, "Ampere — training & inference (formerly A10G)"),
-    ("L40S",         48,  8, "Ada — strong inference, big VRAM per $"),
-    ("A100",         40,  8, "Ampere — may be upgraded to 80GB at no extra cost"),
-    ("A100-40GB",    40,  8, "Ampere 40GB, pinned"),
-    ("A100-80GB",    80,  8, "Ampere 80GB — large training jobs"),
-    ("RTX-PRO-6000", 96,  8, "Blackwell workstation GPU"),
-    ("H100",         80,  8, "Hopper — may be upgraded to H200 at no extra cost"),
-    ("H100!",        80,  8, "H100 pinned — never upgraded to H200"),
-    ("H200",        141,  8, "Hopper with HBM3e"),
-    ("B200",        180,  8, "Blackwell"),
-    ("B200+",       180,  8, "B200 or B300, whichever is free first — billed as B200"),
-    ("B300",        288,  8, "Blackwell Ultra — newest, most VRAM"),
+    ("T4", 16, 8, "Turing — light inference / exploration"),
+    ("L4", 24, 8, "Ada — best price/performance for inference"),
+    ("A10", 24, 4, "Ampere — training & inference (formerly A10G)"),
+    ("L40S", 48, 8, "Ada — strong inference, big VRAM per $"),
+    ("A100", 40, 8, "Ampere — may be upgraded to 80GB at no extra cost"),
+    ("A100-40GB", 40, 8, "Ampere 40GB, pinned"),
+    ("A100-80GB", 80, 8, "Ampere 80GB — large training jobs"),
+    ("RTX-PRO-6000", 96, 8, "Blackwell workstation GPU"),
+    ("H100", 80, 8, "Hopper — may be upgraded to H200 at no extra cost"),
+    ("H100!", 80, 8, "H100 pinned — never upgraded to H200"),
+    ("H200", 141, 8, "Hopper with HBM3e"),
+    ("B200", 180, 8, "Blackwell"),
+    ("B200+", 180, 8, "B200 or B300, whichever is free first — billed as B200"),
+    ("B300", 288, 8, "Blackwell Ultra — newest, most VRAM"),
 ]
 
 GPU_MAX_COUNT: dict[str, int] = {name: max_n for name, _, max_n, _ in GPU_CATALOG}
@@ -51,7 +51,11 @@ def _cpu_entries() -> dict[str, tuple[int, int, str]]:
         (64, 32768, "max performance"),
     ]
     return {
-        str(i): (cores, mem, f"{cores} cores, {mem // 1024 or 0.5} GB — {label} · {fmt_hourly(cpu_hourly(cores, mem, rates=rates))}")
+        str(i): (
+            cores,
+            mem,
+            f"{cores} cores, {mem // 1024 or 0.5} GB — {label} · {fmt_hourly(cpu_hourly(cores, mem, rates=rates))}",
+        )
         for i, (cores, mem, label) in enumerate(base, start=1)
     }
 

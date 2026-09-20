@@ -2,7 +2,7 @@
 
 import sys
 import os
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 from rich.console import Console
 
 _console = Console()
@@ -12,6 +12,7 @@ def _read_key() -> str:
     """Read a single keypress. Returns 'up', 'down', 'enter', or the character."""
     if sys.platform == "win32":
         import msvcrt
+
         ch = msvcrt.getwch()
         if ch in ("\x00", "\xe0"):  # special key prefix on Windows
             ch2 = msvcrt.getwch()
@@ -34,6 +35,7 @@ def _read_key() -> str:
     else:
         import tty
         import termios
+
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:

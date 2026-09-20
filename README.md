@@ -77,12 +77,29 @@ m-gpux wraps Modal's primitives (Sandboxes, Functions, Servers, Volumes, named I
 ```bash
 git clone https://github.com/PuxHocDL/m-gpux.git
 cd m-gpux
-pip install -e .
+pip install -e ".[dev,docs]"
 m-gpux --help
 ```
 
-Each command group is a plugin in `m_gpux/plugins/<name>/plugin.py`, registered in both `m_gpux/plugins/__init__.py` and the `m_gpux.plugins` entry-point group in `pyproject.toml`. The VS Code extension lives in `m-gpux-vscode/` (`npm install && npx tsc --noEmit`), and the landing site in `m-gpux-ui/`.
+Each command group is a plugin in `m_gpux/plugins/<name>/plugin.py`, registered in both `m_gpux/plugins/__init__.py` and the `m_gpux.plugins` entry-point group in `pyproject.toml`.
+
+Run the same checks used by CI before opening a pull request:
+
+```bash
+ruff check m_gpux tests
+python -m unittest discover -s tests -v
+mkdocs build --strict
+
+cd m-gpux-vscode
+npm ci
+npm run typecheck
+npm run compile
+
+cd ../m-gpux-ui
+npm ci
+npm run build
+```
 
 ## License
 
-[MIT](https://pypi.org/project/m-gpux/)
+[MIT](LICENSE)

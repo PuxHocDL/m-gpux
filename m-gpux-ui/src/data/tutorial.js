@@ -1,5 +1,5 @@
 // Interactive, step-by-step CLI tutorial.
-// Each step mirrors a real `m-gpux` (v2.7.0) workflow. The learner must TYPE the
+// Each step mirrors a real `m-gpux` v3 workflow. The learner must TYPE the
 // command — `validate` is matched against the normalised input, `command` is the
 // canonical answer used for the "auto-type" helper and the placeholder hint.
 //
@@ -19,8 +19,8 @@ export const TUTORIAL_STEPS = [
     reward: "CLI installed",
     output: [
       { tone: "dim", text: "Collecting m-gpux" },
-      { tone: "dim", text: "Downloading m_gpux-2.7.0-py3-none-any.whl (148 kB)" },
-      { tone: "ok", text: "✔ Successfully installed m-gpux-2.7.0 typer-0.15 rich-13.9 modal-0.66" },
+      { tone: "dim", text: "Downloading m_gpux-3.0.0-py3-none-any.whl (146 kB)" },
+      { tone: "ok", text: "✔ Successfully installed m-gpux-3.0.0 modal-1.5.5" },
     ],
   },
   {
@@ -53,12 +53,29 @@ export const TUTORIAL_STEPS = [
     reward: "Hub online",
     output: [
       { tone: "accent", text: "? Select profile ›", suffix: "personal" },
-      { tone: "accent", text: "? Compute ›", suffix: "GPU · A10G" },
+      { tone: "accent", text: "? Compute ›", suffix: "GPU · A10" },
       { tone: "accent", text: "? Action ›", suffix: "Jupyter Lab" },
       { tone: "accent", text: "? Python runtime ›", suffix: "3.12" },
-      { tone: "warn", text: "⠿ Building image & starting Jupyter on A10G…" },
+      { tone: "warn", text: "⠿ Building image & starting Jupyter on A10…" },
       { tone: "ok", text: "✔ Jupyter is live (session tracked)" },
       { tone: "url", text: "https://pux--m-gpux-hub-jupyter.modal.run" },
+    ],
+  },
+  {
+    id: "devbox",
+    chip: "sandbox",
+    title: "Create a persistent dev box",
+    goal: "Start an SSH-ready Sandbox for this folder. Pause it later to snapshot the filesystem and stop compute billing.",
+    hint: "Use the dev command group, then bring the box up.",
+    prompt: "~",
+    command: "m-gpux dev up",
+    validate: /^m-?gpux\s+dev\s+up(\s+.*)?$/i,
+    reward: "Dev box ready",
+    output: [
+      { tone: "accent", text: "? Compute › CPU · 1 core · 0.5 GB" },
+      { tone: "warn", text: "◌ Creating Sandbox and syncing /workspace…" },
+      { tone: "ok", text: "✔ Dev box is running · snapshot with `m-gpux dev pause`" },
+      { tone: "dim", text: "Open in VS Code: m-gpux dev code" },
     ],
   },
   {
@@ -108,7 +125,7 @@ export const TUTORIAL_STEPS = [
     reward: "Costs in view",
     output: [
       { tone: "info", text: "Usage · last 30 days · all profiles" },
-      { tone: "text", text: "personal   A10G   4.2h   $3.81" },
+      { tone: "text", text: "personal   A10    4.2h   $3.81" },
       { tone: "text", text: "research   L4     9.7h   $6.55" },
       { tone: "ok", text: "Σ total   $10.36" },
     ],

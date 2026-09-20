@@ -1,0 +1,21 @@
+# Keep repository text deterministic across Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Source and configuration files are always text.
+*.css text eol=lf
+*.html text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.svg text eol=lf
+*.toml text eol=lf
+*.ts text diff eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Generated packages and raster assets must never be line-normalized.
+*.png binary
+*.vsix binary
+*.whl binary

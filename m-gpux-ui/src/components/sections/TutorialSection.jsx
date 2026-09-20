@@ -20,8 +20,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const normalize = (s) => s.trim().replace(/\s+/g, " ");
 
 const INTRO = [
-  { tone: "dim", text: "# m-gpux interactive tour — type each command, press Enter to advance." },
-  { tone: "dim", text: "# stuck? tap Hint, or Auto-type to fill the command for you." },
+  { tone: "dim", text: "# m-gpux v3 interactive tour — type each command, press Enter to advance." },
+  { tone: "dim", text: "# this is a zero-cost simulation; no cloud resources are created." },
 ];
 
 export default function TutorialSection() {
@@ -44,7 +44,6 @@ export default function TutorialSection() {
 
   const inputRef = useRef(null);
   const scrollRef = useRef(null);
-  const termRef = useRef(null);
   const runningRef = useRef(false);
   const typingRef = useRef(false);
   const mountedRef = useRef(true);
@@ -71,31 +70,6 @@ export default function TutorialSection() {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [history, input, running]);
-
-  const fireSpark = () => {
-    const el = termRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    window.dispatchEvent(
-      new CustomEvent("mgpux:spark", {
-        detail: { x: r.left + r.width / 2, y: r.top + 60, count: 22 },
-      })
-    );
-  };
-
-  const celebrate = () => {
-    const el = termRef.current;
-    const r = el?.getBoundingClientRect();
-    window.dispatchEvent(
-      new CustomEvent("mgpux:spark", {
-        detail: {
-          x: r ? r.left + r.width / 2 : window.innerWidth / 2,
-          y: r ? r.top + r.height / 2 : window.innerHeight / 2,
-          count: 60,
-        },
-      })
-    );
-  };
 
   const autoType = async () => {
     if (runningRef.current || typingRef.current) return;
@@ -148,7 +122,6 @@ export default function TutorialSection() {
     if (!mountedRef.current) return;
 
     setCompleted((c) => (c.includes(current) ? c : [...c, current]));
-    fireSpark();
     runningRef.current = false;
     setRunning(false);
 
@@ -157,7 +130,6 @@ export default function TutorialSection() {
       if (mountedRef.current) setCurrent(current + 1);
     } else {
       setFinished(true);
-      celebrate();
     }
   };
 
@@ -188,13 +160,13 @@ export default function TutorialSection() {
       <div className="container-px">
         {/* Header */}
         <div className="mx-auto max-w-2xl text-center">
-          <span className="pill mx-auto"><TerminalIcon size={13} /> Interactive tutorial</span>
-          <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
-            <SplitText text="Learn m-gpux by doing." />
+          <span className="section-kicker mx-auto"><TerminalIcon size={13} /> Zero-cost simulator</span>
+          <h2 className="mt-5 font-display text-4xl font-semibold tracking-[-0.025em] text-ink sm:text-5xl">
+            <SplitText text="Run the full loop before you install." />
           </h2>
-          <p className="mt-4 text-ink-soft">
-            A real terminal, real commands. Type each one to clear the step — exactly how you'd drive
-            the CLI on your own machine.
+          <p className="mt-4 text-ink-muted">
+            Real commands and realistic output, entirely in the browser. Learn the workflow without
+            creating a single cloud resource.
           </p>
         </div>
 
@@ -279,7 +251,7 @@ export default function TutorialSection() {
           </ol>
 
           {/* Terminal + mission */}
-          <div ref={termRef} className="lg:sticky lg:top-24">
+          <div className="lg:sticky lg:top-24">
             {/* Mission card */}
             <div className="card mb-4 p-5">
               <div className="flex items-start justify-between gap-4">
@@ -314,7 +286,7 @@ export default function TutorialSection() {
                     exit={{ opacity: 0, height: 0 }}
                     className="overflow-hidden"
                   >
-                    <p className="mt-3 inline-flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    <p className="mt-3 inline-flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-800">
                       <Lightbulb size={14} className="mt-0.5 shrink-0" /> {step.hint}
                     </p>
                   </motion.div>

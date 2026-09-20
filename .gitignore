@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
 build/
 site/
 develop-eggs/
@@ -21,6 +20,16 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+.mypy_cache/
+.nox/
+.pytest_cache/
+.ruff_cache/
+.tox/
 
 # Virtual Environment
 venv/
@@ -31,12 +40,23 @@ venv.bak/
 
 # Environment Variables
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
 
-# IDE
+# Node / frontend tooling
+node_modules/
+*.tsbuildinfo
+
+# Logs and OS/editor metadata
+*.log
+.DS_Store
+Desktop.ini
+Thumbs.db
 .vscode/
 .idea/
 *.swp
+*.swo
 
 # Modal Manager Specific
 modal_runner.py
@@ -47,6 +67,8 @@ test_inference.py
 .tmp_smoke/
 
 CLAUDE.md
+.claude/
+
 # Jupyter session artifacts pulled back from Modal workspaces
 .ipynb_checkpoints/
 .jupyter/

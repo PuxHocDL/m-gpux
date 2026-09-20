@@ -12,6 +12,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
     if (!element) {
       return [
         new ActionGroup("Launch",   "rocket",   "launch"),
+        new ActionGroup("Dev Box",  "remote-explorer", "dev"),
         new ActionGroup("Host",     "globe",    "host"),
         new ActionGroup("Serve LLM", "server",  "serve"),
         new ActionGroup("Compose",  "package",  "compose"),
@@ -24,6 +25,10 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("GPU Hub",         "Jupyter / script / bash / vLLM wizard", "rocket", "mgpux.openHub"),
           new ActionItem("Run Preset",      "Replay a saved workload",               "play-circle", "mgpux.runPreset"),
           new ActionItem("Probe Hardware",  "Check GPU/CPU/RAM metrics",             "pulse",  "mgpux.loadProbe"),
+        ];
+        case "dev": return [
+          new ActionItem("Create / Start", "GPU/CPU Sandbox with SSH and persistent snapshots", "vm-running", "mgpux.devUp"),
+          new ActionItem("Manage", "Open, pause, resume, sync, or delete a dev box", "remote-explorer", "mgpux.devManage"),
         ];
         case "host": return [
           new ActionItem("Host Web App",    "Deploy ASGI / WSGI / static site",      "globe",  "mgpux.hostApp"),

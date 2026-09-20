@@ -36,8 +36,7 @@ app = typer.Typer(no_args_is_help=True)
 
 def _script_from_preset(preset: dict, local_dir: str) -> tuple[str, str, str]:
     action = str(preset.get("action", "bash"))
-    compute_spec = str(preset.get("compute_spec", 'cpu=4, memory=2048'))
-    compute_label = str(preset.get("compute_label", "CPU"))
+    compute_spec = str(preset.get("compute_spec", "cpu=4, memory=2048"))
     python_version = str(preset.get("python_version", "3.12"))
     pip_section = str(preset.get("pip_section", ""))
     exclude_patterns = list(preset.get("exclude_patterns", []))
@@ -72,8 +71,8 @@ def run_preset_by_name(name: str, *, kind: str | None = None) -> None:
         console.print(f"[red]Preset not found:[/red] {name}")
         raise typer.Exit(1)
     profile = preset.get("profile")
-    if profile:
-        _activate_profile(str(profile))
+    if profile and not _activate_profile(str(profile)):
+        raise typer.Exit(1)
     local_dir = "."
     script, workspace_volume, app_name = _script_from_preset(preset, local_dir)
     compute_label = str(preset.get("compute_label", "compute"))

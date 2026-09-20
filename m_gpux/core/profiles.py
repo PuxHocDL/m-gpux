@@ -112,7 +112,7 @@ def get_all_balances() -> list[tuple[str, float, float]]:
         usages = list(pool.map(lambda n: _profile_usage(doc, n), names))
 
     results: list[tuple[str, float, float]] = []
-    for name, used in zip(names, usages):
+    for name, used in zip(names, usages, strict=False):
         if used is None:
             continue
         if used < 0:
@@ -148,13 +148,13 @@ def check_profile_credit(profile: str) -> Optional[str]:
     limit = budget_for(profile)
     reason = f"budget ${limit:.2f}" if limit is not None else f"${MONTHLY_CREDIT:.0f} monthly credit"
     console.print(
-        f"  [bold yellow]'{profile}' has only ${left:.2f} left this month "
-        f"(${used:.2f} used of {reason}).[/bold yellow]"
+        f"  [bold yellow]'{profile}' has only ${left:.2f} left this month (${used:.2f} used of {reason}).[/bold yellow]"
     )
     choice = Prompt.ask(
         "  [bold cyan]s[/bold cyan] switch to the account with the most credit  •  "
         "[bold cyan]c[/bold cyan] continue anyway  •  [bold cyan]q[/bold cyan] quit",
-        choices=["s", "c", "q"], default="s",
+        choices=["s", "c", "q"],
+        default="s",
     )
     if choice == "q":
         return None
@@ -174,8 +174,22 @@ def check_profile_credit(profile: str) -> Optional[str]:
 
 def select_profile() -> Optional[str]:
     """Interactive picker. Returns selected profile name, or ``None``."""
-    if os.environ.get("MODAL_PROFILE"):
-        return os.environ.get("MODAL_PROFILE")
+    modal_profile = os.environ.get("MODAL_PROFILE", "").strip()
+    if modal_profile:
+        # Modal profile names are case-sensitive, but people commonly type
+        # values such as ``tool1`` for a profile stored as ``Tool1``. Resolve
+        # the configured spelling before handing it to the Modal CLI.
+        profiles = load_profiles()
+        match = next(
+            (name for name, _ in profiles if name.casefold() == modal_profile.casefold()),
+            None,
+        )
+        resolved = match or modal_profile
+        # Child ``modal`` processes also consult MODAL_PROFILE. Keep the
+        # normalized configured spelling in the environment so activating
+        # ``Tool1`` is not later overridden by a user-supplied ``tool1``.
+        os.environ["MODAL_PROFILE"] = resolved
+        return resolved
     env_profile = os.environ.get("MGPUX_PROFILE", "").strip()
     from m_gpux.core.ui import arrow_select  # local import: avoid cycles
 
@@ -215,19 +229,32 @@ def select_profile() -> Optional[str]:
     return check_profile_credit(selected_name)
 
 
-def activate_profile(profile_name: str) -> None:
-    """Activate the given profile via ``modal profile activate``."""
+def activate_profile(profile_name: str) -> bool:
+    """Activate *profile_name* via ``modal profile activate``.
+
+    Return ``False`` when activation fails so callers can stop instead of
+    accidentally continuing on whichever profile was active previously.
+    """
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
-    result = subprocess.run(
-        ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True, env=env,
-    )
-    if result.returncode != 0:
-        console.print(
-            f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]"
+    try:
+        result = subprocess.run(
+            ["modal", "profile", "activate", profile_name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
         )
+    except OSError as exc:
+        console.print(f"[bold red]Could not run the Modal CLI: {exc}[/bold red]")
+        return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()
+        console.print(f"[bold red]Failed to activate profile '{profile_name}': {detail}[/bold red]")
+        return False
+    return True
 
 
 # ─── Token parsing ─────────────────────────────────────────────
@@ -239,9 +266,9 @@ def parse_modal_token_command(raw: str):
     Returns ``(token_id, token_secret, profile_or_None)`` or ``None`` when the
     command cannot be parsed.
     """
-    token_id_match = re.search(r'--token-id\s+(\S+)', raw)
-    token_secret_match = re.search(r'--token-secret\s+(\S+)', raw)
-    profile_match = re.search(r'--profile[=\s]+(\S+)', raw)
+    token_id_match = re.search(r"--token-id\s+(\S+)", raw)
+    token_secret_match = re.search(r"--token-secret\s+(\S+)", raw)
+    profile_match = re.search(r"--profile[=\s]+(\S+)", raw)
     if token_id_match and token_secret_match:
         return (
             token_id_match.group(1),

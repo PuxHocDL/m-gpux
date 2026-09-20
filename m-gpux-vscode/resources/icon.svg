@@ -1,74 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   style="stop-color:#1a0b1f;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#0a0613;stop-opacity:1"/>
-    </linearGradient>
-    <linearGradient id="m-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   style="stop-color:#ff8a3d;stop-opacity:1"/>
-      <stop offset="50%"  style="stop-color:#ff4d6d;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#ff2e93;stop-opacity:1"/>
-    </linearGradient>
-    <linearGradient id="bolt-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%"   style="stop-color:#fff9c4;stop-opacity:1"/>
-      <stop offset="60%"  style="stop-color:#ffd54f;stop-opacity:1"/>
-      <stop offset="100%" style="stop-color:#ffb300;stop-opacity:1"/>
-    </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%"   style="stop-color:#ff4d6d;stop-opacity:0.35"/>
-      <stop offset="60%"  style="stop-color:#ff4d6d;stop-opacity:0.10"/>
-      <stop offset="100%" style="stop-color:#ff4d6d;stop-opacity:0"/>
-    </radialGradient>
-    <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="bolt-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-
-  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
-
-  <circle cx="128" cy="128" r="92" fill="url(#glow)"/>
-
-  <!-- Bold "M" lettermark, orange→pink gradient, slight perspective -->
-  <g filter="url(#soft-glow)">
-    <path d="
-      M 52 196
-      L 52 60
-      L 86 60
-      L 128 132
-      L 170 60
-      L 204 60
-      L 204 196
-      L 174 196
-      L 174 110
-      L 138 172
-      L 118 172
-      L 82 110
-      L 82 196
-      Z
-    " fill="url(#m-gradient)"/>
+  <rect width="256" height="256" rx="56" fill="#FBFAF6"/>
+  <circle cx="128" cy="128" r="105" fill="#EDF8F3"/>
+  <g fill="none" stroke="#00664F" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 87c0-37 24-56 58-56 38 0 60 23 60 60v64c0 45-29 68-118 72V87Z" fill="#FBFAF6"/>
+    <path d="M70 88c0 47 25 66 61 66 35 0 57-22 57-66"/>
+    <path d="M55 55c0 25 20 7 43 15 21 7 30 24 30 49M203 55c0 25-20 7-43 15-21 7-30 24-30 49"/>
+    <path d="M89 154c8 29 3 57-17 68"/>
   </g>
-
-  <!-- Lightning bolt slashing diagonally through the M -->
-  <g filter="url(#bolt-glow)">
-    <path d="
-      M 162 36
-      L 110 124
-      L 142 124
-      L 96 224
-      L 162 116
-      L 128 116
-      Z
-    " fill="url(#bolt-gradient)" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
-  </g>
+  <circle cx="101" cy="100" r="18" fill="#00664F"/>
+  <circle cx="157" cy="100" r="18" fill="#00664F"/>
+  <circle cx="101" cy="100" r="6" fill="#FBFAF6"/>
+  <circle cx="157" cy="100" r="6" fill="#FBFAF6"/>
+  <text x="111" y="202" fill="#00664F" font-family="Arial, sans-serif" font-size="23" font-weight="700" letter-spacing="2">GPU</text>
 </svg>

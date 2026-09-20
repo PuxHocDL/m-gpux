@@ -19,12 +19,16 @@ def _scan_current_profile() -> list[tuple[str, str, str, str]]:
     try:
         result = subprocess.run(
             ["modal", "app", "list", "--json"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         raw = json.loads(result.stdout) if result.stdout.strip() else []
         p_result = subprocess.run(
             ["modal", "profile", "current"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         current_profile = p_result.stdout.strip() if p_result.returncode == 0 else "unknown"
         apps: list[tuple[str, str, str, str]] = []
@@ -40,9 +44,7 @@ def _scan_current_profile() -> list[tuple[str, str, str, str]]:
 
 
 def stop_command(
-    all_profiles: bool = typer.Option(
-        False, "--all", help="Scan and stop apps across ALL Modal profiles"
-    ),
+    all_profiles: bool = typer.Option(False, "--all", help="Scan and stop apps across ALL Modal profiles"),
 ) -> None:
     """Stop running m-gpux apps (Jupyter, shells, LLM servers, etc.)."""
     console.print("[cyan]Scanning for running m-gpux apps...[/cyan]")

@@ -59,13 +59,15 @@ def billing_report(
     rows = []
     for item in items:
         by_resource = _field(item, "cost_by_resource") or {}
-        rows.append({
-            "environment_name": _field(item, "environment_name", "") or "",
-            "description": _field(item, "description", "") or "",
-            "interval_start": _field(item, "interval_start"),
-            "cost": float(_field(item, "cost", 0) or 0),
-            "cost_by_resource": {str(k): float(v) for k, v in dict(by_resource).items()},
-        })
+        rows.append(
+            {
+                "environment_name": _field(item, "environment_name", "") or "",
+                "description": _field(item, "description", "") or "",
+                "interval_start": _field(item, "interval_start"),
+                "cost": float(_field(item, "cost", 0) or 0),
+                "cost_by_resource": {str(k): float(v) for k, v in dict(by_resource).items()},
+            }
+        )
     return rows
 
 

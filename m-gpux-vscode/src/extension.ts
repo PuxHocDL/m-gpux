@@ -10,7 +10,9 @@ import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox } from "./composeActions";
+import { devUp, devManage } from "./devActions";
 import { listApps, activateProfile, runCommand, isAliveAppState } from "./modalCli";
+import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
 import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
 import { load as loadPersistedSessions, ensureDirs as ensureSessionDirs } from "./sessionPersistence";
@@ -36,6 +38,8 @@ const { spawn } = require("child_process");
 let statusBar: StatusBarManager;
 
 export function activate(context: vscode.ExtensionContext) {
+  initializeCliBootstrap(context);
+
   // --- Tree Views ---
   const accountTree = new AccountTreeProvider();
   const actionsTree = new ActionsTreeProvider();
@@ -85,12 +89,29 @@ export function activate(context: vscode.ExtensionContext) {
 
   // --- Commands ---
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.setupCli", () => setupMgpuxCli())
+  );
+
+  // Keep activation fast; probe PATH in the background and offer the managed
+  // environment once per extension version when no compatible CLI exists.
+  const cliSetupTimer = setTimeout(
+    () => { offerCliSetupIfMissing().catch(() => { /* best-effort UX */ }); },
+    750
+  );
+  context.subscriptions.push({ dispose: () => clearTimeout(cliSetupTimer) });
+
   // GPU Hub
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.openHub", async () => {
       await runHubWizard();
       refreshAll();
     })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.devUp", () => devUp()),
+    vscode.commands.registerCommand("mgpux.devManage", () => devManage())
   );
 
   // Add Account
@@ -191,13 +212,13 @@ export function activate(context: vscode.ExtensionContext) {
           targetName = (pick as any).profileName;
         }
 
-        switchProfile(targetName);
-
-        // Also activate via Modal CLI
-        const terminal = vscode.window.activeTerminal;
-        if (terminal) {
-          terminal.sendText(`modal profile activate ${targetName}`);
+        try {
+          await activateProfile(targetName);
+        } catch (err: any) {
+          vscode.window.showErrorMessage(err?.message ?? String(err));
+          return;
         }
+        switchProfile(targetName);
 
         vscode.window.showInformationMessage(
           `Switched to profile '${targetName}'`
@@ -280,7 +301,10 @@ export function activate(context: vscode.ExtensionContext) {
       for (const p of profiles) {
         const b = accountTree.billingCache.get(p.name);
         if (b && b.used >= 0) {
-          lines.push(`${p.active ? "● " : "  "}${p.name}: $${b.used.toFixed(2)} used · $${b.remaining.toFixed(2)} left`);
+          lines.push(
+            `${p.active ? "● " : "  "}${p.name}: $${b.used.toFixed(2)} used · ` +
+            `$${b.remaining.toFixed(2)} ${b.hasCustomBudget ? "budget" : "credit"} left`
+          );
           totalUsed += b.used;
           countWithData++;
         } else {
@@ -327,7 +351,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       const proc = spawn("modal", ["run", ".mgpux-probe.py"], {
         cwd: workspaceFolder,
-        shell: true,
+        shell: false,
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
       proc.stdout.on("data", (d: Buffer) => out.append(d.toString()));
@@ -345,7 +369,7 @@ export function activate(context: vscode.ExtensionContext) {
       const active = getActiveProfile();
       const profiles = loadProfiles();
       vscode.window.showInformationMessage(
-        `M-GPUX Extension v2.7.0 | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
+        `M-GPUX Extension v${context.extension.packageJSON.version} | ${profiles.length} profile(s) configured | Active: ${active?.name ?? "none"}`
       );
     })
   );
@@ -651,18 +675,16 @@ export function activate(context: vscode.ExtensionContext) {
           title: `M-GPUX: stopping ${s.appId}...`,
         },
         async () => {
-          // Ensure right profile is active before issuing app stop
-          await new Promise<void>((resolve) => {
-            const p = spawn("modal", ["profile", "activate", s.profile], { cwd: s.cwd, shell: true });
-            p.on("close", () => resolve());
-            p.on("error", () => resolve());
-          });
-
           const result = await new Promise<{ code: number; out: string }>((resolve) => {
             const p = spawn("modal", ["app", "stop", "--yes", s.appId!], {
               cwd: s.cwd,
-              shell: true,
-              env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+              shell: false,
+              env: {
+                ...process.env,
+                MODAL_PROFILE: s.profile,
+                PYTHONIOENCODING: "utf-8",
+                PYTHONUTF8: "1",
+              },
             });
             let out = "";
             p.stdout.on("data", (d: Buffer) => { out += d.toString(); s.output.append(d.toString()); });
@@ -751,13 +773,21 @@ export function activate(context: vscode.ExtensionContext) {
         );
         if (!pick) { return; }
         if ((pick as any).allProfiles) {
-          await stopAllAppsForProfiles(profiles.map((p) => p.name));
+          try {
+            await stopAllAppsForProfiles(profiles.map((p) => p.name));
+          } catch (err: any) {
+            vscode.window.showErrorMessage(`M-GPUX: could not scan apps — ${err?.message ?? err}`);
+          }
           return;
         }
         profileName = (pick as any).profileName;
       }
       if (!profileName) { return; }
-      await stopAllAppsForProfiles([profileName]);
+      try {
+        await stopAllAppsForProfiles([profileName]);
+      } catch (err: any) {
+        vscode.window.showErrorMessage(`M-GPUX: could not scan apps — ${err?.message ?? err}`);
+      }
     })
   );
 
@@ -849,7 +879,7 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
     { location: vscode.ProgressLocation.Notification, title: "M-GPUX: scanning running apps..." },
     async () => {
       for (const profile of profiles) {
-        const apps = await listApps(profile);
+        const apps = await listApps(profile, "main", true);
         for (const a of apps) {
           if (isAliveAppState(a.state)) {
             plan.push({ profile, appId: a.appId, name: a.name || a.appId });
@@ -888,8 +918,11 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
           message: `${entry.name} (${entry.profile})`,
           increment: 100 / plan.length,
         });
-        await activateProfile(entry.profile);
-        const res = await runCommand("modal", ["app", "stop", "--yes", entry.appId], {});
+        const res = await runCommand(
+          "modal",
+          ["app", "stop", "--yes", entry.appId],
+          { env: { MODAL_PROFILE: entry.profile } }
+        );
         if (res.exitCode === 0) { ok++; } else { failed++; }
         done++;
       }
@@ -916,8 +949,16 @@ async function restoreSessions(): Promise<void> {
   // exists on many accounts, so a global set would let a session on one profile
   // look alive because a different profile has that app.
   const liveByProfile = new Map<string, Map<string, number>>();
+  const unavailableProfiles = new Set<string>();
   for (const [profile] of byProfile) {
-    liveByProfile.set(profile, await fetchLiveApps(profile));
+    try {
+      liveByProfile.set(profile, await fetchLiveApps(profile));
+    } catch {
+      // Preserve the last-known local status when Modal is temporarily
+      // unreachable; a failed query is not an empty account.
+      unavailableProfiles.add(profile);
+      liveByProfile.set(profile, new Map());
+    }
   }
 
   // Deploys reuse one App name per kind and `modal deploy` replaces the app of
@@ -937,7 +978,7 @@ async function restoreSessions(): Promise<void> {
     // `modal run` sessions key on ap-XXXXX, `modal deploy` sessions key on the
     // app's declared name).
     let status: Session["status"] = p.status;
-    if (p.appId) {
+    if (p.appId && !unavailableProfiles.has(p.profile)) {
       const tasks = liveByProfile.get(p.profile)?.get(p.appId);
       const isNewest = newestByKey.get(`${p.profile} ${p.appId}`) === p.startedAt;
       // Alive on Modal AND not superseded by a newer deploy of the same app.
@@ -984,7 +1025,7 @@ async function restoreSessions(): Promise<void> {
  *  run sessions on the `ap-XXXXX` id, so both are indexed. */
 async function fetchLiveApps(profile: string): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  for (const a of await listApps(profile)) {
+  for (const a of await listApps(profile, "main", true)) {
     if (!isAliveAppState(a.state)) { continue; }
     if (a.appId) { out.set(a.appId, a.tasks); }
     if (a.name) { out.set(a.name, a.tasks); }

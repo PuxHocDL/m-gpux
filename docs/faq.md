@@ -12,7 +12,7 @@ API keys for `m-gpux serve` are stored in `~/.m-gpux/api_keys.json`. This file i
 
 ### What Python versions are supported?
 
-Python 3.10, 3.11, and 3.12 are supported. Python 3.13+ may work but is not officially tested.
+Python 3.10 through 3.14 are supported. For Modal workloads, choose a Python version that is also available in the Modal image API.
 
 ---
 

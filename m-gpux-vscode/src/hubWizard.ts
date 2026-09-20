@@ -480,67 +480,6 @@ def serve():
 `;
 }
 
-function interactiveScript(computeSpec: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
-  const workspaceVolume = workspaceVolumeName(localDir);
-  return `import modal
-import subprocess
-import os
-import threading
-import time
-
-${METRICS_SNIPPET}
-
-app = modal.App("m-gpux-interactive")
-workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = (
-    modal.Image.debian_slim(python_version="${pythonVersion}")
-    .apt_install(
-        "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
-        "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
-        "swig", "build-essential", "unzip",
-    )
-    .run_commands(
-        "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && chmod +x /usr/local/bin/ttyd",
-        "mkdir -p /root/.config",
-    )
-    ${pipSection}
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))})
-)
-
-def _prepare_workspace():
-    os.makedirs("/workspace", exist_ok=True)
-    # Local files should win on every launch, while remote-only outputs remain.
-    subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
-    workspace_volume.commit()
-
-${syncHelperBlock(workspaceVolume)}
-@app.function(image=image, ${computeSpec}, timeout=86400, volumes={"/workspace": workspace_volume})
-def run_interactive():
-    _print_metrics()
-    _prepare_workspace()
-    _install_sync_helper()
-    port = 8888
-    env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-    with open("/root/.bashrc", "w", encoding="utf-8") as f:
-        f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
-    with open("/root/.tmux.conf", "w", encoding="utf-8") as f:
-        f.write(${JSON.stringify(WEB_TERMINAL_TMUX_CONF)})
-    with modal.forward(port) as tunnel:
-        url = tunnel.url
-        print("\\n[INTERACTIVE TERMINAL READY]")
-        print("URL: " + url)
-        print("Workspace: /workspace   Run: python ${scriptName}")
-        print("Session: tmux 'main' (close & reopen URL to reattach running jobs)")
-        print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
-        print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
-        proc = subprocess.Popen(
-            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
-            env=env,
-        )
-        proc.wait()
-`;
-}
-
 function workspaceVolumeName(localDir: string): string {
   const normalized = path.resolve(localDir);
   const base = path.basename(normalized) || "workspace";
@@ -943,16 +882,7 @@ async function showAndExecuteScript(
   outputChannel.appendLine(`  Time: ${new Date().toLocaleString()}`);
   outputChannel.appendLine(`═══════════════════════════════════════════════\n`);
 
-  // Activate profile first (silent — log to channel only)
-  if (profileName !== "default") {
-    outputChannel.appendLine(`▸ Activating profile: ${profileName}`);
-    const activateResult = await runCommand("modal", ["profile", "activate", profileName], localDir);
-    if (activateResult.exitCode !== 0) {
-      outputChannel.appendLine(`⚠ Profile activation warning: ${activateResult.stderr}`);
-    } else {
-      outputChannel.appendLine(`✓ Profile activated\n`);
-    }
-  }
+  outputChannel.appendLine(`▸ Using profile: ${profileName}\n`);
 
   const runnerFilename = path.basename(runnerPath);
   const args = mode === "deploy"
@@ -1012,13 +942,17 @@ async function showAndExecuteScript(
   // `detached: true` (which spawns a visible console window on Windows even
   // with windowsHide). For `modal run` we let the local process die with
   // VS Code: the user explicitly chose foreground mode.
-  const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {
     cwd: localDir,
-    shell: isWin,
+    shell: false,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    env: {
+      ...process.env,
+      MODAL_PROFILE: profileName,
+      PYTHONIOENCODING: "utf-8",
+      PYTHONUTF8: "1",
+    },
   });
 
   sessionStore.update(sessionId, { proc });
@@ -1152,23 +1086,5 @@ async function showAndExecuteScript(
     outputChannel.appendLine(`\n✗ Failed to start: ${err.message}`);
     sessionStore.update(sessionId, { status: "failed", proc: undefined });
     vscode.window.showErrorMessage(`M-GPUX: failed to run modal: ${err.message}`);
-  });
-}
-
-/** Helper: run a command and return stdout/stderr/exitCode */
-function runCommand(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const { spawn } = require("child_process");
-  return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { cwd, shell: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" } });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-    proc.on("close", (code: number | null) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-    proc.on("error", () => {
-      resolve({ stdout, stderr, exitCode: 1 });
-    });
   });
 }

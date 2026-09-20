@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { loadProfiles, ModalProfile, fetchAllBilling, BillingInfo } from "./config";
+import { loadProfiles, fetchAllBilling, BillingInfo } from "./config";
 
 export class AccountTreeProvider
   implements vscode.TreeDataProvider<AccountItem>
@@ -69,7 +69,7 @@ export class AccountItem extends vscode.TreeItem {
       // Build description: active marker + billing
       let desc = active ? "● Active" : "";
       if (billing && billing.used >= 0) {
-        const balanceStr = `$${billing.remaining.toFixed(2)} left`;
+        const balanceStr = `$${billing.remaining.toFixed(2)} ${billing.hasCustomBudget ? "budget" : "credit"} left`;
         desc = desc ? `${desc} · ${balanceStr}` : balanceStr;
       }
       this.description = desc;
@@ -87,7 +87,8 @@ export class AccountItem extends vscode.TreeItem {
       if (billing && billing.used >= 0) {
         tip += `\n\nBilling this month:`;
         tip += `\n  Used: $${billing.used.toFixed(2)}`;
-        tip += `\n  Remaining: $${billing.remaining.toFixed(2)} / $30.00`;
+        tip += `\n  Remaining: $${billing.remaining.toFixed(2)} / $${billing.limit.toFixed(2)}`;
+        if (billing.hasCustomBudget) { tip += " (m-gpux budget)"; }
       }
       this.tooltip = tip;
 

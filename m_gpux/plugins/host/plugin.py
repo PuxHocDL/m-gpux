@@ -51,12 +51,9 @@ app = typer.Typer(
 
 # ─── Templates ────────────────────────────────────────────────
 
-_DEFAULT_EXCLUDES = (
-    ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,"
-    ".pytest_cache,*.egg-info,.tox,dist,build"
-)
+_DEFAULT_EXCLUDES = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox,dist,build"
 
-ASGI_TEMPLATE = '''\
+ASGI_TEMPLATE = """\
 import modal
 
 app = modal.App("m-gpux-host-{slug}")
@@ -81,9 +78,9 @@ def web():
     module_name, _, attr = "{entry}".partition(":")
     module = importlib.import_module(module_name)
     return getattr(module, attr or "app")
-'''
+"""
 
-WSGI_TEMPLATE = '''\
+WSGI_TEMPLATE = """\
 import modal
 
 app = modal.App("m-gpux-host-{slug}")
@@ -108,9 +105,9 @@ def web():
     module_name, _, attr = "{entry}".partition(":")
     module = importlib.import_module(module_name)
     return getattr(module, attr or "app")
-'''
+"""
 
-STATIC_TEMPLATE = '''\
+STATIC_TEMPLATE = """\
 import modal
 import subprocess
 
@@ -135,12 +132,12 @@ def web():
     subprocess.Popen(
         ["python", "-m", "http.server", str(PORT), "--directory", "/site"],
     )
-'''
+"""
 
 
 # `@app.server()` (modal>=1.5.1): a low-latency HTTP primitive. Modal proxies
 # straight to the process listening on PORT instead of wrapping it in a Function.
-_SERVER_HEAD = '''\
+_SERVER_HEAD = """\
 import subprocess
 
 import modal
@@ -169,7 +166,7 @@ class Web:
     @modal.enter()
     def start(self):
         subprocess.Popen({server_cmd}, cwd="{remote_dir}")
-'''
+"""
 
 SERVER_VARIANTS = {
     "asgi": {
@@ -221,7 +218,8 @@ def _ask_pip_section() -> str:
     if os.path.exists("requirements.txt"):
         use_req = Prompt.ask(
             "[green]Found requirements.txt.[/green] Install dependencies from it?",
-            choices=["y", "n"], default="y",
+            choices=["y", "n"],
+            default="y",
         )
         if use_req == "y":
             req = os.path.abspath("requirements.txt").replace("\\", "/")
@@ -249,7 +247,7 @@ def _ask_deploy_mode() -> str:
     idx = arrow_select(
         [
             ("deploy", "Persistent — URL stays live until you stop the app"),
-            ("run",    "Ephemeral — runs until you Ctrl+C, no public DNS"),
+            ("run", "Ephemeral — runs until you Ctrl+C, no public DNS"),
         ],
         title="Deployment mode",
         default=0,
@@ -261,7 +259,7 @@ def _ask_keep_warm() -> int:
     idx = arrow_select(
         [
             ("Auto-scale to 0", "Cheapest. ~5–15s cold start when idle."),
-            ("Keep 1 warm",     "No cold starts. Costs continuously."),
+            ("Keep 1 warm", "No cold starts. Costs continuously."),
         ],
         title="Warm replicas (min_containers)",
         default=0,
@@ -285,7 +283,8 @@ def _build_script(kind: str, server: bool = False, **vars) -> str:
 
 def _server_option():
     return typer.Option(
-        False, "--server",
+        False,
+        "--server",
         help="Use Modal's low-latency @app.server() primitive (modal>=1.5.1) instead of a web Function.",
     )
 
@@ -301,7 +300,8 @@ def _check_server_support(server: bool) -> None:
 
 def _strategy_option():
     return typer.Option(
-        "rolling", "--strategy",
+        "rolling",
+        "--strategy",
         help="Redeploy strategy: 'rolling' (zero downtime) or 'recreate' (stop old containers now).",
     )
 
@@ -319,11 +319,16 @@ def _deploy_or_run(script: str, mode: str, description: str, strategy: str = "ro
     console.print(f"[dim]Wrote {runner_file}. Edit before deploying if needed.[/dim]")
     if os.environ.get("MGPUX_VERBOSE", "").strip() in ("1", "true", "yes"):
         from rich.syntax import Syntax
+
         console.print(Syntax(script, "python", theme="monokai", line_numbers=True))
-    choice = Prompt.ask(
-        "[bold cyan][Enter][/bold cyan] deploy  •  [bold cyan]c[/bold cyan] cancel",
-        default="",
-    ).strip().lower()
+    choice = (
+        Prompt.ask(
+            "[bold cyan][Enter][/bold cyan] deploy  •  [bold cyan]c[/bold cyan] cancel",
+            default="",
+        )
+        .strip()
+        .lower()
+    )
     if choice in ("c", "cancel"):
         console.print("[yellow]Cancelled.[/yellow]")
         return
@@ -337,8 +342,7 @@ def _deploy_or_run(script: str, mode: str, description: str, strategy: str = "ro
         console.print(f"[red]modal deploy failed (exit code {result.returncode}). See the output above.[/red]")
         raise typer.Exit(result.returncode)
     console.print(
-        "[green]Done.[/green] URL is shown above. Stop the app any time with "
-        "[bold yellow]m-gpux stop[/bold yellow]."
+        "[green]Done.[/green] URL is shown above. Stop the app any time with [bold yellow]m-gpux stop[/bold yellow]."
     )
 
 
@@ -349,7 +353,8 @@ def _common_setup(name_hint: str) -> tuple[str, str, str]:
     profile = select_profile()
     if profile is None:
         raise typer.Exit(1)
-    activate_profile(profile)
+    if not activate_profile(profile):
+        raise typer.Exit(1)
 
     name = Prompt.ask("App name", default=name_hint)
     slug = _slugify(name)
@@ -428,9 +433,7 @@ def host_wsgi(
 
 @app.command("static", help="Host a static site (HTML/JS/CSS) from a directory.")
 def host_static(
-    directory: str = typer.Option(
-        None, "--dir", "-d", help="Directory to serve (defaults to current)"
-    ),
+    directory: str = typer.Option(None, "--dir", "-d", help="Directory to serve (defaults to current)"),
     strategy: str = _strategy_option(),
     server: bool = _server_option(),
 ):
@@ -464,16 +467,18 @@ def host_static(
 def _root(ctx: typer.Context):
     if ctx.invoked_subcommand is not None:
         return
-    console.print(Panel.fit(
-        "[bold magenta]m-gpux host[/bold magenta]\n"
-        "Deploy a web app on Modal as a long-lived service.\n\n"
-        "[cyan]asgi[/cyan]   FastAPI / Starlette\n"
-        "[cyan]wsgi[/cyan]   Flask / Django (WSGI)\n"
-        "[cyan]static[/cyan] HTML/JS/CSS directory\n\n"
-        "[dim]Modal recycles containers behind the scenes; with [bold]Keep 1 warm[/bold] "
-        "your URL stays cold-start-free 24/7.[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold magenta]m-gpux host[/bold magenta]\n"
+            "Deploy a web app on Modal as a long-lived service.\n\n"
+            "[cyan]asgi[/cyan]   FastAPI / Starlette\n"
+            "[cyan]wsgi[/cyan]   Flask / Django (WSGI)\n"
+            "[cyan]static[/cyan] HTML/JS/CSS directory\n\n"
+            "[dim]Modal recycles containers behind the scenes; with [bold]Keep 1 warm[/bold] "
+            "your URL stays cold-start-free 24/7.[/dim]",
+            border_style="cyan",
+        )
+    )
 
 
 # ─── Plugin registration ──────────────────────────────────────

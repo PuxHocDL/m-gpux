@@ -113,7 +113,13 @@ def pull_command(
         console.print("[red]Session has no workspace_volume.[/red]")
         raise typer.Exit(1)
     to.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["modal", "volume", "get", str(volume), "/", str(to)])
+    result = subprocess.run(
+        ["modal", "volume", "get", str(volume), "/", str(to)],
+        env=modal_env(session.get("profile")),
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Could not pull workspace volume (exit {result.returncode}).[/red]")
+        raise typer.Exit(result.returncode)
 
 
 @app.command("stop")

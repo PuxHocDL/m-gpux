@@ -49,8 +49,7 @@ def budget_for(profile: str, budgets: Optional[dict[str, float]] = None) -> Opti
     return budgets.get(profile, budgets.get(DEFAULT_KEY))
 
 
-def spendable(profile: str, used: float, monthly_credit: float,
-              budgets: Optional[dict[str, float]] = None) -> float:
+def spendable(profile: str, used: float, monthly_credit: float, budgets: Optional[dict[str, float]] = None) -> float:
     """Dollars m-gpux may still spend on *profile* this month: the budget left
     when one is set (it may be above or below the free credit), otherwise the
     free credit left."""

@@ -8,12 +8,14 @@ from datetime import datetime, timezone, timedelta
 app = typer.Typer(no_args_is_help=True)
 console = Console()
 
+
 @app.command("open")
 def open_dashboard():
     """Open the Modal usage dashboard in your web browser."""
     url = "https://modal.com/settings/usage"
     console.print(f"[cyan]Opening Modal usage dashboard: {url}[/cyan]")
     webbrowser.open(url)
+
 
 def _resolve_targets(doc, account: Optional[str], all_accounts: bool) -> list[str]:
     from rich.prompt import Prompt
@@ -110,7 +112,11 @@ def check_usage(
     console.print("[dim]Note: Each Modal Starter Tier account provides $30/month in credits.[/dim]")
 
 
-@app.command("summary", help="Metered vs. billed cost for the current billing cycle, per account.", rich_help_panel="Cloud Finance")
+@app.command(
+    "summary",
+    help="Metered vs. billed cost for the current billing cycle, per account.",
+    rich_help_panel="Cloud Finance",
+)
 def billing_summary_command(
     account: str = typer.Option(None, "--account", "-a", help="Specific account profile to check"),
     all_accounts: bool = typer.Option(False, "--all", help="Check all configured profiles"),

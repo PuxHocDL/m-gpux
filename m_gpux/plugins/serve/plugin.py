@@ -1,4 +1,6 @@
-﻿import typer
+from __future__ import annotations
+
+import typer
 from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
@@ -9,7 +11,6 @@ import json
 import secrets
 import subprocess
 import time
-import threading
 from datetime import datetime
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core import _select_profile, _activate_profile, AVAILABLE_GPUS, AVAILABLE_CPUS
@@ -71,20 +72,24 @@ def create_key(name: str = typer.Option(None, help="Label for this key")):
         console.print(f"[red]Key '{name}' already exists. Use a different name.[/red]")
         raise typer.Exit(1)
     new_key = _generate_key()
-    keys.append({
-        "name": name,
-        "key": new_key,
-        "created": datetime.now().isoformat(),
-        "active": True,
-    })
+    keys.append(
+        {
+            "name": name,
+            "key": new_key,
+            "created": datetime.now().isoformat(),
+            "active": True,
+        }
+    )
     _save_keys(keys)
-    console.print(Panel(
-        f"[bold green]API Key Created[/bold green]\n\n"
-        f"  Name:   [cyan]{name}[/cyan]\n"
-        f"  Key:    [bold yellow]{new_key}[/bold yellow]\n\n"
-        f"[dim]Save this key. View later with `m-gpux serve keys show {name}`.[/dim]",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[bold green]API Key Created[/bold green]\n\n"
+            f"  Name:   [cyan]{name}[/cyan]\n"
+            f"  Key:    [bold yellow]{new_key}[/bold yellow]\n\n"
+            f"[dim]Save this key. View later with `m-gpux serve keys show {name}`.[/dim]",
+            border_style="green",
+        )
+    )
 
 
 @keys_app.command("list")
@@ -554,7 +559,7 @@ def serve():
 
 # ─── CPU deployment template ─────────────────────────────────
 
-SERVE_TEMPLATE_CPU = '''import modal
+SERVE_TEMPLATE_CPU = """import modal
 import subprocess
 import os
 import sys
@@ -639,22 +644,22 @@ def serve():
             print(f"[M-GPUX] Proxy exited with code {{proc.returncode}}, restarting in 1s...")
             _time.sleep(1)
     threading.Thread(target=_watch_proxy, daemon=True).start()
-'''
+"""
 
 # ─── Model presets ────────────────────────────────────────────
 
 SERVE_MODELS = {
-    "1":  ("Qwen/Qwen2.5-1.5B-Instruct",          "1.5B — T4/L4 friendly, fast",       "T4",        "4096"),
-    "2":  ("Qwen/Qwen2.5-7B-Instruct",             "7B — A10/A100",                    "A10",       "8192"),
-    "3":  ("Qwen/Qwen3-8B",                         "Qwen3 8B — A10/A100",             "A10",       "8192"),
-    "4":  ("Qwen/Qwen3.5-35B-A3B",                  "Qwen3.5 35B MoE — A100-80GB/H100", "A100-80GB", "32768"),
-    "5":  ("meta-llama/Llama-3.1-8B-Instruct",      "Llama 3.1 8B — A10/A100",         "A10",       "8192"),
-    "6":  ("google/gemma-2-9b-it",                   "Gemma 2 9B — A10/A100",           "A10",       "8192"),
-    "7":  ("mistralai/Mistral-7B-Instruct-v0.3",    "Mistral 7B — A10/A100",           "A10",       "8192"),
-    "8":  ("Qwen/Qwen2.5-72B-Instruct-AWQ",        "72B AWQ quant — H100/A100-80GB",   "A100-80GB", "16384"),
-    "9":  ("meta-llama/Llama-3.1-70B-Instruct",     "Llama 70B — H100/A100-80GB",       "H100",      "16384"),
-    "10": ("deepseek-ai/DeepSeek-V2-Lite-Chat",     "DeepSeek V2 Lite 16B — A100",      "A100",      "8192"),
-    "11": ("microsoft/Phi-3-medium-4k-instruct",    "Phi-3 Medium 14B — A10/A100",     "A10",       "4096"),
+    "1": ("Qwen/Qwen2.5-1.5B-Instruct", "1.5B — T4/L4 friendly, fast", "T4", "4096"),
+    "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10/A100", "A10", "8192"),
+    "3": ("Qwen/Qwen3-8B", "Qwen3 8B — A10/A100", "A10", "8192"),
+    "4": ("Qwen/Qwen3.5-35B-A3B", "Qwen3.5 35B MoE — A100-80GB/H100", "A100-80GB", "32768"),
+    "5": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 3.1 8B — A10/A100", "A10", "8192"),
+    "6": ("google/gemma-2-9b-it", "Gemma 2 9B — A10/A100", "A10", "8192"),
+    "7": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10/A100", "A10", "8192"),
+    "8": ("Qwen/Qwen2.5-72B-Instruct-AWQ", "72B AWQ quant — H100/A100-80GB", "A100-80GB", "16384"),
+    "9": ("meta-llama/Llama-3.1-70B-Instruct", "Llama 70B — H100/A100-80GB", "H100", "16384"),
+    "10": ("deepseek-ai/DeepSeek-V2-Lite-Chat", "DeepSeek V2 Lite 16B — A100", "A100", "8192"),
+    "11": ("microsoft/Phi-3-medium-4k-instruct", "Phi-3 Medium 14B — A10/A100", "A10", "4096"),
 }
 
 # ─── Deploy command ───────────────────────────────────────────
@@ -663,9 +668,10 @@ SERVE_MODELS = {
 @app.command("deploy")
 def deploy(
     strategy: str = typer.Option(
-        "rolling", "--strategy",
+        "rolling",
+        "--strategy",
         help="Redeploy strategy: 'rolling' keeps old containers serving until new ones are up; "
-             "'recreate' stops them immediately so every request hits the new model.",
+        "'recreate' stops them immediately so every request hits the new model.",
     ),
 ):
     """Deploy an LLM as an OpenAI-compatible API with API key authentication."""
@@ -673,23 +679,26 @@ def deploy(
         console.print(f"[red]--strategy must be one of: {', '.join(DEPLOY_STRATEGIES)}[/red]")
         raise typer.Exit(1)
 
-    console.print(Panel.fit(
-        "[bold magenta]M-GPUX LLM API Server[/bold magenta]\n"
-        "Deploy a GPU/CPU-accelerated LLM with OpenAI-compatible API + auth keys.\n"
-        "Works as a drop-in replacement for OpenRouter / OpenAI.",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold magenta]M-GPUX LLM API Server[/bold magenta]\n"
+            "Deploy a GPU/CPU-accelerated LLM with OpenAI-compatible API + auth keys.\n"
+            "Works as a drop-in replacement for OpenRouter / OpenAI.",
+            border_style="cyan",
+        )
+    )
 
     # ── Step 0: Profile / workspace ──
     selected_profile = _select_profile()
     if selected_profile is None:
         raise typer.Exit(1)
-    _activate_profile(selected_profile)
+    if not _activate_profile(selected_profile):
+        raise typer.Exit(1)
 
     # ── Step 1: Model ──
     console.print("\n[bold cyan]Step 1: Select Model[/bold cyan]")
     model_options = []
-    for k, (name, desc, _, _ctx) in SERVE_MODELS.items():
+    for name, desc, _, _ctx in SERVE_MODELS.values():
         model_options.append((name, desc))
     model_options.append(("(custom)", "Enter a HuggingFace model ID"))
 
@@ -712,11 +721,11 @@ def deploy(
         ("CPU", "CPU-only (cheaper, slower inference, small models only)"),
     ]
     compute_idx = arrow_select(compute_options, title="Compute Type", default=0)
-    use_cpu = (compute_idx == 1)
+    use_cpu = compute_idx == 1
 
     if use_cpu:
         # ── CPU selection ──
-        console.print(f"\n[bold cyan]Step 2b: Choose CPU Cores[/bold cyan]")
+        console.print("\n[bold cyan]Step 2b: Choose CPU Cores[/bold cyan]")
         console.print("  [dim]More cores = faster inference but higher cost. Memory scales with cores.[/dim]")
         cpu_keys = list(AVAILABLE_CPUS.keys())
         cpu_options = []
@@ -749,16 +758,20 @@ def deploy(
     # ── Step 3: Max context length ──
     console.print("\n[bold cyan]Step 3: Max Context Length[/bold cyan]")
     if use_cpu:
-        console.print(f"  [dim]Recommended for CPU mode: 2048-4096. Higher values use more RAM.[/dim]")
+        console.print("  [dim]Recommended for CPU mode: 2048-4096. Higher values use more RAM.[/dim]")
         max_model_len = Prompt.ask("Max model length (tokens)", default="2048")
     else:
-        console.print(f"  [dim]Recommended for this model: {recommended_ctx}. Lower = faster startup + less VRAM.[/dim]")
+        console.print(
+            f"  [dim]Recommended for this model: {recommended_ctx}. Lower = faster startup + less VRAM.[/dim]"
+        )
         console.print("  [dim]WARNING: Setting this too high (e.g. 262144) can cause OOM crashes![/dim]")
         max_model_len = Prompt.ask("Max model length (tokens)", default=recommended_ctx)
 
     # ── Step 3.5: vLLM Engine Hyperparameters ──
     if use_cpu:
-        console.print("\n[bold cyan]Step 3.5: vLLM Engine Tuning (CPU)[/bold cyan]  [dim](press Enter for defaults)[/dim]")
+        console.print(
+            "\n[bold cyan]Step 3.5: vLLM Engine Tuning (CPU)[/bold cyan]  [dim](press Enter for defaults)[/dim]"
+        )
         console.print("  [dim]max-num-seqs: max concurrent sequences (lower for CPU to avoid OOM)[/dim]")
         max_num_seqs = Prompt.ask("  Max concurrent sequences", default="4")
         # CPU mode doesn't use these GPU-specific params
@@ -769,7 +782,9 @@ def deploy(
     else:
         console.print("\n[bold cyan]Step 3.5: vLLM Engine Tuning[/bold cyan]  [dim](press Enter for defaults)[/dim]")
 
-        console.print("  [dim]gpu-memory-utilization: fraction of GPU VRAM for KV cache (lower = safer, higher = more throughput)[/dim]")
+        console.print(
+            "  [dim]gpu-memory-utilization: fraction of GPU VRAM for KV cache (lower = safer, higher = more throughput)[/dim]"
+        )
         gpu_mem_util = Prompt.ask("  GPU memory utilization", default="0.92")
         try:
             gpu_mem_val = float(gpu_mem_util)
@@ -779,7 +794,9 @@ def deploy(
         except ValueError:
             gpu_mem_util = "0.92"
 
-        console.print("  [dim]max-num-seqs: max concurrent sequences in the engine (higher = more throughput but more VRAM)[/dim]")
+        console.print(
+            "  [dim]max-num-seqs: max concurrent sequences in the engine (higher = more throughput but more VRAM)[/dim]"
+        )
         max_num_seqs = Prompt.ask("  Max concurrent sequences", default="48")
 
         console.print("  [dim]max-num-batched-tokens: max tokens processed per batch (controls prefill pressure)[/dim]")
@@ -793,7 +810,9 @@ def deploy(
         console.print("  [dim]  top-p: nucleus sampling probability (0.9-1.0)[/dim]")
         console.print("  [dim]  Note: clients can always override these per-request in the JSON body.[/dim]")
 
-        console.print(f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, batched_tok={max_num_batched_tokens}, tp={tensor_parallel}")
+        console.print(
+            f"\n  [green]Engine config:[/green] mem={gpu_mem_util}, seqs={max_num_seqs}, batched_tok={max_num_batched_tokens}, tp={tensor_parallel}"
+        )
 
     # ── Step 4: Keep warm ──
     console.print("\n[bold cyan]Step 4: Keep Warm[/bold cyan]")
@@ -813,12 +832,14 @@ def deploy(
         console.print("  [yellow]No API keys found. Creating one automatically...[/yellow]")
         new_key = _generate_key()
         keys = _load_keys()
-        keys.append({
-            "name": "default",
-            "key": new_key,
-            "created": datetime.now().isoformat(),
-            "active": True,
-        })
+        keys.append(
+            {
+                "name": "default",
+                "key": new_key,
+                "created": datetime.now().isoformat(),
+                "active": True,
+            }
+        )
         _save_keys(keys)
         active_keys = [new_key]
         console.print(f"  [green]Created key:[/green] [bold yellow]{new_key}[/bold yellow]")
@@ -847,12 +868,7 @@ def deploy(
         env_dict = '{"HF_HUB_ENABLE_HF_TRANSFER": "1", "HF_TOKEN": "' + hf_token.strip() + '"}'
     else:
         env_dict = '{"HF_HUB_ENABLE_HF_TRANSFER": "1"}'
-    volumes_dict = (
-        '{\n'
-        '        "/root/.cache/huggingface": hf_cache,\n'
-        '        "/root/.cache/vllm": vllm_cache,\n'
-        '    }'
-    )
+    volumes_dict = '{\n        "/root/.cache/huggingface": hf_cache,\n        "/root/.cache/vllm": vllm_cache,\n    }'
 
     # ── Model-specific vLLM args (reasoning/tool parsers) ──
     model_lower = selected_model.lower()
@@ -874,8 +890,8 @@ def deploy(
         proxy_code_end = SERVE_TEMPLATE.find('"""', proxy_code_start + 16) + 3
         proxy_code_block = SERVE_TEMPLATE[proxy_code_start:proxy_code_end]
 
-        script = (SERVE_TEMPLATE_CPU
-            .replace("{model_name}", selected_model)
+        script = (
+            SERVE_TEMPLATE_CPU.replace("{model_name}", selected_model)
             .replace("{api_key}", first_key)
             .replace("{cpu_cores}", str(selected_cores))
             .replace("{memory_mb}", str(selected_memory))
@@ -885,15 +901,16 @@ def deploy(
             .replace("{vllm_extra_args}", vllm_extra_args)
             .replace("ENV_DICT_PLACEHOLDER", env_dict)
             .replace("VOLUMES_PLACEHOLDER", volumes_dict)
-            .replace("PROXY_CODE_PLACEHOLDER", proxy_code_block))
+            .replace("PROXY_CODE_PLACEHOLDER", proxy_code_block)
+        )
     else:
         # ── GPU deployment script ──
         # ── Append GPU count for tensor parallelism ──
         tp_int = int(tensor_parallel) if tensor_parallel.isdigit() else 1
         gpu_spec = selected_gpu if tp_int <= 1 else f"{selected_gpu}:{tp_int}"
 
-        script = (SERVE_TEMPLATE
-            .replace("{model_name}", selected_model)
+        script = (
+            SERVE_TEMPLATE.replace("{model_name}", selected_model)
             .replace("{gpu_type}", gpu_spec)
             .replace("{api_key}", first_key)
             .replace("{max_model_len}", max_model_len)
@@ -904,7 +921,8 @@ def deploy(
             .replace("{keep_warm}", str(keep_warm_val))
             .replace("{vllm_extra_args}", vllm_extra_args)
             .replace("ENV_DICT_PLACEHOLDER", env_dict)
-            .replace("VOLUMES_PLACEHOLDER", volumes_dict))
+            .replace("VOLUMES_PLACEHOLDER", volumes_dict)
+        )
 
     script = script.replace("# __METRICS__", _METRICS_FUNCTIONS)
 
@@ -918,33 +936,36 @@ def deploy(
     # ── Config preview ──
     api_url = f"https://{selected_profile}--m-gpux-llm-api-serve.modal.run/v1"
 
-    console.print(Panel(
-        f"[bold]After deployment, use this configuration:[/bold]\n\n"
-        f"  [green]agent:[/green]\n"
-        f"    [green]model:[/green] {selected_model}\n"
-        f"    [green]api_base:[/green] {api_url}\n"
-        f"    [green]api_key:[/green] {first_key}\n"
-        f"    [green]temperature:[/green] 0.0\n\n"
-        f"[dim]The exact URL will be shown in the deploy output below.\n"
-        f"If the workspace name differs, update api_base accordingly.[/dim]",
-        title="YOUR LLM API CONFIG",
-        border_style="magenta",
-    ))
-
-    console.print(Panel(
-        f"[bold green]Configuration file `{runner_file}` has been created.[/bold green]\n\n"
-        f"You can open this file in your IDE to:\n"
-        f"  - Change the {'CPU cores / memory' if use_cpu else 'GPU type'} or timeout duration.\n"
-        f"  - Adjust '--max-model-len' for context window.\n"
-        + (f"  - Adjust '--tensor-parallel-size' for multi-GPU.\n\n" if not use_cpu else "\n")
-        + f"Your code is 100% transparent and editable.",
-        title="WAITING FOR CONFIGURATION", expand=False, border_style="cyan",
-    ))
-
-    choice = Prompt.ask(
-        "\n[bold cyan]Press [Enter] to deploy, or type 'cancel' to abort[/bold cyan]",
-        default=""
+    console.print(
+        Panel(
+            f"[bold]After deployment, use this configuration:[/bold]\n\n"
+            f"  [green]agent:[/green]\n"
+            f"    [green]model:[/green] {selected_model}\n"
+            f"    [green]api_base:[/green] {api_url}\n"
+            f"    [green]api_key:[/green] {first_key}\n"
+            f"    [green]temperature:[/green] 0.0\n\n"
+            f"[dim]The exact URL will be shown in the deploy output below.\n"
+            f"If the workspace name differs, update api_base accordingly.[/dim]",
+            title="YOUR LLM API CONFIG",
+            border_style="magenta",
+        )
     )
+
+    console.print(
+        Panel(
+            f"[bold green]Configuration file `{runner_file}` has been created.[/bold green]\n\n"
+            f"You can open this file in your IDE to:\n"
+            f"  - Change the {'CPU cores / memory' if use_cpu else 'GPU type'} or timeout duration.\n"
+            f"  - Adjust '--max-model-len' for context window.\n"
+            + ("  - Adjust '--tensor-parallel-size' for multi-GPU.\n\n" if not use_cpu else "\n")
+            + "Your code is 100% transparent and editable.",
+            title="WAITING FOR CONFIGURATION",
+            expand=False,
+            border_style="cyan",
+        )
+    )
+
+    choice = Prompt.ask("\n[bold cyan]Press [Enter] to deploy, or type 'cancel' to abort[/bold cyan]", default="")
     if choice.strip().lower() == "cancel":
         console.print("[yellow]Cancelled.[/yellow]")
         return
@@ -974,26 +995,28 @@ def deploy(
         url_line = "Check the output above for your endpoint URL (look for the web_server URL).\n\n"
     shown_url = endpoint_url or "<YOUR_URL>"
 
-    console.print(Panel(
-        f"[bold green]Deployment complete![/bold green]\n\n"
-        + url_line +
-        f"[bold]Your API key:[/bold] [bold yellow]{first_key}[/bold yellow]\n"
-        f"[bold]Model name:[/bold]  {selected_model}\n\n"
-        f"[bold cyan]Test with curl:[/bold cyan]\n"
-        f'  curl {shown_url}/v1/chat/completions \\\n'
-        f'    -H "Authorization: Bearer {first_key}" \\\n'
-        f'    -H "Content-Type: application/json" \\\n'
-        f"    -d '{{\"model\": \"{selected_model}\", \"messages\": [{{\"role\": \"user\", \"content\": \"Hello!\"}}]}}'\n\n"
-        f"[bold cyan]Python (openai client):[/bold cyan]\n"
-        f'  from openai import OpenAI\n'
-        f'  client = OpenAI(base_url="{shown_url}/v1", api_key="{first_key}")\n'
-        f'  resp = client.chat.completions.create(\n'
-        f'      model="{selected_model}",\n'
-        f'      messages=[{{"role": "user", "content": "Hello!"}}]\n'
-        f'  )',
-        title="DEPLOYMENT SUCCESS",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            "[bold green]Deployment complete![/bold green]\n\n"
+            + url_line
+            + f"[bold]Your API key:[/bold] [bold yellow]{first_key}[/bold yellow]\n"
+            f"[bold]Model name:[/bold]  {selected_model}\n\n"
+            f"[bold cyan]Test with curl:[/bold cyan]\n"
+            f"  curl {shown_url}/v1/chat/completions \\\n"
+            f'    -H "Authorization: Bearer {first_key}" \\\n'
+            f'    -H "Content-Type: application/json" \\\n'
+            f'    -d \'{{"model": "{selected_model}", "messages": [{{"role": "user", "content": "Hello!"}}]}}\'\n\n'
+            f"[bold cyan]Python (openai client):[/bold cyan]\n"
+            f"  from openai import OpenAI\n"
+            f'  client = OpenAI(base_url="{shown_url}/v1", api_key="{first_key}")\n'
+            f"  resp = client.chat.completions.create(\n"
+            f'      model="{selected_model}",\n'
+            f'      messages=[{{"role": "user", "content": "Hello!"}}]\n'
+            f"  )",
+            title="DEPLOYMENT SUCCESS",
+            border_style="green",
+        )
+    )
 
     del_choice = Prompt.ask(
         f"\n[bold cyan]Delete {runner_file}?[/bold cyan]",
@@ -1008,11 +1031,13 @@ def deploy(
             pass
 
     # ── Auto-stream logs so user can see vLLM loading status ──
-    console.print(Panel(
-        "[bold cyan]Streaming server logs...[/bold cyan]\n"
-        "You can monitor vLLM startup here. Press [bold yellow]Ctrl+C[/bold yellow] to stop watching.",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel(
+            "[bold cyan]Streaming server logs...[/bold cyan]\n"
+            "You can monitor vLLM startup here. Press [bold yellow]Ctrl+C[/bold yellow] to stop watching.",
+            border_style="cyan",
+        )
+    )
     try:
         subprocess.run(app_logs_cmd(SERVE_APP_NAME, follow=True))
     except KeyboardInterrupt:
@@ -1027,11 +1052,19 @@ def _deploy_and_capture_url(cmd: list[str]) -> tuple[int, str | None]:
     endpoint_url = None
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     proc = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, encoding="utf-8", errors="replace", env=env,
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
     )
-    assert proc.stdout is not None
-    for line in proc.stdout:
+    stdout = proc.stdout
+    if stdout is None:
+        proc.wait()
+        raise OSError("Modal CLI output pipe was not created")
+    for line in stdout:
         print(line, end="", flush=True)
         match = url_re.search(line)
         if match and endpoint_url is None:
@@ -1051,15 +1084,24 @@ def logs(
     source: str = typer.Option(None, "--source", help="stdout, stderr or system"),
 ):
     """Stream live (or fetch historical) logs from the deployed LLM API server."""
-    console.print(Panel.fit(
-        f"[bold cyan]{'Streaming' if follow else 'Fetching'} logs from {SERVE_APP_NAME}[/bold cyan]\n"
-        "[dim]Press Ctrl+C to stop.[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]{'Streaming' if follow else 'Fetching'} logs from {SERVE_APP_NAME}[/bold cyan]\n"
+            "[dim]Press Ctrl+C to stop.[/dim]",
+            border_style="cyan",
+        )
+    )
     try:
-        subprocess.run(app_logs_cmd(
-            SERVE_APP_NAME, follow=follow, tail=tail, since=since, search=search, source=source,
-        ))
+        subprocess.run(
+            app_logs_cmd(
+                SERVE_APP_NAME,
+                follow=follow,
+                tail=tail,
+                since=since,
+                search=search,
+                source=source,
+            )
+        )
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
     except FileNotFoundError:
@@ -1072,6 +1114,7 @@ def logs(
 def _fetch_stats(base_url: str):
     """Fetch /stats and /health from the proxy. Returns (stats_dict, health_dict, error_str)."""
     import urllib.request
+
     stats = None
     health = None
     error = None
@@ -1104,8 +1147,6 @@ def _fmt_uptime(seconds: float) -> str:
 
 def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Panel:
     """Build a Rich Panel dashboard from stats data."""
-    from rich.text import Text
-    from rich.table import Table as RichTable
 
     if error and not stats:
         return Panel(
@@ -1216,13 +1257,15 @@ def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Pa
     lines = []
 
     # ━━ HEADER ━━
-    lines.append(f"  {status_icon}  │  Uptime: [bold]{uptime}[/bold]  │  Model: [cyan]{model_name}[/cyan]  │  [bold]{rps:.1f}[/bold] req/s")
+    lines.append(
+        f"  {status_icon}  │  Uptime: [bold]{uptime}[/bold]  │  Model: [cyan]{model_name}[/cyan]  │  [bold]{rps:.1f}[/bold] req/s"
+    )
     lines.append(f"  {'━' * 72}")
 
     # ━━ GPU SECTION ━━
     if gpus:
         lines.append("")
-        lines.append(f"  [bold magenta]🔲 GPU[/bold magenta]")
+        lines.append("  [bold magenta]🔲 GPU[/bold magenta]")
         for g in gpus:
             vram_total = g.get("vram_total_mib", 1)
             vram_used = g.get("vram_used_mib", 0)
@@ -1243,19 +1286,21 @@ def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Pa
             lines.append(f"    Power    {_bar(pwr_pct, width=15)}  [dim]{pwr_draw:.0f} / {pwr_limit:.0f} W[/dim]")
     else:
         lines.append("")
-        lines.append(f"  [bold magenta]🔲 GPU[/bold magenta]  [dim](no data — container may be cold)[/dim]")
+        lines.append("  [bold magenta]🔲 GPU[/bold magenta]  [dim](no data — container may be cold)[/dim]")
 
     # ━━ CPU / RAM / DISK ━━
     lines.append("")
-    lines.append(f"  [bold blue]💻 System[/bold blue]")
+    lines.append("  [bold blue]💻 System[/bold blue]")
     if cpu:
         cpu_model = cpu.get("model", "—")
         cores = cpu.get("cores", "?")
         load_1m = cpu.get("load_1m", 0)
         load_pct = load_1m / max(int(cores) if str(cores).isdigit() else 1, 1) * 100
-        lines.append(f"    CPU      {_bar(min(load_pct, 100))}  [dim]{cpu_model} ({cores} cores) load: {load_1m:.1f}[/dim]")
+        lines.append(
+            f"    CPU      {_bar(min(load_pct, 100))}  [dim]{cpu_model} ({cores} cores) load: {load_1m:.1f}[/dim]"
+        )
     else:
-        lines.append(f"    CPU      [dim](no data)[/dim]")
+        lines.append("    CPU      [dim](no data)[/dim]")
 
     if ram:
         ram_pct = ram.get("used_pct", 0)
@@ -1263,7 +1308,7 @@ def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Pa
         ram_total = ram.get("total_mb", 0)
         lines.append(f"    RAM      {_bar(ram_pct)}  [dim]{ram_used:,} / {ram_total:,} MB[/dim]")
     else:
-        lines.append(f"    RAM      [dim](no data)[/dim]")
+        lines.append("    RAM      [dim](no data)[/dim]")
 
     if disk:
         disk_pct = disk.get("used_pct", 0)
@@ -1271,16 +1316,17 @@ def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Pa
         disk_total = disk.get("total_gb", 0)
         lines.append(f"    Disk     {_bar(disk_pct)}  [dim]{disk_used:.1f} / {disk_total:.1f} GB[/dim]")
     else:
-        lines.append(f"    Disk     [dim](no data)[/dim]")
+        lines.append("    Disk     [dim](no data)[/dim]")
 
     # ━━ TRAFFIC ━━
     lines.append("")
-    lines.append(f"  [bold green]📡 Traffic[/bold green]")
+    lines.append("  [bold green]📡 Traffic[/bold green]")
     inflight_pct = inflight / max(limit, 1) * 100
     lines.append(f"    Active   {_bar(inflight_pct)}  [bold]{inflight}[/bold] / {limit}  (peak: {peak})")
-    sr_color = "green" if success_rate >= 99 else ("yellow" if success_rate >= 95 else "red")
     lines.append(f"    Success  {_bar(success_rate, width=25, filled_char='▓')}  [dim]{success:,} / {total:,}[/dim]")
-    lines.append(f"    Errors   4xx: [yellow]{err_4xx:,}[/yellow]  │  5xx: [red]{err_5xx:,}[/red]  │  429 rejected: [red]{rejected:,}[/red]  │  retries: [yellow]{retries:,}[/yellow]")
+    lines.append(
+        f"    Errors   4xx: [yellow]{err_4xx:,}[/yellow]  │  5xx: [red]{err_5xx:,}[/red]  │  429 rejected: [red]{rejected:,}[/red]  │  retries: [yellow]{retries:,}[/yellow]"
+    )
 
     # ━━ LATENCY ━━
     lines.append("")
@@ -1294,14 +1340,18 @@ def _build_dashboard(stats: dict, health: dict, error: str, base_url: str) -> Pa
 
     # ━━ TOKENS ━━
     lines.append("")
-    lines.append(f"  [bold cyan]🔤 Tokens[/bold cyan]")
+    lines.append("  [bold cyan]🔤 Tokens[/bold cyan]")
     if tok_total > 0:
         prompt_pct = tok_prompt / tok_total * 100
-        lines.append(f"    Prompt   {_bar(prompt_pct, width=20, filled_char='▪', empty_char='·')}  [cyan]{tok_prompt:,}[/cyan]")
-        lines.append(f"    Complet  {_bar(100 - prompt_pct, width=20, filled_char='▪', empty_char='·')}  [cyan]{tok_comp:,}[/cyan]")
+        lines.append(
+            f"    Prompt   {_bar(prompt_pct, width=20, filled_char='▪', empty_char='·')}  [cyan]{tok_prompt:,}[/cyan]"
+        )
+        lines.append(
+            f"    Complet  {_bar(100 - prompt_pct, width=20, filled_char='▪', empty_char='·')}  [cyan]{tok_comp:,}[/cyan]"
+        )
         lines.append(f"    Total    [bold]{tok_total:,}[/bold]")
     else:
-        lines.append(f"    [dim]No tokens processed yet[/dim]")
+        lines.append("    [dim]No tokens processed yet[/dim]")
 
     lines.append("")
     lines.append(f"  [dim]{'━' * 72}[/dim]")
@@ -1371,7 +1421,8 @@ def stop():
 @app.command("restart")
 def restart(
     strategy: str = typer.Option(
-        "recreate", "--strategy",
+        "recreate",
+        "--strategy",
         help="'recreate' replaces all containers now; 'rolling' swaps them without downtime.",
     ),
 ):
@@ -1382,7 +1433,9 @@ def restart(
     console.print(f"[cyan]Rolling over {SERVE_APP_NAME} ({strategy})...[/cyan]")
     result = subprocess.run(["modal", "app", "rollover", SERVE_APP_NAME, "--strategy", strategy])
     if result.returncode == 0:
-        console.print("[bold green]Rollover triggered. New containers will load the model on next request.[/bold green]")
+        console.print(
+            "[bold green]Rollover triggered. New containers will load the model on next request.[/bold green]"
+        )
     else:
         console.print("[red]Rollover failed — is the server deployed? Check `m-gpux serve logs`.[/red]")
         raise typer.Exit(result.returncode)
@@ -1400,7 +1453,8 @@ def _warmup_worker(base_url: str, model_name: str):
     console.print(f"  [dim]Hitting {models_url} ...[/dim]")
     start = time.time()
     try:
-        r = urllib.request.urlopen(models_url, timeout=600)
+        with urllib.request.urlopen(models_url, timeout=600):
+            pass
         elapsed = time.time() - start
         console.print(f"  [green]Container ready in {elapsed:.1f}s[/green]")
     except Exception as e:
@@ -1409,11 +1463,13 @@ def _warmup_worker(base_url: str, model_name: str):
 
     # Phase 2: send a tiny completion to warm the engine
     console.print("  [dim]Sending warmup completion...[/dim]")
-    data = json.dumps({
-        "model": model_name,
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 1,
-    }).encode()
+    data = json.dumps(
+        {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+        }
+    ).encode()
     req = urllib.request.Request(
         f"{base_url}/v1/chat/completions",
         data=data,
@@ -1421,7 +1477,8 @@ def _warmup_worker(base_url: str, model_name: str):
     )
     try:
         start = time.time()
-        r = urllib.request.urlopen(req, timeout=120)
+        with urllib.request.urlopen(req, timeout=120):
+            pass
         elapsed = time.time() - start
         console.print(f"  [green]First inference done in {elapsed:.1f}s — server is hot![/green]")
     except Exception as e:
@@ -1447,12 +1504,12 @@ def warmup(
     if not model:
         model = Prompt.ask("Model name", default="Qwen/Qwen3.5-35B-A3B")
 
-    console.print(Panel.fit(
-        f"[bold cyan]Warming up LLM API[/bold cyan]\n"
-        f"URL: {url}\n"
-        f"Model: {model}",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Warming up LLM API[/bold cyan]\nURL: {url}\nModel: {model}",
+            border_style="cyan",
+        )
+    )
 
     _warmup_worker(url, model)
 
@@ -1468,7 +1525,9 @@ def _load_profiles_for_url():
     try:
         result = subprocess.run(
             ["modal", "profile", "list", "--json"],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         if result.returncode == 0:
             # [{"name": ..., "workspace": ..., "active": bool}, ...]

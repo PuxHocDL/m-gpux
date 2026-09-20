@@ -4,7 +4,7 @@ export const TONE = {
   prompt: "text-brand-300",
   command: "text-term-text",
   ok: "text-emerald-400",
-  warn: "text-amber-300",
+  warn: "text-brand-200",
   info: "text-sky-300",
   accent: "text-brand-300",
   url: "text-sky-300 underline decoration-dotted underline-offset-2",
@@ -16,9 +16,9 @@ export function TerminalChrome({ title = "bash — m-gpux", children, className 
   return (
     <div className={`overflow-hidden rounded-2xl border border-term-line bg-term-bg shadow-term ${className}`}>
       <div className="flex items-center gap-2 border-b border-term-line bg-term-panel px-4 py-3">
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+        <span className="h-3 w-3 rounded-full bg-brand-300" />
+        <span className="h-3 w-3 rounded-full bg-brand-500" />
+        <span className="h-3 w-3 rounded-full bg-brand-700" />
         <span className="ml-3 font-mono text-xs text-term-dim">{title}</span>
         {rightSlot ? <div className="ml-auto">{rightSlot}</div> : null}
       </div>

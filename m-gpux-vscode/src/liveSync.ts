@@ -80,7 +80,7 @@ export class LiveSyncDriver implements vscode.Disposable {
     return abs.slice(root.length + 1).replace(/\\/g, "/");
   }
 
-  /** Full workspace → volume push (diffed against what the volume already has). */
+  /** Full workspace → volume push. */
   private async pushAll(): Promise<void> {
     if (this.disposed || this.busy) { return; }
     this.busy = true;
@@ -93,6 +93,7 @@ export class LiveSyncDriver implements vscode.Disposable {
         tokenId: this.opts.profile.token_id,
         tokenSecret: this.opts.profile.token_secret,
         output: this.opts.output,
+        force: true,
       });
     } catch (err: any) {
       this.opts.output.appendLine(`[sync] initial push failed: ${err?.message ?? err}`);
@@ -225,14 +226,14 @@ export async function pushWorkspace(opts: PullOptions): Promise<{ pushed: number
     tokenId: opts.profile.token_id,
     tokenSecret: opts.profile.token_secret,
     output: opts.output,
+    force: true,
   });
   return { pushed: res.pushed, skipped: res.skipped, bytes: res.bytes };
 }
 
-/** Pull the workspace Volume down into the local folder. Only files that are
- *  missing locally or differ in size are transferred, so a repeat pull after
- *  the first one is cheap — the user's new notebook comes back without
- *  re-downloading the whole seeded workspace. Returns files written + bytes. */
+/** Pull the workspace Volume down into the local folder. The explicit user
+ *  action verifies contents even when a changed file kept the same size, and
+ *  writes only files whose bytes differ. Returns files written + bytes. */
 export async function pullWorkspace(opts: PullOptions): Promise<{ pulled: number; skipped: number; bytes: number }> {
   const res = await runVolumeSync({
     mode: "pull",
@@ -241,6 +242,7 @@ export async function pullWorkspace(opts: PullOptions): Promise<{ pulled: number
     tokenId: opts.profile.token_id,
     tokenSecret: opts.profile.token_secret,
     output: opts.output,
+    force: true,
   });
   return { pulled: res.pulled, skipped: res.skipped, bytes: res.bytes };
 }

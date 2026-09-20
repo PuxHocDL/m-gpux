@@ -42,9 +42,7 @@ class PluginBase:
     rich_help_panel: ClassVar[str] = "Tools"
 
     def register(self, app: typer.Typer) -> None:  # pragma: no cover - abstract
-        raise NotImplementedError(
-            f"Plugin {type(self).__name__} must implement register(app)."
-        )
+        raise NotImplementedError(f"Plugin {type(self).__name__} must implement register(app).")
 
 
 class PluginRegistry:
@@ -57,13 +55,9 @@ class PluginRegistry:
 
     def add(self, plugin: PluginBase) -> None:
         if not isinstance(plugin, PluginBase):
-            raise TypeError(
-                f"Expected PluginBase instance, got {type(plugin).__name__}"
-            )
+            raise TypeError(f"Expected PluginBase instance, got {type(plugin).__name__}")
         if not plugin.name:
-            raise ValueError(
-                f"Plugin {type(plugin).__name__} must define a non-empty `name`."
-            )
+            raise ValueError(f"Plugin {type(plugin).__name__} must define a non-empty `name`.")
         cls = type(plugin)
         if cls in self._seen:
             return  # idempotent: same plugin class already registered

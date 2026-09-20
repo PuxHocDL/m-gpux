@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence"
 ]
 dependencies = [
-    "modal>=1.4.2",
+    "modal>=1.5.4",
     "typer>=0.12.0",
     "rich>=13.0.0",
     "tomlkit>=0.12.0",
@@ -67,6 +67,7 @@ stop = "m_gpux.plugins.stop.plugin:StopPlugin"
 [project.optional-dependencies]
 dev = [
     "build>=1.2.2",
+    "ruff>=0.8.0",
     "twine>=5.1.1"
 ]
 
@@ -74,3 +75,17 @@ docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.6"
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
+[tool.ruff.lint.per-file-ignores]
+"m_gpux/main.py" = ["E402"]
+"m_gpux/plugins/*/plugin.py" = ["E402"]

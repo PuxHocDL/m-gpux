@@ -95,7 +95,8 @@ def web_command() -> None:
     profile = _select_profile()
     if profile is None:
         raise typer.Exit(1)
-    _activate_profile(profile)
+    if not _activate_profile(profile):
+        raise typer.Exit(1)
 
     compute_spec, compute_label = _choose_compute()
     python_version = "3.12"
@@ -158,7 +159,7 @@ def _box_or_exit(name: Optional[str]) -> tuple[str, dict]:
         resolved = devbox.resolve_name(name)
     except KeyError as e:
         console.print(f"[red]{e.args[0]}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     return resolved, devbox.load_boxes()[resolved]
 
 
@@ -178,8 +179,9 @@ def _running_or_exit(box: dict):
 def _print_connect_help(name: str, box: dict) -> None:
     alias = devbox.ssh_host_alias(name)
     expires = time.strftime("%H:%M", time.localtime(box["started_at"] + box["timeout_hours"] * 3600))
-    lines = [f"[bold green]Dev box '{name}' is running[/bold green] on {box['compute_label']} "
-             f"· {fmt_hourly(_hourly(box))}"]
+    lines = [
+        f"[bold green]Dev box '{name}' is running[/bold green] on {box['compute_label']} · {fmt_hourly(_hourly(box))}"
+    ]
     if box.get("ssh", True):
         lines += [
             f"  ssh:      [bold cyan]ssh {alias}[/bold cyan]   (or `m-gpux dev ssh`)",
@@ -206,8 +208,10 @@ def _pick_box_compute() -> tuple[Optional[str], float, int, str]:
         opts = []
         for k in keys:
             cores, mem, _ = AVAILABLE_CPUS[k]
-            opts.append((f"{cores} cores", f"{mem // 1024 or 0.5} GB · {fmt_hourly(cpu_hourly(cores, mem, sandbox=True))}"))
-        cores, mem, _ = AVAILABLE_CPUS[keys[arrow_select(opts, title='CPU', default=2)]]
+            opts.append(
+                (f"{cores} cores", f"{mem // 1024 or 0.5} GB · {fmt_hourly(cpu_hourly(cores, mem, sandbox=True))}")
+            )
+        cores, mem, _ = AVAILABLE_CPUS[keys[arrow_select(opts, title="CPU", default=2)]]
         return None, float(cores), int(mem), f"CPU ({cores} cores)"
     gpu_values = list(AVAILABLE_GPUS.values())
     gpu_idx = arrow_select([(g, d) for g, d in gpu_values], title="GPU", default=1)
@@ -231,7 +235,9 @@ def _dev_root(
 def up_command(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Box name (default: this folder's name)"),
     image: Optional[str] = typer.Option(None, "--image", help="Published image to start from (m-gpux image build)"),
-    hours: float = typer.Option(12, "--hours", help=f"Auto-stop after this many hours (max {devbox.MAX_TIMEOUT_HOURS})"),
+    hours: float = typer.Option(
+        12, "--hours", help=f"Auto-stop after this many hours (max {devbox.MAX_TIMEOUT_HOURS})"
+    ),
     ssh: bool = typer.Option(True, "--ssh/--no-ssh", help="Run sshd for ssh / VS Code Remote-SSH"),
     lock_ip: bool = typer.Option(False, "--lock-ip", help="Only accept connections from your current public IP"),
     upload: bool = typer.Option(True, "--upload/--no-upload", help="Copy this folder into /workspace"),
@@ -241,8 +247,10 @@ def up_command(
     existing = devbox.load_boxes().get(box_name)
     if existing and existing.get("state") in ("running", "paused"):
         verb = "resume" if existing["state"] == "paused" else "ssh"
-        console.print(f"[yellow]Dev box '{box_name}' already exists ({existing['state']}). "
-                      f"Use `m-gpux dev {verb}` or `m-gpux dev down` first.[/yellow]")
+        console.print(
+            f"[yellow]Dev box '{box_name}' already exists ({existing['state']}). "
+            f"Use `m-gpux dev {verb}` or `m-gpux dev down` first.[/yellow]"
+        )
         raise typer.Exit(1)
     if not 0 < hours <= devbox.MAX_TIMEOUT_HOURS:
         console.print(f"[red]--hours must be between 0 and {devbox.MAX_TIMEOUT_HOURS}.[/red]")
@@ -257,8 +265,12 @@ def up_command(
         image = pick_published_image(profile)
     requirements = None
     if image is None and upload and os.path.exists("requirements.txt"):
-        if Prompt.ask("[green]Found requirements.txt.[/green] Install it into the box?",
-                      choices=["y", "n"], default="y") == "y":
+        if (
+            Prompt.ask(
+                "[green]Found requirements.txt.[/green] Install it into the box?", choices=["y", "n"], default="y"
+            )
+            == "y"
+        ):
             requirements = os.path.abspath("requirements.txt")
     excludes = _prompt_excludes() if upload else []
 
@@ -271,23 +283,37 @@ def up_command(
         allow_cidr = f"{ip}/32" if ":" not in ip else f"{ip}/128"
 
     box = {
-        "profile": profile, "gpu": gpu, "cpu": cpu, "memory": memory, "compute_label": label,
-        "python": python_version, "image": image, "ssh": ssh, "allow_cidr": allow_cidr,
-        "timeout_hours": hours, "local_dir": os.path.abspath(".") if upload else None,
-        "excludes": excludes, "created_at": time.time(),
+        "profile": profile,
+        "gpu": gpu,
+        "cpu": cpu,
+        "memory": memory,
+        "compute_label": label,
+        "python": python_version,
+        "image": image,
+        "ssh": ssh,
+        "allow_cidr": allow_cidr,
+        "timeout_hours": hours,
+        "local_dir": os.path.abspath(".") if upload else None,
+        "excludes": excludes,
+        "created_at": time.time(),
     }
-    console.print(f"\n[bold]Creating dev box '{box_name}'[/bold] · {label} · {fmt_hourly(_hourly(box))} "
-                  f"· auto-stop in {hours:g}h")
+    console.print(
+        f"\n[bold]Creating dev box '{box_name}'[/bold] · {label} · {fmt_hourly(_hourly(box))} · auto-stop in {hours:g}h"
+    )
     try:
         client = devbox.client_for(profile)
         img = devbox.build_image(
-            client, base_image=image, python_version=python_version,
-            local_dir=box["local_dir"], excludes=excludes, requirements=requirements,
+            client,
+            base_image=image,
+            python_version=python_version,
+            local_dir=box["local_dir"],
+            excludes=excludes,
+            requirements=requirements,
         )
         devbox.create_sandbox(client, box_name, img, box)
     except Exception as e:
         console.print(f"[red]Could not start the dev box: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     box["last_push"] = time.time()
     devbox.save_box(box_name, box)
     _print_connect_help(box_name, box)
@@ -313,9 +339,15 @@ def list_command() -> None:
         if state == "running":
             stop_at = time.strftime("%m-%d %H:%M", time.localtime(box["started_at"] + box["timeout_hours"] * 3600))
         color = {"running": "green", "paused": "cyan", "expired": "red"}.get(state, "white")
-        table.add_row(name, f"[{color}]{state}[/{color}]", box.get("profile", ""), box.get("compute_label", ""),
-                      fmt_hourly(_hourly(box)) if state == "running" else "$0 (paused)" if state == "paused" else "-",
-                      stop_at, box.get("local_dir") or "-")
+        table.add_row(
+            name,
+            f"[{color}]{state}[/{color}]",
+            box.get("profile", ""),
+            box.get("compute_label", ""),
+            fmt_hourly(_hourly(box)) if state == "running" else "$0 (paused)" if state == "paused" else "-",
+            stop_at,
+            box.get("local_dir") or "-",
+        )
     console.print(table)
 
 
@@ -334,8 +366,10 @@ def code_command(name: Optional[str] = typer.Argument(None)) -> None:
     _running_or_exit(box)
     code = shutil.which("code")
     if not code:
-        console.print(f"[yellow]`code` not on PATH. In VS Code: Remote-SSH → Connect to Host → "
-                      f"{devbox.ssh_host_alias(name)}[/yellow]")
+        console.print(
+            f"[yellow]`code` not on PATH. In VS Code: Remote-SSH → Connect to Host → "
+            f"{devbox.ssh_host_alias(name)}[/yellow]"
+        )
         raise typer.Exit(1)
     subprocess.run([code, "--remote", f"ssh-remote+{devbox.ssh_host_alias(name)}", devbox.WORKDIR])
     console.print(f"[green]Opening {devbox.ssh_host_alias(name)}:{devbox.WORKDIR} in VS Code.[/green]")
@@ -349,8 +383,10 @@ def shell_command(name: Optional[str] = typer.Argument(None)) -> None:
     if os.name == "nt":
         # `modal shell` is not supported on Windows; SSH is.
         if not box.get("ssh", True):
-            console.print("[red]`modal shell` doesn't support Windows and this box has no SSH "
-                          "(created with --no-ssh). Recreate it with SSH enabled.[/red]")
+            console.print(
+                "[red]`modal shell` doesn't support Windows and this box has no SSH "
+                "(created with --no-ssh). Recreate it with SSH enabled.[/red]"
+            )
             raise typer.Exit(1)
         subprocess.run(["ssh", devbox.ssh_host_alias(name)])
         return
@@ -363,6 +399,9 @@ def pause_command(
     keep_days: int = typer.Option(30, "--keep-days", help="How long Modal keeps the snapshot"),
 ) -> None:
     """Snapshot the whole box and stop it — no compute is billed while paused."""
+    if keep_days <= 0:
+        console.print("[red]--keep-days must be greater than 0.[/red]")
+        raise typer.Exit(1)
     name, box = _box_or_exit(name)
     sb = _running_or_exit(box)
     console.print(f"[cyan]Snapshotting '{name}' (installed packages + files)...[/cyan]")
@@ -370,13 +409,20 @@ def pause_command(
         snapshot = sb.snapshot_filesystem(timeout=900, ttl=keep_days * 86400)
     except Exception as e:
         console.print(f"[red]Snapshot failed, box left running: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     sb.terminate()
-    box.update(state="paused", snapshot_id=snapshot.object_id, sandbox_id=None,
-               paused_at=time.time(), snapshot_expires=time.time() + keep_days * 86400)
+    box.update(
+        state="paused",
+        snapshot_id=snapshot.object_id,
+        sandbox_id=None,
+        paused_at=time.time(),
+        snapshot_expires=time.time() + keep_days * 86400,
+    )
     devbox.save_box(name, box)
-    console.print(f"[green]Paused '{name}'. Resume any time in the next {keep_days} days: "
-                  f"[bold]m-gpux dev resume {name}[/bold][/green]")
+    console.print(
+        f"[green]Paused '{name}'. Resume any time in the next {keep_days} days: "
+        f"[bold]m-gpux dev resume {name}[/bold][/green]"
+    )
 
 
 @app.command("resume")
@@ -393,11 +439,16 @@ def resume_command(
         _print_connect_help(name, box)
         return
     if not box.get("snapshot_id"):
-        console.print(f"[red]'{name}' has no snapshot (it expired before being paused). "
-                      f"Recreate it with `m-gpux dev down {name}` then `m-gpux dev up`.[/red]")
+        console.print(
+            f"[red]'{name}' has no snapshot (it expired before being paused). "
+            f"Recreate it with `m-gpux dev down {name}` then `m-gpux dev up`.[/red]"
+        )
         raise typer.Exit(1)
-    if hours:
-        box["timeout_hours"] = min(hours, devbox.MAX_TIMEOUT_HOURS)
+    if hours is not None:
+        if not 0 < hours <= devbox.MAX_TIMEOUT_HOURS:
+            console.print(f"[red]--hours must be between 0 and {devbox.MAX_TIMEOUT_HOURS}.[/red]")
+            raise typer.Exit(1)
+        box["timeout_hours"] = hours
     console.print(f"[cyan]Resuming '{name}' on {box['compute_label']}...[/cyan]")
     try:
         client = devbox.client_for(box["profile"])
@@ -405,7 +456,7 @@ def resume_command(
         devbox.create_sandbox(client, name, image, box)
     except Exception as e:
         console.print(f"[red]Could not resume: {e}[/red]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     devbox.save_box(name, box)
     _print_connect_help(name, box)
 
@@ -414,7 +465,9 @@ def resume_command(
 def sync_command(
     direction: str = typer.Argument(..., help="push (local → box) or pull (box → local)"),
     name: Optional[str] = typer.Argument(None),
-    all_files: bool = typer.Option(False, "--all", help="push: send every file, not only files changed since last push"),
+    all_files: bool = typer.Option(
+        False, "--all", help="push: send every file, not only files changed since last push"
+    ),
     to: Optional[str] = typer.Option(None, "--to", help="pull: destination folder (default: the box's source folder)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="pull: overwrite local files without asking"),
 ) -> None:
@@ -435,8 +488,13 @@ def sync_command(
         console.print(f"[green]Pushed {n} file(s) from {src} → {devbox.WORKDIR}.[/green]")
         return
     dest = to or box.get("local_dir") or os.path.abspath(".")
-    if not yes and Prompt.ask(f"Overwrite files in [bold]{dest}[/bold] with the box's copies?",
-                              choices=["y", "n"], default="n") != "y":
+    if (
+        not yes
+        and Prompt.ask(
+            f"Overwrite files in [bold]{dest}[/bold] with the box's copies?", choices=["y", "n"], default="n"
+        )
+        != "y"
+    ):
         raise typer.Exit()
     os.makedirs(dest, exist_ok=True)
     n = devbox.pull(sb, dest, excludes)
@@ -450,8 +508,10 @@ def down_command(
 ) -> None:
     """Delete a dev box: stop it and forget its snapshot."""
     name, box = _box_or_exit(name)
-    if not yes and Prompt.ask(f"Delete dev box '{name}'? Unsynced changes are lost.",
-                              choices=["y", "n"], default="n") != "y":
+    if (
+        not yes
+        and Prompt.ask(f"Delete dev box '{name}'? Unsynced changes are lost.", choices=["y", "n"], default="n") != "y"
+    ):
         raise typer.Exit()
     sb = devbox.get_sandbox(box)
     if sb is not None:

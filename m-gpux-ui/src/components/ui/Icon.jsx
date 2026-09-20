@@ -12,6 +12,8 @@ import {
   Square,
   Radar,
   Zap,
+  Box,
+  PanelLeft,
 } from "lucide-react";
 
 const MAP = {
@@ -28,6 +30,8 @@ const MAP = {
   Square,
   Radar,
   Zap,
+  Box,
+  PanelLeft,
 };
 
 /** Icon — resolve a lucide icon by name (used by data-driven sections). */

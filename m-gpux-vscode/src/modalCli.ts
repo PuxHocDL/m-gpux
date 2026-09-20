@@ -2,7 +2,7 @@
 // shells out for ground-truth state (app list, profile activate) and to
 // reuse CLI features that would be costly to re-implement in TypeScript
 // (compose, preset).
-import * as vscode from "vscode";
+export { hasMgpuxCli, ensureMgpuxCli } from "./cliBootstrap";
 
 const { spawn } = require("child_process");
 
@@ -11,7 +11,6 @@ export interface SpawnResult {
   stderr: string;
   exitCode: number;
 }
-
 export function runCommand(
   cmd: string,
   args: string[],
@@ -20,7 +19,7 @@ export function runCommand(
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, {
       cwd: opts.cwd,
-      shell: true,
+      shell: false,
       windowsHide: true,
       env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1", ...(opts.env ?? {}) },
     });
@@ -43,7 +42,11 @@ export function runCommand(
 }
 
 export async function activateProfile(profile: string, cwd?: string): Promise<void> {
-  await runCommand("modal", ["profile", "activate", profile], { cwd });
+  const result = await runCommand("modal", ["profile", "activate", profile], { cwd });
+  if (result.exitCode !== 0) {
+    const detail = (result.stderr || result.stdout || "unknown error").trim();
+    throw new Error(`Could not activate Modal profile '${profile}': ${detail}`);
+  }
 }
 
 export interface ModalAppEntry {
@@ -88,15 +91,21 @@ export function extractWebEndpoint(scriptContent: string): { appName: string; fu
   return { appName: appMatch[1], functionName: fnMatch[1] };
 }
 
-/** List Modal apps for a profile. Returns empty array if `modal` is not installed
- *  or the command fails. */
-export async function listApps(profile: string, env = "main"): Promise<ModalAppEntry[]> {
+/** List Modal apps for a profile. Query/JSON failures throw by default so a
+ *  transient outage cannot be mistaken for an empty account. Pass
+ *  `strict=false` only for explicitly best-effort callers. */
+export async function listApps(profile: string, env = "main", strict = true): Promise<ModalAppEntry[]> {
   const res = await runCommand(
     "modal",
     ["app", "list", "--env", env, "--json"],
     { env: { MODAL_PROFILE: profile } }
   );
-  if (res.exitCode !== 0) { return []; }
+  if (res.exitCode !== 0) {
+    if (strict) {
+      throw new Error((res.stderr || res.stdout || `Could not list apps for '${profile}'`).trim());
+    }
+    return [];
+  }
   try {
     const apps = JSON.parse(res.stdout || "[]");
     return apps.map((a: any) => ({
@@ -109,30 +118,10 @@ export async function listApps(profile: string, env = "main"): Promise<ModalAppE
       state: (a["State"] ?? a.state ?? "").toString().toLowerCase(),
       tasks: Number(a["Tasks"] ?? a.tasks ?? a.n_running_tasks ?? 0) || 0,
     })).filter((a: ModalAppEntry) => a.appId);
-  } catch {
+  } catch (err) {
+    if (strict) {
+      throw new Error(`Invalid response from modal app list for '${profile}': ${String(err)}`);
+    }
     return [];
   }
-}
-
-/** Whether the `m-gpux` Python CLI is reachable on PATH. */
-export async function hasMgpuxCli(): Promise<boolean> {
-  const res = await runCommand("m-gpux", ["--version"], { timeoutMs: 4000 });
-  return res.exitCode === 0;
-}
-
-/** Show a guided modal asking the user to install m-gpux if it's missing. */
-export async function ensureMgpuxCli(featureName: string): Promise<boolean> {
-  if (await hasMgpuxCli()) { return true; }
-  const choice = await vscode.window.showWarningMessage(
-    `'${featureName}' requires the m-gpux Python CLI. Install with: pip install m-gpux`,
-    "Copy install command",
-    "Open docs"
-  );
-  if (choice === "Copy install command") {
-    await vscode.env.clipboard.writeText("pip install m-gpux");
-    vscode.window.showInformationMessage("Copied: pip install m-gpux");
-  } else if (choice === "Open docs") {
-    vscode.env.openExternal(vscode.Uri.parse("https://puxhocdl.github.io/m-gpux/"));
-  }
-  return false;
 }

@@ -55,11 +55,7 @@ def clear_command(
 def _status_rows() -> list[tuple[str, float, Optional[float], float]]:
     """``[(profile, used, limit, spendable)]`` for accounts whose usage could be read."""
     budgets = load_budgets()
-    return [
-        (name, used, budget_for(name, budgets), left)
-        for name, used, left in get_all_balances()
-        if used >= 0
-    ]
+    return [(name, used, budget_for(name, budgets), left) for name, used, left in get_all_balances() if used >= 0]
 
 
 def _render(rows) -> list[str]:

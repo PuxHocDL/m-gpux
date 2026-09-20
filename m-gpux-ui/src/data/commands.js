@@ -1,4 +1,4 @@
-// CLI command groups — mirrors `m-gpux --help` (v2.7.0) and the README reference.
+// CLI workflow areas — mirrors `m-gpux --help` v3 and the README reference.
 // `icon` is a lucide-react component name resolved in the showcase.
 
 export const COMMAND_GROUPS = [
@@ -75,13 +75,33 @@ export const COMMAND_GROUPS = [
   {
     id: "ops",
     icon: "Gauge",
-    title: "Billing & Ops",
-    blurb: "Live prices, per-account budgets with auto-stop, published images and one-shot cleanup.",
+    title: "Billing & Budgets",
+    blurb: "Cross-profile usage, live prices and per-account limits that AUTO selection respects.",
     commands: [
       { cmd: "m-gpux billing usage --all", desc: "Total spend across every profile" },
       { cmd: "m-gpux budget set 20", desc: "Monthly limit per account — AUTO respects it" },
+      { cmd: "m-gpux budget show", desc: "Compare current spend with configured limits" },
+    ],
+  },
+  {
+    id: "images",
+    icon: "Activity",
+    title: "Images & Hardware",
+    blurb: "Publish repeatable environments and inspect the exact hardware Modal assigned.",
+    commands: [
       { cmd: "m-gpux image build torch", desc: "Publish a prebuilt image for instant starts" },
       { cmd: "m-gpux load probe", desc: "Probe a GPU & print hardware metrics" },
+      { cmd: "m-gpux image list", desc: "Browse reusable images across profiles" },
+    ],
+  },
+  {
+    id: "lifecycle",
+    icon: "Radar",
+    title: "Lifecycle & Cleanup",
+    blurb: "Discover running work, reopen it later and release compute without crossing profiles.",
+    commands: [
+      { cmd: "m-gpux sessions list", desc: "List tracked Hub and dev sessions" },
+      { cmd: "m-gpux sessions open <id>", desc: "Reopen a live session URL" },
       { cmd: "m-gpux stop --all", desc: "Stop running apps & release GPUs" },
     ],
   },

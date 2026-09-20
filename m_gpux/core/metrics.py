@@ -6,7 +6,7 @@ escape sequences like \\n and \\t remain as literal two-character sequences,
 which is exactly what we need in the generated Python files.
 """
 
-FUNCTIONS = r'''
+FUNCTIONS = r"""
 def _print_metrics():
     import subprocess as _sp, os as _os
     print()
@@ -90,4 +90,4 @@ def _monitor_metrics(interval=30):
             except:
                 pass
     _th.Thread(target=_loop, daemon=True).start()
-'''
+"""

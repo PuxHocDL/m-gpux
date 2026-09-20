@@ -27,7 +27,7 @@ app = typer.Typer(no_args_is_help=True)
 # Packages every m-gpux interactive image needs (ttyd shell, sshd for dev, basics).
 BASE_APT = ["git", "curl", "wget", "tmux", "htop", "openssh-server", "build-essential"]
 
-BUILD_SCRIPT = '''
+BUILD_SCRIPT = """
 import modal
 
 image = (
@@ -40,7 +40,7 @@ with modal.enable_output():
     image.build(app)
 image.publish(__NAME__)
 print("PUBLISHED", image.object_id)
-'''
+"""
 
 
 def _split(csv: str) -> list[str]:
@@ -106,8 +106,14 @@ def build_command(
             raise typer.Exit(1)
         targets = [chosen]
 
-    summary = f"py{python}" + (f" + {os.path.basename(requirements)}" if requirements else "") + (
-        f" + {', '.join(pip_pkgs)}" if pip_pkgs else ""
+    if not targets:
+        console.print("[red]No configured Modal profiles found. Run `m-gpux account add` first.[/red]")
+        raise typer.Exit(1)
+
+    summary = (
+        f"py{python}"
+        + (f" + {os.path.basename(requirements)}" if requirements else "")
+        + (f" + {', '.join(pip_pkgs)}" if pip_pkgs else "")
     )
     ok = 0
     for profile in targets:
@@ -141,7 +147,9 @@ def list_command(
         table.add_column("Accounts", style="magenta")
         table.add_column("Updated", style="dim")
         for name, meta in sorted(images.items()):
-            table.add_row(name, meta.get("summary", ""), ", ".join(meta.get("profiles", [])), meta.get("updated_at", ""))
+            table.add_row(
+                name, meta.get("summary", ""), ", ".join(meta.get("profiles", [])), meta.get("updated_at", "")
+            )
         console.print(table)
     if remote:
         subprocess.run(["modal", "image", "names", "list"])

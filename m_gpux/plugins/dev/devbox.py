@@ -15,15 +15,16 @@ import fnmatch
 import io
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tarfile
 import time
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from m_gpux.core.console import console
 from m_gpux.core.ignore import to_recursive_ignore
 from m_gpux.core.profiles import load_config
 from m_gpux.core.state import STATE_DIR, _read_json, _write_json, utc_now
@@ -38,8 +39,17 @@ SSH_CONFIG_PATH = Path.home() / ".ssh" / "config"
 WORKDIR = "/workspace"
 MAX_TIMEOUT_HOURS = 24
 DEFAULT_EXCLUDES = [
-    ".venv", "venv", "__pycache__", ".git", "node_modules", ".mypy_cache",
-    ".pytest_cache", "*.egg-info", ".tox", "dist", "build",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".git",
+    "node_modules",
+    ".mypy_cache",
+    ".pytest_cache",
+    "*.egg-info",
+    ".tox",
+    "dist",
+    "build",
 ]
 
 # Entrypoint: install the key, start sshd in the foreground (it keeps the box alive).
@@ -122,8 +132,15 @@ def client_for(profile: str):
     return Client.from_credentials(str(doc[profile]["token_id"]), str(doc[profile]["token_secret"]))
 
 
-def build_image(client, *, base_image: Optional[str], python_version: str, local_dir: Optional[str],
-                excludes: list[str], requirements: Optional[str]):
+def build_image(
+    client,
+    *,
+    base_image: Optional[str],
+    python_version: str,
+    local_dir: Optional[str],
+    excludes: list[str],
+    requirements: Optional[str],
+):
     import modal
 
     if base_image:
@@ -191,8 +208,12 @@ def get_sandbox(box: dict[str, Any]):
 
     if not box.get("sandbox_id"):
         return None
-    sb = modal.Sandbox.from_id(box["sandbox_id"], client=client_for(box["profile"]))
-    return sb if sb.poll() is None else None
+    try:
+        sb = modal.Sandbox.from_id(box["sandbox_id"], client=client_for(box["profile"]))
+        return sb if sb.poll() is None else None
+    except modal.exception.NotFoundError:
+        # Normal after timeout, manual termination, or retention expiry.
+        return None
 
 
 # ─── SSH ───────────────────────────────────────────────────────
@@ -236,9 +257,7 @@ def _config_block(name: str, host: str, port: int) -> str:
 
 
 def _strip_block(text: str, name: str) -> str:
-    pattern = re.compile(
-        rf"# >>> m-gpux dev: {re.escape(name)}\n.*?# <<< m-gpux dev: {re.escape(name)}\n", re.S
-    )
+    pattern = re.compile(rf"# >>> m-gpux dev: {re.escape(name)}\n.*?# <<< m-gpux dev: {re.escape(name)}\n", re.S)
     return pattern.sub("", text)
 
 
@@ -276,13 +295,25 @@ def pack_dir(local_dir: str, excludes: list[str], since: float = 0.0) -> tuple[b
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         for root, dirs, files in os.walk(local_dir):
             rel_root = os.path.relpath(root, local_dir)
-            dirs[:] = [d for d in dirs if not _excluded(os.path.normpath(os.path.join(rel_root, d)), excludes)]
+            dirs[:] = [
+                d
+                for d in dirs
+                if not os.path.islink(os.path.join(root, d))
+                and not _excluded(os.path.normpath(os.path.join(rel_root, d)), excludes)
+            ]
             for fname in files:
                 full = os.path.join(root, fname)
                 rel = os.path.normpath(os.path.join(rel_root, fname)).replace("\\", "/")
-                if _excluded(rel, excludes) or os.path.getmtime(full) <= since:
+                if os.path.islink(full) or _excluded(rel, excludes):
                     continue
-                tar.add(full, arcname=rel)
+                try:
+                    if os.path.getmtime(full) <= since:
+                        continue
+                    tar.add(full, arcname=rel, recursive=False)
+                except OSError:
+                    # The editor may replace/delete a file while a sync walks it.
+                    # Leave it for the next push instead of aborting the batch.
+                    continue
                 count += 1
     return buf.getvalue(), count
 
@@ -291,9 +322,13 @@ def push(sb, local_dir: str, excludes: list[str], since: float = 0.0) -> int:
     data, count = pack_dir(local_dir, excludes, since)
     if count == 0:
         return 0
-    remote = "/tmp/mgpux-push.tgz"
+    remote = f"/tmp/mgpux-push-{uuid.uuid4().hex}.tgz"
     sb.filesystem.write_bytes(data, remote)
-    p = sb.exec("bash", "-c", f"tar xzf {remote} -C {WORKDIR} && rm -f {remote}")
+    p = sb.exec(
+        "bash",
+        "-c",
+        f"tar xzf {shlex.quote(remote)} -C {shlex.quote(WORKDIR)} && rm -f {shlex.quote(remote)}",
+    )
     p.wait()
     if p.returncode != 0:
         raise RuntimeError(p.stderr.read())
@@ -301,22 +336,30 @@ def push(sb, local_dir: str, excludes: list[str], since: float = 0.0) -> int:
 
 
 def pull(sb, dest: str, excludes: list[str]) -> int:
-    remote = "/tmp/mgpux-pull.tgz"
-    exclude_args = " ".join(f"--exclude='{pat}'" for pat in excludes)
-    p = sb.exec("bash", "-c", f"tar czf {remote} {exclude_args} -C {WORKDIR} .")
+    remote = f"/tmp/mgpux-pull-{uuid.uuid4().hex}.tgz"
+    exclude_args = " ".join(f"--exclude={shlex.quote(pat)}" for pat in excludes)
+    p = sb.exec(
+        "bash",
+        "-c",
+        f"tar czf {shlex.quote(remote)} {exclude_args} -C {shlex.quote(WORKDIR)} .",
+    )
     p.wait()
     if p.returncode != 0:
         raise RuntimeError(p.stderr.read())
     data = sb.filesystem.read_bytes(remote)
     sb.exec("rm", "-f", remote).wait()
-    dest_path = os.path.abspath(dest)
+    dest_path = os.path.realpath(os.path.abspath(dest))
     count = 0
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tar:
         members = []
         for m in tar.getmembers():
-            target = os.path.abspath(os.path.join(dest_path, m.name))
-            if not target.startswith(dest_path) or m.issym() or m.islnk():
-                continue  # never write outside dest or follow links
+            target = os.path.realpath(os.path.join(dest_path, m.name))
+            try:
+                inside_dest = os.path.commonpath((dest_path, target)) == dest_path
+            except ValueError:
+                inside_dest = False
+            if not inside_dest or m.issym() or m.islnk() or not (m.isfile() or m.isdir()):
+                continue  # never write outside dest, follow links, or create devices
             members.append(m)
             count += m.isfile()
         if hasattr(tarfile, "data_filter"):
