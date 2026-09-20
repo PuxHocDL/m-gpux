@@ -3,7 +3,7 @@
 // This replaces the old approach of shelling out to `modal volume put/get`
 // once per file, which had two fatal problems:
 //
-//   1. `runCommand` spawns with `shell: true`, and Node does NOT quote
+//   1. The old command wrapper spawned with `shell: true`, and Node did not quote
 //      arguments in shell mode. Any local path containing a space (e.g.
 //      "C:\Users\Phuc Nguyen\...") was split into two argv entries, so every
 //      single `modal volume put` failed. (`modal volume get` happened to
@@ -54,26 +54,27 @@ export interface VolumeSyncResult {
   errors: string[];
 }
 
-// Python driver. Reads a JSON request on argv and prints a JSON result.
+// Python driver. Reads a JSON request on stdin and prints a JSON result.
 // Kept dependency-free beyond the modal SDK itself.
 //
-// Note on change detection: Modal reports mtime == 0 for volume entries (the
-// server does not track it), so timestamps are useless here — we compare file
-// SIZE instead, in both directions. Anything missing or size-mismatched moves;
-// same-size files are treated as unchanged. That's what makes a repeat sync
-// cheap: the user's new notebook transfers, the 200 seeded repo files don't.
+// Note on change detection: Modal reports mtime == 0 for volume entries. The
+// background poll therefore uses size as a cheap fast path. Explicit Push/Pull
+// actions set `force`: Push uploads every local file, while Pull downloads and
+// byte-compares files before atomically replacing only changed local copies.
 const SYNC_SCRIPT = String.raw`
-import json, os, sys, io
+import json, os, sys, io, uuid
 
 MAX_FILE_BYTES = 100 * 1024 * 1024
 
 def main():
-    req = json.loads(sys.argv[1])
+    req = json.load(sys.stdin)
     mode = req["mode"]
     local_dir = req["localDir"]
     excludes = set(req["excludes"])
     only = req.get("paths")        # push: restrict to these relative paths
     deletes = req.get("deletes") or []
+    force = bool(req.get("force"))
+    local_root = os.path.realpath(local_dir)
 
     from modal.client import Client
     from modal.volume import Volume, FileEntryType
@@ -89,6 +90,17 @@ def main():
     def excluded(rel):
         return any(part in excludes for part in rel.replace("\\", "/").split("/") if part)
 
+    def local_path(rel):
+        rel = rel.replace("\\", "/").lstrip("/")
+        parts = [part for part in rel.split("/") if part]
+        if not parts or any(part in (".", "..") for part in parts):
+            return None
+        dest = os.path.realpath(os.path.join(local_root, *parts))
+        try:
+            return ("/".join(parts), dest) if os.path.commonpath((local_root, dest)) == local_root else None
+        except ValueError:
+            return None
+
     def remote_sizes():
         sizes = {}
         for e in vol.listdir("/", recursive=True):
@@ -102,23 +114,29 @@ def main():
     if mode == "push":
         candidates = []
         if only is not None:
-            for rel in only:
-                rel = rel.replace("\\", "/").lstrip("/")
-                if not rel or excluded(rel):
+            for raw_rel in only:
+                safe = local_path(raw_rel)
+                if safe is None:
                     continue
-                candidates.append((os.path.join(local_dir, *rel.split("/")), rel))
+                rel, abs_path = safe
+                if excluded(rel):
+                    continue
+                candidates.append((abs_path, rel))
         else:
             for root, dirnames, filenames in os.walk(local_dir):
-                dirnames[:] = [d for d in dirnames if d not in excludes]
+                dirnames[:] = [
+                    d for d in dirnames
+                    if d not in excludes and not os.path.islink(os.path.join(root, d))
+                ]
                 for fn in filenames:
                     abs_path = os.path.join(root, fn)
                     rel = os.path.relpath(abs_path, local_dir).replace("\\", "/")
-                    if not excluded(rel):
+                    if not os.path.islink(abs_path) and not excluded(rel):
                         candidates.append((abs_path, rel))
 
         # Only diff against the remote for a full push; an explicit path list
         # comes from the file watcher and is known-dirty already.
-        known = remote_sizes() if only is None else {}
+        known = remote_sizes() if only is None and not force else {}
 
         files = []
         for abs_path, rel in candidates:
@@ -129,7 +147,7 @@ def main():
             if size > MAX_FILE_BYTES:
                 skipped += 1
                 continue
-            if only is None and known.get(rel) == size:
+            if only is None and not force and known.get(rel) == size:
                 skipped += 1
                 continue
             files.append((abs_path, rel, size))
@@ -143,9 +161,12 @@ def main():
             pushed = len(files)
             total_bytes = sum(s for _, _, s in files)
 
-        for rel in deletes:
-            rel = rel.replace("\\", "/").lstrip("/")
-            if not rel or excluded(rel):
+        for raw_rel in deletes:
+            safe = local_path(raw_rel)
+            if safe is None:
+                continue
+            rel, _ = safe
+            if excluded(rel):
                 continue
             try:
                 vol.remove_file(rel, recursive=True)
@@ -164,12 +185,14 @@ def main():
         for entry in entries:
             if entry.type != FileEntryType.FILE:
                 continue
-            rel = entry.path.replace("\\", "/").lstrip("/")
-            if not rel or excluded(rel):
+            safe = local_path(entry.path)
+            if safe is None:
                 continue
-            dest = os.path.join(local_dir, *rel.split("/"))
+            rel, dest = safe
+            if excluded(rel):
+                continue
             try:
-                if os.path.getsize(dest) == entry.size:
+                if not force and os.path.getsize(dest) == entry.size:
                     skipped += 1
                     continue
             except OSError:
@@ -184,9 +207,25 @@ def main():
             buf = io.BytesIO()
             vol.read_file_into_fileobj(rel, buf)
             data = buf.getvalue()
-            with open(dest, "wb") as fh:
-                fh.write(data)
-            return len(data)
+            try:
+                with open(dest, "rb") as existing:
+                    if existing.read() == data:
+                        return 0, False
+            except OSError:
+                pass
+            temp = dest + ".mgpux-" + uuid.uuid4().hex + ".tmp"
+            try:
+                with open(temp, "wb") as fh:
+                    fh.write(data)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(temp, dest)
+            finally:
+                try:
+                    os.remove(temp)
+                except OSError:
+                    pass
+            return len(data), True
 
         # Each file is a separate round trip, so downloading them one at a time
         # is latency-bound (~1.5s/file => 5 min for a couple of MB). Fan out.
@@ -198,8 +237,12 @@ def main():
                 for fut in as_completed(futures):
                     rel = futures[fut][0]
                     try:
-                        total_bytes += fut.result()
-                        pulled += 1
+                        file_bytes, changed = fut.result()
+                        total_bytes += file_bytes
+                        if changed:
+                            pulled += 1
+                        else:
+                            skipped += 1
                     except Exception as exc:
                         errors.append("%s: %s" % (rel, exc))
     else:
@@ -233,6 +276,8 @@ export interface VolumeSyncOptions {
   paths?: string[];
   /** push only: remove these workspace-relative paths from the volume. */
   deletes?: string[];
+  /** Ignore the size-only fast path and verify/copy complete file contents. */
+  force?: boolean;
   /** Abort the transfer after this long. Pulls of a large workspace can be
    *  slow on first run; subsequent runs only move deltas. */
   timeoutMs?: number;
@@ -259,14 +304,15 @@ export async function runVolumeSync(opts: VolumeSyncOptions): Promise<VolumeSync
     excludes: SYNC_EXCLUDES,
     ...(opts.paths ? { paths: opts.paths } : {}),
     ...(opts.deletes && opts.deletes.length ? { deletes: opts.deletes } : {}),
+    ...(opts.force ? { force: true } : {}),
   });
 
   opts.output.appendLine(`[sync] ${opts.mode} → volume ${opts.volumeName} (via Modal SDK)`);
 
   return new Promise((resolve, reject) => {
-    execFile(
+    const child = execFile(
       py.cmd,
-      [...py.args, "-c", SYNC_SCRIPT, request],
+      [...py.args, "-c", SYNC_SCRIPT],
       {
         timeout: opts.timeoutMs ?? 15 * 60_000,
         maxBuffer: 16 * 1024 * 1024,
@@ -310,6 +356,8 @@ export async function runVolumeSync(opts: VolumeSyncOptions): Promise<VolumeSync
         resolve(result);
       }
     );
+    child.stdin.on("error", () => { /* process may exit before reading */ });
+    child.stdin.end(request);
   });
 }
 

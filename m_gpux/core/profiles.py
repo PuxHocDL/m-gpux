@@ -1,7 +1,7 @@
 """Modal profile management.
 
 This module centralises everything related to ``~/.modal.toml`` profiles so
-that plugins (account, billing, hub, serve, video, vision, …) all share the
+that plugins (account, billing, hub, serve, …) all share the
 same logic.
 
 The functions exposed here are the *public* API. Underscore-prefixed aliases
@@ -15,7 +15,6 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from datetime import datetime, timezone
 from typing import Optional
 
 import tomlkit
@@ -24,6 +23,9 @@ from m_gpux.core.console import console
 
 MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
 MONTHLY_CREDIT = 30.0
+# Below this many dollars of spendable credit, a manually picked account
+# triggers an offer to switch to the best account instead.
+LOW_CREDIT_THRESHOLD = 1.0
 
 
 # ─── Config I/O ────────────────────────────────────────────────
@@ -66,57 +68,105 @@ def load_profiles() -> list[tuple[str, bool]]:
 
 def _get_month_usage(token_id: str, token_secret: str) -> float:
     """Return the current month's usage cost in USD, or ``-1.0`` on failure."""
-    try:
-        from modal.billing import workspace_billing_report
-        from modal.client import Client
+    from m_gpux.core.billing import month_usage
 
-        now = datetime.now(timezone.utc)
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        client = Client.from_credentials(str(token_id), str(token_secret))
-        reports = workspace_billing_report(start=month_start, resolution="d", client=client)
-        return sum(float(r.get("cost", 0)) for r in reports)
-    except Exception:
-        return -1.0
+    return month_usage(token_id, token_secret)
 
 
 def get_best_profile() -> tuple[Optional[str], float]:
-    """Return ``(profile_name, remaining_credit)`` with the highest remaining
-    monthly credit, or ``(None, 0.0)`` when no usable profile is found.
+    """Return ``(profile_name, spendable)`` for the account with the most money
+    m-gpux may still spend this month (free credit, capped by any budget), or
+    ``(None, 0.0)`` when no usable profile is found.
     """
-    doc = load_config()
     best_name: Optional[str] = None
     best_remaining = 0.0
-    for p in doc:
-        token_id = doc[p].get("token_id")
-        token_secret = doc[p].get("token_secret")
-        if not token_id or not token_secret:
-            continue
-        used = _get_month_usage(token_id, token_secret)
-        if used < 0:
-            continue
-        remaining = MONTHLY_CREDIT - used
-        if remaining > best_remaining:
-            best_remaining = remaining
-            best_name = p
+    for name, used, remaining in get_all_balances():
+        if used >= 0 and remaining > best_remaining:
+            best_name, best_remaining = name, remaining
     return best_name, best_remaining
 
 
+def _profile_usage(doc, profile: str) -> Optional[float]:
+    token_id = doc[profile].get("token_id")
+    token_secret = doc[profile].get("token_secret")
+    if not token_id or not token_secret:
+        return None
+    return _get_month_usage(token_id, token_secret)
+
+
 def get_all_balances() -> list[tuple[str, float, float]]:
-    """Return ``[(profile, used, remaining)]`` sorted by ``remaining`` desc."""
+    """Return ``[(profile, used, spendable)]`` sorted by ``spendable`` desc.
+
+    ``spendable`` is the free credit left, or the budget left when a budget is
+    set (see :mod:`m_gpux.core.budget`). ``used == -1`` marks a failed lookup.
+    Accounts are queried in parallel.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from m_gpux.core.budget import load_budgets, spendable
+
     doc = load_config()
+    budgets = load_budgets()
+    names = list(doc.keys())
+    with ThreadPoolExecutor(max_workers=min(8, max(len(names), 1))) as pool:
+        usages = list(pool.map(lambda n: _profile_usage(doc, n), names))
+
     results: list[tuple[str, float, float]] = []
-    for p in doc:
-        token_id = doc[p].get("token_id")
-        token_secret = doc[p].get("token_secret")
-        if not token_id or not token_secret:
+    for name, used in zip(names, usages, strict=False):
+        if used is None:
             continue
-        used = _get_month_usage(token_id, token_secret)
         if used < 0:
-            results.append((p, -1, -1))
+            results.append((name, -1, -1))
         else:
-            results.append((p, used, max(MONTHLY_CREDIT - used, 0)))
+            results.append((name, used, spendable(name, used, MONTHLY_CREDIT, budgets)))
     results.sort(key=lambda x: x[2], reverse=True)
     return results
+
+
+def check_profile_credit(profile: str) -> Optional[str]:
+    """Warn when *profile* is nearly out of spendable credit and offer to switch.
+
+    Returns the profile to use (possibly a different one), or ``None`` if the
+    user declines both. Set ``MGPUX_SKIP_CREDIT_CHECK=1`` to skip the lookup.
+    """
+    if os.environ.get("MGPUX_SKIP_CREDIT_CHECK", "").strip() in ("1", "true", "yes"):
+        return profile
+    from rich.prompt import Prompt
+
+    from m_gpux.core.budget import budget_for, spendable
+
+    doc = load_config()
+    if profile not in doc:
+        return profile
+    used = _profile_usage(doc, profile)
+    if used is None or used < 0:
+        return profile
+    left = spendable(profile, used, MONTHLY_CREDIT)
+    if left >= LOW_CREDIT_THRESHOLD:
+        return profile
+
+    limit = budget_for(profile)
+    reason = f"budget ${limit:.2f}" if limit is not None else f"${MONTHLY_CREDIT:.0f} monthly credit"
+    console.print(
+        f"  [bold yellow]'{profile}' has only ${left:.2f} left this month (${used:.2f} used of {reason}).[/bold yellow]"
+    )
+    choice = Prompt.ask(
+        "  [bold cyan]s[/bold cyan] switch to the account with the most credit  •  "
+        "[bold cyan]c[/bold cyan] continue anyway  •  [bold cyan]q[/bold cyan] quit",
+        choices=["s", "c", "q"],
+        default="s",
+    )
+    if choice == "q":
+        return None
+    if choice == "c":
+        return profile
+    console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
+    best_name, best_remaining = get_best_profile()
+    if best_name is None or best_name == profile:
+        console.print("  [yellow]No account has more credit left — keeping the current one.[/yellow]")
+        return profile
+    console.print(f"  [bold green]Switched to {best_name} (${best_remaining:.2f} left)[/bold green]")
+    return best_name
 
 
 # ─── Interactive selection ─────────────────────────────────────
@@ -124,8 +174,23 @@ def get_all_balances() -> list[tuple[str, float, float]]:
 
 def select_profile() -> Optional[str]:
     """Interactive picker. Returns selected profile name, or ``None``."""
-    if os.environ.get("MODAL_PROFILE"):
-        return os.environ.get("MODAL_PROFILE")
+    modal_profile = os.environ.get("MODAL_PROFILE", "").strip()
+    if modal_profile:
+        # Modal profile names are case-sensitive, but people commonly type
+        # values such as ``tool1`` for a profile stored as ``Tool1``. Resolve
+        # the configured spelling before handing it to the Modal CLI.
+        profiles = load_profiles()
+        match = next(
+            (name for name, _ in profiles if name.casefold() == modal_profile.casefold()),
+            None,
+        )
+        resolved = match or modal_profile
+        # Child ``modal`` processes also consult MODAL_PROFILE. Keep the
+        # normalized configured spelling in the environment so activating
+        # ``Tool1`` is not later overridden by a user-supplied ``tool1``.
+        os.environ["MODAL_PROFILE"] = resolved
+        return resolved
+    env_profile = os.environ.get("MGPUX_PROFILE", "").strip()
     from m_gpux.core.ui import arrow_select  # local import: avoid cycles
 
     profiles = load_profiles()
@@ -136,9 +201,14 @@ def select_profile() -> Optional[str]:
         name, _ = profiles[0]
         console.print(f"  Using profile: [bold cyan]{name}[/bold cyan]")
         return name
+    if env_profile:
+        if env_profile in [name for name, _ in profiles]:
+            console.print(f"  Using profile from MGPUX_PROFILE: [bold cyan]{env_profile}[/bold cyan]")
+            return env_profile
+        console.print(f"[yellow]MGPUX_PROFILE={env_profile!r} not found, falling back to picker.[/yellow]")
 
     console.print("\n[bold cyan]Step 0: Select Workspace / Profile[/bold cyan]")
-    profile_options = [("AUTO", "Smart pick (most credit remaining)")]
+    profile_options = [("AUTO", "Smart pick (most credit / budget remaining)")]
     for name, is_active in profiles:
         marker = " (active)" if is_active else ""
         profile_options.append((name, f"Modal profile{marker}"))
@@ -156,22 +226,35 @@ def select_profile() -> Optional[str]:
 
     selected_name, _ = profiles[choice_idx - 1]
     console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
-    return selected_name
+    return check_profile_credit(selected_name)
 
 
-def activate_profile(profile_name: str) -> None:
-    """Activate the given profile via ``modal profile activate``."""
+def activate_profile(profile_name: str) -> bool:
+    """Activate *profile_name* via ``modal profile activate``.
+
+    Return ``False`` when activation fails so callers can stop instead of
+    accidentally continuing on whichever profile was active previously.
+    """
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
-    result = subprocess.run(
-        ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True, env=env,
-    )
-    if result.returncode != 0:
-        console.print(
-            f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]"
+    try:
+        result = subprocess.run(
+            ["modal", "profile", "activate", profile_name],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
         )
+    except OSError as exc:
+        console.print(f"[bold red]Could not run the Modal CLI: {exc}[/bold red]")
+        return False
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "unknown error").strip()
+        console.print(f"[bold red]Failed to activate profile '{profile_name}': {detail}[/bold red]")
+        return False
+    return True
 
 
 # ─── Token parsing ─────────────────────────────────────────────
@@ -183,9 +266,9 @@ def parse_modal_token_command(raw: str):
     Returns ``(token_id, token_secret, profile_or_None)`` or ``None`` when the
     command cannot be parsed.
     """
-    token_id_match = re.search(r'--token-id\s+(\S+)', raw)
-    token_secret_match = re.search(r'--token-secret\s+(\S+)', raw)
-    profile_match = re.search(r'--profile[=\s]+(\S+)', raw)
+    token_id_match = re.search(r"--token-id\s+(\S+)", raw)
+    token_secret_match = re.search(r"--token-secret\s+(\S+)", raw)
+    profile_match = re.search(r"--profile[=\s]+(\S+)", raw)
     if token_id_match and token_secret_match:
         return (
             token_id_match.group(1),

@@ -7,7 +7,7 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
-import { ensureMgpuxCli } from "./modalCli";
+import { ensureMgpuxCli, getCliTerminalEnvironment, getMgpuxTerminalCommand } from "./cliBootstrap";
 
 const COMPOSE_FILENAMES = ["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"];
 
@@ -24,9 +24,13 @@ function findComposeFile(): { dir: string; file: string } | undefined {
 }
 
 async function runInTerminal(label: string, cmd: string, cwd: string): Promise<void> {
-  const term = vscode.window.createTerminal({ name: `M-GPUX: ${label}`, cwd });
+  const term = vscode.window.createTerminal({
+    name: `M-GPUX: ${label}`,
+    cwd,
+    env: getCliTerminalEnvironment(),
+  });
   term.show(true);
-  term.sendText(cmd, true);
+  term.sendText(`${getMgpuxTerminalCommand()} ${cmd}`, true);
 }
 
 export async function composeCheck(): Promise<void> {
@@ -38,7 +42,7 @@ export async function composeCheck(): Promise<void> {
     );
     return;
   }
-  await runInTerminal("compose check", "m-gpux compose check", found.dir);
+  await runInTerminal("compose check", "compose check", found.dir);
 }
 
 export async function composeUp(): Promise<void> {
@@ -57,7 +61,7 @@ export async function composeUp(): Promise<void> {
     { title: "M-GPUX Compose — Deployment mode" }
   );
   if (!mode) { return; }
-  await runInTerminal(`compose ${(mode as any).value}`, `m-gpux compose ${(mode as any).value}`, found.dir);
+  await runInTerminal(`compose ${(mode as any).value}`, `compose ${(mode as any).value}`, found.dir);
 }
 
 export async function composeSandbox(): Promise<void> {
@@ -79,9 +83,13 @@ export async function composeSandbox(): Promise<void> {
     { title: "M-GPUX Compose Sandbox" }
   );
   if (!sub) { return; }
-  let cmd = `m-gpux compose sandbox ${sub.label}`;
+  let cmd = `compose sandbox ${sub.label}`;
   if (sub.label === "exec") {
-    const svc = await vscode.window.showInputBox({ title: "Service name", placeHolder: "web" });
+    const svc = await vscode.window.showInputBox({
+      title: "Service name",
+      placeHolder: "web",
+      validateInput: (value) => /^[A-Za-z0-9_.-]+$/.test(value) ? undefined : "Use only letters, numbers, '.', '_' or '-'.",
+    });
     if (!svc) { return; }
     cmd += ` ${svc}`;
   }

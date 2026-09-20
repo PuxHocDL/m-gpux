@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Tag to publish (e.g. v2.5.0). Leave blank to use the latest tag on main.'
-        required: false
+        description: 'Tag to publish (for example, v3.0.0)'
+        required: true
 
 permissions:
   contents: write
@@ -27,6 +27,11 @@ jobs:
         with:
           ref: ${{ github.event.inputs.ref }}
           fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -58,13 +63,13 @@ jobs:
 
       - name: Package VSIX
         working-directory: m-gpux-vscode
-        run: npx vsce package
+        run: npm run package
 
       - name: Publish to VS Code Marketplace
         working-directory: m-gpux-vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --packagePath m-gpux-*.vsix -p "$VSCE_PAT"
+        run: npm exec -- vsce publish --packagePath m-gpux-*.vsix -p "$VSCE_PAT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

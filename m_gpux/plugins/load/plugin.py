@@ -1,10 +1,7 @@
-﻿import typer
+import typer
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.live import Live
-from rich.layout import Layout
-from rich.text import Text
 import subprocess
 import json
 import time
@@ -17,7 +14,7 @@ console = Console()
 
 MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
 
-LOAD_SCRIPT = '''
+LOAD_SCRIPT = """
 import modal
 import subprocess
 import json
@@ -94,7 +91,7 @@ def collect_metrics():
     print("__METRICS_JSON_START__")
     print(json.dumps(metrics))
     print("__METRICS_JSON_END__")
-'''
+"""
 
 
 def _load_profiles():
@@ -194,13 +191,14 @@ def _render_metrics(metrics: dict, gpu_type: str, elapsed: float) -> Panel:
     st.add_row("Platform", f"{sys_info.get('platform', '')} {sys_info.get('platform_release', '')}")
     st.add_row("Architecture", str(sys_info.get("architecture", "N/A")))
     st.add_row("Python", str(sys_info.get("python_version", "N/A")))
-    st.add_row("Container Uptime", f"{uptime:.0f}s ({uptime/60:.1f} min)")
+    st.add_row("Container Uptime", f"{uptime:.0f}s ({uptime / 60:.1f} min)")
     st.add_row("Probe Round-trip", f"{elapsed:.1f}s")
     tables.append(st)
 
-    from rich.columns import Columns
     grid = Columns(tables, equal=True, expand=True)
-    return Panel(grid, title=f"[bold cyan]m-gpux load — {gpu_type}[/bold cyan]", border_style="bright_cyan", expand=True)
+    return Panel(
+        grid, title=f"[bold cyan]m-gpux load — {gpu_type}[/bold cyan]", border_style="bright_cyan", expand=True
+    )
 
 
 # Import the hub GPU/CPU lists so we stay in sync
@@ -209,14 +207,15 @@ from m_gpux.core import AVAILABLE_GPUS, AVAILABLE_CPUS
 
 @app.command("probe")
 def load_probe(
-    gpu: str = typer.Option(None, "--gpu", "-g", help="GPU type to probe (e.g. T4, A100, H100). If omitted, shows picker."),
+    gpu: str = typer.Option(
+        None, "--gpu", "-g", help="GPU type to probe (e.g. T4, A100, H100). If omitted, shows picker."
+    ),
     cpu: int = typer.Option(None, "--cpu", "-c", help="CPU cores to probe (e.g. 2, 4, 8). If set, probes CPU-only."),
 ):
     """
     Spin up a short-lived Modal container and report GPU, CPU, memory, disk,
     and timing metrics back to the terminal.
     """
-    from rich.prompt import Prompt
     from m_gpux.core.ui import arrow_select
 
     if gpu is None and cpu is None:
@@ -236,7 +235,7 @@ def load_probe(
                 cpu_options.append((f"{cores} cores", desc))
             cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
             selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
-            compute_spec = f'cpu={selected_cores}, memory={selected_memory}'
+            compute_spec = f"cpu={selected_cores}, memory={selected_memory}"
             compute_label = f"CPU ({selected_cores} cores, {selected_memory} MB)"
         else:
             # GPU mode
@@ -249,7 +248,7 @@ def load_probe(
     elif cpu is not None:
         # CPU specified via CLI flag
         memory = cpu * 512  # scale memory with cores
-        compute_spec = f'cpu={cpu}, memory={memory}'
+        compute_spec = f"cpu={cpu}, memory={memory}"
         compute_label = f"CPU ({cpu} cores, {memory} MB)"
     else:
         # GPU specified via CLI flag
@@ -268,7 +267,9 @@ def load_probe(
     try:
         result = subprocess.run(
             ["modal", "run", runner_file],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         elapsed = time.time() - t0
 
@@ -281,7 +282,7 @@ def load_probe(
             console.print()
             console.print(panel)
         else:
-            console.print(f"[bold red]Could not parse metrics from container output.[/bold red]")
+            console.print("[bold red]Could not parse metrics from container output.[/bold red]")
             if output.strip():
                 console.print(Panel(output.strip(), title="Raw Output", border_style="red"))
 

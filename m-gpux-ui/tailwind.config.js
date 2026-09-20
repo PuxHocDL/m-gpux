@@ -4,86 +4,66 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Warm pastel-orange brand scale
+        // Editorial emerald: inspired by modern registry/documentation sites.
         brand: {
-          50: "#FFF7ED",
-          100: "#FFEDD5",
-          200: "#FED7AA",
-          300: "#FDBA74",
-          400: "#FB923C",
-          500: "#F97316",
-          600: "#EA580C",
-          700: "#C2410C",
-          800: "#9A3412",
-          900: "#7C2D12",
+          50: "#EDF8F3",
+          100: "#D8EFE5",
+          200: "#B3DDCC",
+          300: "#7FC4AC",
+          400: "#35A27F",
+          500: "#007A5E",
+          600: "#00664F",
+          700: "#005240",
+          800: "#073F34",
+          900: "#0B332B",
         },
-        // Cream / warm-white surfaces
+        // Warm paper surfaces.
         cream: {
-          50: "#FFFCF8",
-          100: "#FFF8F1",
-          200: "#FFF1E6",
+          50: "#FBFAF6",
+          100: "#F5F4EE",
+          200: "#EAE8DE",
         },
-        // Warm ink text
         ink: {
-          DEFAULT: "#1C1917",
-          soft: "#44403C",
-          muted: "#78716C",
-          faint: "#A8A29E",
+          DEFAULT: "#181915",
+          soft: "#41443D",
+          muted: "#70736B",
+          faint: "#9A9D94",
         },
-        line: "#F6E6D6",
-        // Terminal palette (warm charcoal)
+        line: "#DEDDD4",
+        signal: {
+          lime: "#A8D5C0",
+          blue: "#9ECFC3",
+          violet: "#C7BFA8",
+        },
         term: {
-          bg: "#1B1714",
-          panel: "#221C18",
-          line: "#33291F",
-          text: "#E7E0D6",
-          dim: "#9C9286",
+          bg: "#073D2E",
+          panel: "#0B4937",
+          line: "#246B55",
+          text: "#F2F5EF",
+          dim: "#8DBBAA",
         },
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["Sora", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        display: ["Lora", "Georgia", "ui-serif", "serif"],
+        mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "monospace"],
       },
       boxShadow: {
-        soft: "0 1px 2px rgba(124,45,18,0.04), 0 8px 24px -12px rgba(234,88,12,0.18)",
-        card: "0 1px 0 rgba(255,255,255,0.6) inset, 0 10px 40px -16px rgba(234,88,12,0.25)",
-        glow: "0 0 0 1px rgba(251,146,60,0.25), 0 18px 60px -20px rgba(249,115,22,0.45)",
-        term: "0 30px 80px -30px rgba(124,45,18,0.45), 0 8px 24px -12px rgba(0,0,0,0.25)",
+        soft: "0 1px 2px rgba(18,45,36,0.04), 0 12px 30px -18px rgba(18,45,36,0.2)",
+        card: "0 1px 0 rgba(255,255,255,0.8) inset, 0 24px 70px -42px rgba(18,45,36,0.32)",
+        glow: "0 0 0 1px rgba(0,122,94,0.18), 0 22px 70px -28px rgba(0,122,94,0.42)",
+        term: "0 38px 90px -42px rgba(12,42,33,0.64), 0 8px 24px -14px rgba(12,42,33,0.38)",
       },
       backgroundImage: {
-        "brand-grad": "linear-gradient(120deg,#FB923C 0%,#F97316 45%,#FDBA74 100%)",
-        "brand-soft": "linear-gradient(160deg,#FFF7ED 0%,#FFFFFF 60%)",
+        "brand-grad": "linear-gradient(120deg,#168B6E 0%,#007A5E 52%,#35A27F 100%)",
       },
       keyframes: {
-        aurora: {
-          "0%,100%": { transform: "translate3d(0,0,0) scale(1)", opacity: "0.55" },
-          "50%": { transform: "translate3d(4%,-3%,0) scale(1.15)", opacity: "0.8" },
-        },
-        floaty: {
-          "0%,100%": { transform: "translateY(0)" },
-          "50%": { transform: "translateY(-10px)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "200% 0" },
-          "100%": { backgroundPosition: "-200% 0" },
-        },
-        "gradient-x": {
-          "0%,100%": { backgroundPosition: "0% 50%" },
-          "50%": { backgroundPosition: "100% 50%" },
-        },
         blink: { "0%,49%": { opacity: "1" }, "50%,100%": { opacity: "0" } },
         marquee: { "0%": { transform: "translateX(0)" }, "100%": { transform: "translateX(-50%)" } },
-        pop: { "0%": { transform: "scale(0.8)", opacity: "0" }, "100%": { transform: "scale(1)", opacity: "1" } },
       },
       animation: {
-        aurora: "aurora 14s ease-in-out infinite",
-        floaty: "floaty 6s ease-in-out infinite",
-        shimmer: "shimmer 2.4s linear infinite",
-        "gradient-x": "gradient-x 6s ease infinite",
         blink: "blink 1s step-end infinite",
         marquee: "marquee 28s linear infinite",
-        pop: "pop 0.25s ease-out",
       },
     },
   },

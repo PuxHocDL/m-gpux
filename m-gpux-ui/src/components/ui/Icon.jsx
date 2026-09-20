@@ -2,7 +2,6 @@ import {
   KeyRound,
   Cpu,
   Bookmark,
-  Image,
   Globe,
   Sparkles,
   Container,
@@ -13,13 +12,14 @@ import {
   Square,
   Radar,
   Zap,
+  Box,
+  PanelLeft,
 } from "lucide-react";
 
 const MAP = {
   KeyRound,
   Cpu,
   Bookmark,
-  Image,
   Globe,
   Sparkles,
   Container,
@@ -30,6 +30,8 @@ const MAP = {
   Square,
   Radar,
   Zap,
+  Box,
+  PanelLeft,
 };
 
 /** Icon — resolve a lucide icon by name (used by data-driven sections). */

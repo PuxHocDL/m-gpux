@@ -1,4 +1,4 @@
-﻿import typer
+import typer
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
@@ -6,13 +6,12 @@ import base64
 import hashlib
 import subprocess
 import os
-import sys
-import tomlkit
 from typing import Optional
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.ui import arrow_select
 from m_gpux.core.runner import execute_modal_temp_script
 from m_gpux.core.state import new_session_id, save_preset
+from m_gpux.core.modal_cli import deploy_cmd, modal_env
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -21,89 +20,28 @@ MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
 
 
 def _load_profiles():
-    """Load all profiles from ~/.modal.toml and return list of (name, is_active) tuples."""
-    if not os.path.exists(MODAL_CONFIG_PATH):
-        return []
-    with open(MODAL_CONFIG_PATH, "r", encoding="utf-8") as f:
-        doc = tomlkit.load(f)
-    profiles = []
-    for name in doc:
-        is_active = doc[name].get("active", False)
-        profiles.append((name, is_active))
-    return profiles
+    """Deprecated shim — use :func:`m_gpux.core.profiles.load_profiles`."""
+    from m_gpux.core.profiles import load_profiles
+
+    return load_profiles()
 
 
 def _select_profile() -> Optional[str]:
-    """Show interactive profile/workspace picker. Returns selected profile name or None."""
-    profiles = _load_profiles()
-    if not profiles:
-        console.print("[yellow]No Modal profiles found. Run `m-gpux account add` to configure.[/yellow]")
-        return None
-    if len(profiles) == 1:
-        name, _ = profiles[0]
-        console.print(f"  Using profile: [bold cyan]{name}[/bold cyan]")
-        return name
+    """Shim over :func:`m_gpux.core.profiles.select_profile` (AUTO, budgets, low-credit switch)."""
+    from m_gpux.core.profiles import select_profile
 
-    console.print("\n[bold cyan]Step 0: Select Workspace / Profile[/bold cyan]")
-    profile_options = [("AUTO", "Smart pick (most credit remaining)")]
-    for name, is_active in profiles:
-        marker = " (active)" if is_active else ""
-        profile_options.append((name, f"Modal profile{marker}"))
-
-    choice_idx = arrow_select(profile_options, title="Select Workspace", default=0)
-
-    if choice_idx == 0:
-        from m_gpux.core.profiles import get_best_profile
-        console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
-        best_name, best_remaining = get_best_profile()
-        if best_name is None:
-            console.print("[bold red]Could not determine best profile. Pick manually.[/bold red]")
-            return None
-        console.print(f"  [bold green]Auto-selected: {best_name} (${best_remaining:.2f} remaining)[/bold green]")
-        return best_name
-
-    selected_name, _ = profiles[choice_idx - 1]
-    console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
-    return selected_name
+    return select_profile()
 
 
 def _activate_profile(profile_name: str):
-    """Activate the given profile via `modal profile activate`."""
-    env = os.environ.copy()
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
-    result = subprocess.run(
-        ["modal", "profile", "activate", profile_name],
-        capture_output=True, text=True, env=env,
-    )
-    if result.returncode != 0:
-        console.print(f"[bold red]Failed to activate profile '{profile_name}': {result.stderr.strip()}[/bold red]")
+    """Shim over :func:`m_gpux.core.profiles.activate_profile`."""
+    from m_gpux.core.profiles import activate_profile
 
-AVAILABLE_GPUS = {
-    "1":  ("T4",            "Light inference/exploration (16GB)"),
-    "2":  ("L4",            "Balance of cost/performance (24GB)"),
-    "3":  ("A10G",          "Good alternative for training/inference (24GB)"),
-    "4":  ("L40S",          "Ada Lovelace, great for inference (48GB)"),
-    "5":  ("A100",          "High performance (40GB, default SXM)"),
-    "6":  ("A100-40GB",     "Ampere 40GB variant"),
-    "7":  ("A100-80GB",     "Extreme performance (80GB)"),
-    "8":  ("RTX-PRO-6000",   "RTX PRO 6000 — pro workstation GPU (48GB)"),
-    "9":  ("H100",          "Hopper architecture (80GB)"),
-    "10": ("H100!",         "H100 priority/reserved — guaranteed availability"),
-    "11": ("H200",          "Next-gen Hopper with HBM3e (141GB)"),
-    "12": ("B200",          "Blackwell architecture — latest gen"),
-    "13": ("B200+",         "B200 priority/reserved — guaranteed availability"),
-}
+    return activate_profile(profile_name)
 
-AVAILABLE_CPUS = {
-    "1":  (1,   512,    "1 core, 512 MB — minimal testing"),
-    "2":  (2,   1024,   "2 cores, 1 GB — light models"),
-    "3":  (4,   2048,   "4 cores, 2 GB — small models"),
-    "4":  (8,   4096,   "8 cores, 4 GB — medium models"),
-    "5":  (16,  8192,   "16 cores, 8 GB — larger models"),
-    "6":  (32,  16384,  "32 cores, 16 GB — large models"),
-    "7":  (64,  32768,  "64 cores, 32 GB — max performance"),
-}
+
+from m_gpux.core.gpus import AVAILABLE_CPUS, AVAILABLE_GPUS, GPU_MAX_COUNT  # noqa: E402
+from m_gpux.core.images import apply_base_image, pick_published_image  # noqa: E402
 
 AVAILABLE_PYTHON_VERSIONS = [
     ("3.12", "Default, broadly compatible"),
@@ -179,6 +117,7 @@ def _select_python_version() -> str:
                 console.print(f"[green]Python version: [bold]{custom}[/bold][/green]")
                 return custom
         console.print("[bold red]Please enter a version like 3.12 or 3.13.[/bold red]")
+
 
 JUPYTER_SCRIPT = """
 import modal
@@ -304,7 +243,7 @@ def run_script():
 # about Dockerfile heredoc parsing or CRLF line-endings in modal_runner.py.
 #
 # Stack: a VS Code-like direct Bash shell, plus optional tmux/fzf/bat/fd/rg/btop.
-_BASHRC = r'''
+_BASHRC = r"""
 # ---------- env ----------
 export TERM=xterm-256color
 export LANG=C.UTF-8
@@ -371,7 +310,7 @@ if [ -z "$M_GPUX_WELCOMED" ] && [ -t 1 ]; then
     printf "CPU: %s cores   RAM: %s   WD: /workspace\n" "${_cpu:-?}" "${_mem:-?}"
     printf "${_DIM}Tools: ll, py, gpus, rg, fd, top.  Inside tmux 'main' — Ctrl+B then D detaches; close & reopen URL to reattach.${_R}\n\n"
 fi
-'''
+"""
 
 # Catppuccin Mocha-flavored Starship prompt config.
 _STARSHIP_TOML = r'''
@@ -432,7 +371,7 @@ error_symbol = "[\u276f](bold #f38ba8)"
 '''
 
 # Catppuccin Mocha-flavored tmux config.
-_TMUX_CONF = r'''
+_TMUX_CONF = r"""
 set -g default-terminal "xterm-256color"
 set -ga terminal-overrides ",xterm-256color:Tc"
 set -as terminal-features ",xterm-256color:RGB"
@@ -472,33 +411,55 @@ setw -g window-status-current-format "#[bg=#cba6f7,fg=#1e1e2e,bold] #I:#W #[bg=#
 set -g pane-border-style "fg=#313244"
 set -g pane-active-border-style "fg=#cba6f7"
 set -g message-style "bg=#cba6f7,fg=#1e1e2e,bold"
-'''
+"""
 
 # ttyd web terminal: VS Code-like defaults tuned for clean repaints.
 _TTYD_FLAGS = [
-    "-W",                # writable
-    "-P", "120",         # reduce websocket heartbeat churn while keeping reconnects healthy
-    "-t", "fontSize=14",
-    "-t", "fontFamily=Cascadia Mono, Consolas, Menlo, monospace",
-    "-t", "fontWeight=400",
-    "-t", "fontWeightBold=700",
-    "-t", "lineHeight=1.2",
-    "-t", "letterSpacing=0",
-    "-t", "cursorStyle=bar",
-    "-t", "cursorBlink=true",
-    "-t", "scrollback=10000",
-    "-t", "scrollSensitivity=1",
-    "-t", "rendererType=canvas",
-    "-t", "customGlyphs=true",
-    "-t", "rescaleOverlappingGlyphs=true",
-    "-t", "drawBoldTextInBrightColors=false",
-    "-t", "smoothScrollDuration=125",
-    "-t", "fastScrollModifier=alt",
-    "-t", "fastScrollSensitivity=10",
-    "-t", "disableResizeOverlay=true",
-    "-t", "macOptionIsMeta=true",
-    "-t", 'theme={"background":"#1e1e2e","foreground":"#cdd6f4","cursor":"#f5e0dc","cursorAccent":"#1e1e2e","selectionBackground":"#585b70","black":"#45475a","red":"#f38ba8","green":"#a6e3a1","yellow":"#f9e2af","blue":"#89b4fa","magenta":"#f5c2e7","cyan":"#94e2d5","white":"#bac2de","brightBlack":"#585b70","brightRed":"#f38ba8","brightGreen":"#a6e3a1","brightYellow":"#f9e2af","brightBlue":"#89b4fa","brightMagenta":"#f5c2e7","brightCyan":"#94e2d5","brightWhite":"#a6adc8"}',
-    "-T", "xterm-256color",
+    "-W",  # writable
+    "-P",
+    "120",  # reduce websocket heartbeat churn while keeping reconnects healthy
+    "-t",
+    "fontSize=14",
+    "-t",
+    "fontFamily=Cascadia Mono, Consolas, Menlo, monospace",
+    "-t",
+    "fontWeight=400",
+    "-t",
+    "fontWeightBold=700",
+    "-t",
+    "lineHeight=1.2",
+    "-t",
+    "letterSpacing=0",
+    "-t",
+    "cursorStyle=bar",
+    "-t",
+    "cursorBlink=true",
+    "-t",
+    "scrollback=10000",
+    "-t",
+    "scrollSensitivity=1",
+    "-t",
+    "rendererType=canvas",
+    "-t",
+    "customGlyphs=true",
+    "-t",
+    "rescaleOverlappingGlyphs=true",
+    "-t",
+    "drawBoldTextInBrightColors=false",
+    "-t",
+    "smoothScrollDuration=125",
+    "-t",
+    "fastScrollModifier=alt",
+    "-t",
+    "fastScrollSensitivity=10",
+    "-t",
+    "disableResizeOverlay=true",
+    "-t",
+    "macOptionIsMeta=true",
+    "-t",
+    'theme={"background":"#1e1e2e","foreground":"#cdd6f4","cursor":"#f5e0dc","cursorAccent":"#1e1e2e","selectionBackground":"#585b70","black":"#45475a","red":"#f38ba8","green":"#a6e3a1","yellow":"#f9e2af","blue":"#89b4fa","magenta":"#f5c2e7","cyan":"#94e2d5","white":"#bac2de","brightBlack":"#585b70","brightRed":"#f38ba8","brightGreen":"#a6e3a1","brightYellow":"#f9e2af","brightBlue":"#89b4fa","brightMagenta":"#f5c2e7","brightCyan":"#94e2d5","brightWhite":"#a6adc8"}',
+    "-T",
+    "xterm-256color",
 ]
 
 
@@ -516,7 +477,7 @@ def _workspace_volume_name(local_dir: str) -> str:
     base = os.path.basename(root.rstrip("\\/")) or "workspace"
     slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in base)
     slug = "-".join(part for part in slug.split("-") if part)[:32] or "workspace"
-    digest = hashlib.sha1(root.encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.sha1(root.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
     return f"m-gpux-workspace-{slug}-{digest}"
 
 
@@ -576,6 +537,7 @@ def _maybe_save_workload_preset(
     )
     console.print(f"[green]Saved preset:[/green] [bold]{name}[/bold]")
     return name
+
 
 INTERACTIVE_SCRIPT = """
 import base64
@@ -806,25 +768,30 @@ def serve():
 def hub_main():
     """
     Launch the M-GPUX Interactive Provisioning Hub.
-    
-    This command initiates a wizard-like CLI interface that allows you to easily 
+
+    This command initiates a wizard-like CLI interface that allows you to easily
     select compute resources (GPU or CPU) and deploy your workloads entirely serverless.
-    
+
     Features:
     - Jupyter Notebook instances with auto-tunneling
     - Automatic Workspace File Mounting for Python scripts
     - Web-based Bash Shells
     """
-        
-    console.print(Panel.fit("[bold magenta]m-gpux Compute Hub[/bold magenta]\n"
-                            "Allocate powerful compute in seconds.", border_style="cyan"))
+
+    console.print(
+        Panel.fit(
+            "[bold magenta]m-gpux Compute Hub[/bold magenta]\nAllocate powerful compute in seconds.",
+            border_style="cyan",
+        )
+    )
 
     # --- Step 0: Workspace / Profile selection ---
     selected_profile = _select_profile()
     if selected_profile is None:
         raise typer.Exit(1)
-    _activate_profile(selected_profile)
-    
+    if not _activate_profile(selected_profile):
+        raise typer.Exit(1)
+
     # --- Step 1: Compute Type ---
     console.print("\n[bold cyan]Step 1: Choose Compute Type[/bold cyan]")
     compute_type_options = [
@@ -832,7 +799,7 @@ def hub_main():
         ("CPU", "CPU-only (cheaper, good for light tasks or small models)"),
     ]
     compute_type_idx = arrow_select(compute_type_options, title="Compute Type", default=0)
-    use_cpu = (compute_type_idx == 1)
+    use_cpu = compute_type_idx == 1
     gpu_count = 1  # GPUs per container; bumped below for GPU workloads.
 
     if use_cpu:
@@ -845,7 +812,7 @@ def hub_main():
             cpu_options.append((f"{cores} cores", desc))
         cpu_idx = arrow_select(cpu_options, title="Select CPU", default=3)
         selected_cores, selected_memory, _ = AVAILABLE_CPUS[cpu_keys[cpu_idx]]
-        compute_spec = f'cpu={selected_cores}, memory={selected_memory}'
+        compute_spec = f"cpu={selected_cores}, memory={selected_memory}"
         compute_label = f"CPU ({selected_cores} cores, {selected_memory} MB)"
         console.print(f"\n[green]You selected: [bold]{compute_label}[/bold][/green]")
     else:
@@ -853,7 +820,7 @@ def hub_main():
         gpu_options = [(v[0], v[1]) for v in AVAILABLE_GPUS.values()]
         gpu_idx = arrow_select(gpu_options, title="Select GPU", default=1)
         selected_gpu = list(AVAILABLE_GPUS.values())[gpu_idx][0]
-        gpu_count = _select_gpu_count()
+        gpu_count = _select_gpu_count(GPU_MAX_COUNT.get(selected_gpu, 8))
         if gpu_count > 1:
             compute_spec = f'gpu="{selected_gpu}:{gpu_count}"'
             compute_label = f"{selected_gpu} x{gpu_count}"
@@ -861,7 +828,7 @@ def hub_main():
             compute_spec = f'gpu="{selected_gpu}"'
             compute_label = selected_gpu
         console.print(f"\n[green]You selected: [bold]{compute_label}[/bold][/green]")
-    
+
     console.print("\n[bold cyan]Step 2: Choose Application[/bold cyan]")
     action_options = [
         ("Jupyter Notebook", "Interactive lab session"),
@@ -872,23 +839,23 @@ def hub_main():
     action_idx = arrow_select(action_options, title="Select Action", default=0)
     action_choice = str(action_idx + 1)
     python_version = _select_python_version()
-    
+    # vLLM uses its own CUDA image; other actions can start from a published image.
+    base_image = None if action_choice == "4" else pick_published_image(selected_profile, python_version)
+
     if action_choice == "1":
         # --- Environment Setup ---
         console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
-                "[green]Found requirements.txt.[/green] Install dependencies from it?",
-                choices=["y", "n"], default="y"
+                "[green]Found requirements.txt.[/green] Install dependencies from it?", choices=["y", "n"], default="y"
             )
             if use_req == "y":
                 req_escaped = os.path.abspath("requirements.txt").replace("\\", "/")
                 pip_section = f'.pip_install_from_requirements("{req_escaped}")'
         else:
             specify_req = Prompt.ask(
-                "No requirements.txt found. Specify a custom path?",
-                choices=["y", "n"], default="n"
+                "No requirements.txt found. Specify a custom path?", choices=["y", "n"], default="n"
             )
             if specify_req == "y":
                 req_input = Prompt.ask("Enter path to requirements.txt")
@@ -908,7 +875,7 @@ def hub_main():
             else:
                 size = os.path.getsize(entry)
                 if size > 1024 * 1024:
-                    size_str = f" ({size / (1024*1024):.1f} MB)"
+                    size_str = f" ({size / (1024 * 1024):.1f} MB)"
                 elif size > 1024:
                     size_str = f" ({size / 1024:.1f} KB)"
                 else:
@@ -918,7 +885,7 @@ def hub_main():
         default_excludes = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox"
         exclude_input = Prompt.ask(
             "\n[bold cyan]Comma-separated patterns to exclude from upload (glob supported)[/bold cyan]",
-            default=default_excludes
+            default=default_excludes,
         )
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
 
@@ -935,7 +902,8 @@ def hub_main():
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
-        script = (JUPYTER_SCRIPT
+        script = (
+            apply_base_image(JUPYTER_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
@@ -943,7 +911,8 @@ def hub_main():
             .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
             .replace("{pip_section}", pip_section)
             .replace("{min_containers}", min_containers)
-            .replace("{scaledown_window}", scaledown_window))
+            .replace("{scaledown_window}", scaledown_window)
+        )
         execute_modal_temp_script(
             script,
             f"Jupyter Lab on {compute_label} ({persistence_label})",
@@ -959,7 +928,7 @@ def hub_main():
                 preset=preset_name,
             ),
         )
-        
+
     elif action_choice == "2":
         # Scan current dir for .py files
         files = [f for f in os.listdir(".") if f.endswith(".py")]
@@ -967,26 +936,24 @@ def hub_main():
         if not os.path.exists(script_path):
             console.print(f"[bold red]File {script_path} does not exist![/bold red]")
             raise typer.Exit(1)
-            
+
         with open(script_path, "r", encoding="utf-8") as rf:
             script_content = rf.read()
         console.print(f"[dim]Loaded {script_path} ({len(script_content)} chars).[/dim]")
-        
+
         # --- Step 4: requirements.txt support ---
         console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
-                "[green]Found requirements.txt.[/green] Install dependencies from it?",
-                choices=["y", "n"], default="y"
+                "[green]Found requirements.txt.[/green] Install dependencies from it?", choices=["y", "n"], default="y"
             )
             if use_req == "y":
                 req_escaped = os.path.abspath("requirements.txt").replace("\\", "/")
                 pip_section = f'.pip_install_from_requirements("{req_escaped}")'
         else:
             specify_req = Prompt.ask(
-                "No requirements.txt found. Specify a custom path?",
-                choices=["y", "n"], default="n"
+                "No requirements.txt found. Specify a custom path?", choices=["y", "n"], default="n"
             )
             if specify_req == "y":
                 req_input = Prompt.ask("Enter path to requirements.txt")
@@ -995,11 +962,11 @@ def hub_main():
                     pip_section = f'.pip_install_from_requirements("{req_escaped}")'
                 else:
                     console.print(f"[bold red]File {req_input} not found. Using default packages.[/bold red]")
-        
+
         # --- Step 5: File upload selection ---
         console.print("\n[bold cyan]Step 5: Configure File Upload[/bold cyan]")
         console.print("[dim]Files and directories in current workspace:[/dim]")
-        
+
         entries = sorted(os.listdir("."))
         for entry in entries:
             if os.path.isdir(entry):
@@ -1007,30 +974,33 @@ def hub_main():
             else:
                 size = os.path.getsize(entry)
                 if size > 1024 * 1024:
-                    size_str = f" ({size / (1024*1024):.1f} MB)"
+                    size_str = f" ({size / (1024 * 1024):.1f} MB)"
                 elif size > 1024:
                     size_str = f" ({size / 1024:.1f} KB)"
                 else:
                     size_str = ""
                 console.print(f"  {entry}{size_str}")
-        
+
         default_excludes = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox"
         exclude_input = Prompt.ask(
             "\n[bold cyan]Comma-separated patterns to exclude from upload (glob supported)[/bold cyan]",
-            default=default_excludes
+            default=default_excludes,
         )
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
-        
+
         # --- Step 6: Detect interactive input() calls ---
         import re as _re
-        input_matches = _re.findall(r'input\s*\(', script_content)
-        
+
+        input_matches = _re.findall(r"input\s*\(", script_content)
+
         local_dir_escaped = os.path.abspath(".").replace("\\", "/")
         workspace_volume = _workspace_volume_name(".")
         base_script_name = os.path.basename(script_path)
-        
+
         if input_matches:
-            console.print(f"\n[bold yellow]Warning:[/bold yellow] Your script contains [bold]{len(input_matches)}[/bold] `input()` call(s).")
+            console.print(
+                f"\n[bold yellow]Warning:[/bold yellow] Your script contains [bold]{len(input_matches)}[/bold] `input()` call(s)."
+            )
             console.print("[dim]Modal containers have no interactive stdin.[/dim]")
             console.print("\n[bold cyan]How would you like to handle this?[/bold cyan]")
             input_options = [
@@ -1040,9 +1010,10 @@ def hub_main():
             ]
             handle_idx = arrow_select(input_options, title="Handle input() calls", default=0)
             handle_choice = str(handle_idx + 1)
-            
+
             if handle_choice == "1":
-                script = (INTERACTIVE_SCRIPT
+                script = (
+                    apply_base_image(INTERACTIVE_SCRIPT, base_image)
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
                     .replace("{python_version}", python_version)
@@ -1054,7 +1025,8 @@ def hub_main():
                     .replace("{bashrc_b64}", _b64(_BASHRC))
                     .replace("{tmux_b64}", _b64(_TMUX_CONF))
                     .replace("{starship_b64}", _b64(_STARSHIP_TOML))
-                    .replace("{ttyd_flags}", repr(_TTYD_FLAGS)))
+                    .replace("{ttyd_flags}", repr(_TTYD_FLAGS))
+                )
                 preset_name = _maybe_save_workload_preset(
                     action="interactive",
                     profile=selected_profile,
@@ -1081,13 +1053,16 @@ def hub_main():
                 )
                 return
             elif handle_choice == "2":
-                console.print(f"[dim]Enter {len(input_matches)} response(s), one per input() call. Press Enter after each.[/dim]")
+                console.print(
+                    f"[dim]Enter {len(input_matches)} response(s), one per input() call. Press Enter after each.[/dim]"
+                )
                 responses = []
                 for i in range(len(input_matches)):
-                    resp = Prompt.ask(f"  Response #{i+1}")
+                    resp = Prompt.ask(f"  Response #{i + 1}")
                     responses.append(resp)
                 stdin_input_repr = repr("\n".join(responses) + "\n")
-                script = (WRAPPER_SCRIPT
+                script = (
+                    apply_base_image(WRAPPER_SCRIPT, base_image)
                     .replace("{compute_spec}", compute_spec)
                     .replace("{compute_label}", compute_label)
                     .replace("{python_version}", python_version)
@@ -1095,12 +1070,14 @@ def hub_main():
                     .replace("{script_name}", base_script_name)
                     .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
                     .replace("{pip_section}", pip_section)
-                    .replace("{stdin_input}", stdin_input_repr))
+                    .replace("{stdin_input}", stdin_input_repr)
+                )
                 execute_modal_temp_script(script, f"Script {script_path} on {compute_label}")
                 return
             # else: handle_choice == "3", fall through to normal run
-        
-        script = (WRAPPER_SCRIPT
+
+        script = (
+            apply_base_image(WRAPPER_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{compute_label}", compute_label)
             .replace("{python_version}", python_version)
@@ -1108,25 +1085,24 @@ def hub_main():
             .replace("{script_name}", base_script_name)
             .replace("{exclude_patterns}", repr(to_recursive_ignore(exclude_patterns)))
             .replace("{pip_section}", pip_section)
-            .replace("{stdin_input}", "None"))
+            .replace("{stdin_input}", "None")
+        )
         execute_modal_temp_script(script, f"Script {script_path} on {compute_label}")
-        
+
     elif action_choice == "3":
         # --- Environment Setup ---
         console.print("\n[bold cyan]Step 4: Environment Setup[/bold cyan]")
         pip_section = '.pip_install(\n    "torch", "numpy", "pandas"\n)'
         if os.path.exists("requirements.txt"):
             use_req = Prompt.ask(
-                "[green]Found requirements.txt.[/green] Install dependencies from it?",
-                choices=["y", "n"], default="y"
+                "[green]Found requirements.txt.[/green] Install dependencies from it?", choices=["y", "n"], default="y"
             )
             if use_req == "y":
                 req_escaped = os.path.abspath("requirements.txt").replace("\\", "/")
                 pip_section = f'.pip_install_from_requirements("{req_escaped}")'
         else:
             specify_req = Prompt.ask(
-                "No requirements.txt found. Specify a custom path?",
-                choices=["y", "n"], default="n"
+                "No requirements.txt found. Specify a custom path?", choices=["y", "n"], default="n"
             )
             if specify_req == "y":
                 req_input = Prompt.ask("Enter path to requirements.txt")
@@ -1146,7 +1122,7 @@ def hub_main():
             else:
                 size = os.path.getsize(entry)
                 if size > 1024 * 1024:
-                    size_str = f" ({size / (1024*1024):.1f} MB)"
+                    size_str = f" ({size / (1024 * 1024):.1f} MB)"
                 elif size > 1024:
                     size_str = f" ({size / 1024:.1f} KB)"
                 else:
@@ -1156,7 +1132,7 @@ def hub_main():
         default_excludes = ".venv,venv,__pycache__,.git,node_modules,.mypy_cache,.pytest_cache,*.egg-info,.tox"
         exclude_input = Prompt.ask(
             "\n[bold cyan]Comma-separated patterns to exclude from upload (glob supported)[/bold cyan]",
-            default=default_excludes
+            default=default_excludes,
         )
         exclude_patterns = [p.strip() for p in exclude_input.split(",") if p.strip()]
 
@@ -1171,7 +1147,8 @@ def hub_main():
             pip_section=pip_section,
             exclude_patterns=exclude_patterns,
         )
-        script = (BASH_SCRIPT
+        script = (
+            apply_base_image(BASH_SCRIPT, base_image)
             .replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
             .replace("{local_dir}", local_dir_escaped)
@@ -1181,7 +1158,8 @@ def hub_main():
             .replace("{bashrc_b64}", _b64(_BASHRC))
             .replace("{tmux_b64}", _b64(_TMUX_CONF))
             .replace("{starship_b64}", _b64(_STARSHIP_TOML))
-            .replace("{ttyd_flags}", repr(_TTYD_FLAGS)))
+            .replace("{ttyd_flags}", repr(_TTYD_FLAGS))
+        )
         execute_modal_temp_script(
             script,
             f"Web Bash Shell on {compute_label}",
@@ -1197,70 +1175,82 @@ def hub_main():
                 preset=preset_name,
             ),
         )
-        
+
     elif action_choice == "4":
         models = {
             "1": ("Qwen/Qwen2.5-1.5B-Instruct", "Tiny 1.5B — T4/L4 friendly, fast"),
-            "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10G/A100, good quality"),
-            "3": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 8B — A10G/A100"),
-            "4": ("google/gemma-2-9b-it", "Gemma 9B — A10G/A100"),
-            "5": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10G/A100"),
+            "2": ("Qwen/Qwen2.5-7B-Instruct", "7B — A10/A100, good quality"),
+            "3": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 8B — A10/A100"),
+            "4": ("google/gemma-2-9b-it", "Gemma 9B — A10/A100"),
+            "5": ("mistralai/Mistral-7B-Instruct-v0.3", "Mistral 7B — A10/A100"),
         }
         model_options = [(name, desc) for name, desc in models.values()]
         model_idx = arrow_select(model_options, title="Select model to serve", default=0)
         selected_model = list(models.values())[model_idx][0]
-        
-        script = (VLLM_SCRIPT
-            .replace("{compute_spec}", compute_spec)
+
+        script = (
+            VLLM_SCRIPT.replace("{compute_spec}", compute_spec)
             .replace("{python_version}", python_version)
             .replace("{model_name}", selected_model)
-            .replace("{tensor_parallel}", str(gpu_count)))
-        
-        console.print(Panel(
-            f"[bold]After deploying, you'll get an OpenAI-compatible URL like:[/bold]\n"
-            f"  https://<workspace>--m-gpux-vllm-serve.modal.run\n\n"
-            f"[bold cyan]To connect OpenClaw, add to ~/.openclaw/openclaw.json:[/bold cyan]\n"
-            f'  {{\n'
-            f'    "agent": {{\n'
-            f'      "model": "openai-compatible/{selected_model}"\n'
-            f'    }},\n'
-            f'    "providers": {{\n'
-            f'      "openai-compatible": {{\n'
-            f'        "baseUrl": "https://<workspace>--m-gpux-vllm-serve.modal.run/v1"\n'
-            f'      }}\n'
-            f'    }}\n'
-            f'  }}\n\n'
-            f"[dim]Replace <workspace> with your Modal workspace name.[/dim]\n"
-            f"[dim]Use `modal deploy modal_runner.py` instead of `modal run` for persistent serving.[/dim]",
-            title="OPENCLAW INTEGRATION", border_style="magenta"
-        ))
-        
+            .replace("{tensor_parallel}", str(gpu_count))
+        )
+
+        console.print(
+            Panel(
+                f"[bold]After deploying, you'll get an OpenAI-compatible URL like:[/bold]\n"
+                f"  https://<workspace>--m-gpux-vllm-serve.modal.run\n\n"
+                f"[bold cyan]To connect OpenClaw, add to ~/.openclaw/openclaw.json:[/bold cyan]\n"
+                f"  {{\n"
+                f'    "agent": {{\n'
+                f'      "model": "openai-compatible/{selected_model}"\n'
+                f"    }},\n"
+                f'    "providers": {{\n'
+                f'      "openai-compatible": {{\n'
+                f'        "baseUrl": "https://<workspace>--m-gpux-vllm-serve.modal.run/v1"\n'
+                f"      }}\n"
+                f"    }}\n"
+                f"  }}\n\n"
+                f"[dim]Replace <workspace> with your Modal workspace name.[/dim]\n"
+                f"[dim]Use `modal deploy modal_runner.py` instead of `modal run` for persistent serving.[/dim]",
+                title="OPENCLAW INTEGRATION",
+                border_style="magenta",
+            )
+        )
+
         deploy_options = [
             ("deploy", "Persistent deployment (recommended for serving)"),
             ("run", "One-time run (stops when terminal closes)"),
         ]
         deploy_idx = arrow_select(deploy_options, title="Deploy mode", default=0)
         deploy_mode = deploy_options[deploy_idx][0]
-        
+
         if deploy_mode == "deploy":
             script = script.replace("# __METRICS__", _METRICS_FUNCTIONS)
             runner_file = "modal_runner.py"
             with open(runner_file, "w", encoding="utf-8") as f:
                 f.write(script)
-            console.print(f"[dim]Wrote {runner_file}. Edit it before deploying if needed (set MGPUX_VERBOSE=1 to print the source).[/dim]")
+            console.print(
+                f"[dim]Wrote {runner_file}. Edit it before deploying if needed (set MGPUX_VERBOSE=1 to print the source).[/dim]"
+            )
             if os.environ.get("MGPUX_VERBOSE", "").strip() in ("1", "true", "yes"):
                 from rich.syntax import Syntax
+
                 console.print(Syntax(script, "python", theme="monokai", line_numbers=True))
 
             choice = Prompt.ask("[bold cyan][Enter][/bold cyan] deploy  •  [bold cyan]c[/bold cyan] cancel", default="")
             if choice.strip().lower() in ("c", "cancel"):
                 console.print("[yellow]Cancelled.[/yellow]")
                 return
-            
+
             console.print(f"[bold green]Deploying vLLM server with {selected_model} on {compute_label}...[/bold green]")
             try:
-                subprocess.run(["modal", "deploy", runner_file])
-                console.print("\n[green]vLLM deployed. When done, stop with:[/green] [bold yellow]m-gpux stop[/bold yellow]")
+                result = subprocess.run(deploy_cmd(runner_file), env=modal_env(selected_profile))
+                if result.returncode != 0:
+                    console.print(f"[red]modal deploy failed (exit {result.returncode}).[/red]")
+                    raise typer.Exit(result.returncode)
+                console.print(
+                    "\n[green]vLLM deployed. When done, stop with:[/green] [bold yellow]m-gpux stop[/bold yellow]"
+                )
             except KeyboardInterrupt:
                 console.print("\n[yellow]Interrupted.[/yellow]")
         else:

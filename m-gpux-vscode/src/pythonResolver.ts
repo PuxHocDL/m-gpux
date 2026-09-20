@@ -35,6 +35,7 @@ export interface PythonInterpreter {
 
 let cachedInterpreter: PythonInterpreter | undefined;
 let cachePromise: Promise<PythonInterpreter | undefined> | undefined;
+let managedPythonPath: string | undefined;
 
 function probeInterpreter(cmd: string, args: string[]): Promise<PythonInterpreter | undefined> {
   return new Promise((resolve) => {
@@ -78,7 +79,17 @@ export async function resolvePython(forceRefresh = false): Promise<PythonInterpr
       }
     }
 
-    // 2. Walk candidates
+    // 2. Prefer the interpreter owned by the extension's managed CLI. It has
+    // both m-gpux and modal installed and does not depend on the user's PATH.
+    if (managedPythonPath) {
+      const probed = await probeInterpreter(managedPythonPath, []);
+      if (probed?.hasModal) {
+        cachedInterpreter = probed;
+        return probed;
+      }
+    }
+
+    // 3. Walk candidates
     const candidates = os.platform() === "win32" ? TEST_CANDIDATES_WIN : TEST_CANDIDATES_UNIX;
     let firstUsable: PythonInterpreter | undefined;
     for (const c of candidates) {
@@ -99,6 +110,36 @@ export async function resolvePython(forceRefresh = false): Promise<PythonInterpr
   } finally {
     cachePromise = undefined;
   }
+}
+
+/**
+ * Find any Python new enough to create the extension-managed m-gpux venv.
+ * Unlike resolvePython(), this deliberately does not require `modal`: the
+ * bootstrap process installs modal as an m-gpux dependency.
+ */
+export async function resolveBootstrapPython(): Promise<PythonInterpreter | undefined> {
+  const cfg = vscode.workspace.getConfiguration("mgpux");
+  const userPath = (cfg.get<string>("pythonPath") ?? "").trim();
+  const candidates = [
+    ...(userPath ? [{ cmd: userPath, args: [] as string[] }] : []),
+    ...(os.platform() === "win32" ? TEST_CANDIDATES_WIN : TEST_CANDIDATES_UNIX),
+  ];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const key = `${candidate.cmd}\0${candidate.args.join("\0")}`;
+    if (seen.has(key)) { continue; }
+    seen.add(key);
+    const probed = await probeInterpreter(candidate.cmd, candidate.args);
+    if (!probed) { continue; }
+    const [major, minor] = probed.version.split(".").map(Number);
+    if (major > 3 || (major === 3 && minor >= 10)) { return probed; }
+  }
+  return undefined;
+}
+
+export function setManagedPythonPath(pythonPath: string | undefined): void {
+  managedPythonPath = pythonPath;
+  clearPythonCache();
 }
 
 export function clearPythonCache(): void {

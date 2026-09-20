@@ -14,7 +14,7 @@ import {
   sessionLogPath,
   appendSessionLog,
 } from "./sessionStore";
-import { activateProfile, extractWebEndpoint } from "./modalCli";
+import { extractWebEndpoint } from "./modalCli";
 import { startLiveSync } from "./liveSync";
 import { loadProfiles, fetchFunctionWebUrl } from "./config";
 
@@ -79,9 +79,7 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   output.appendLine(`  Time: ${new Date().toLocaleString()}`);
   output.appendLine(`═══════════════════════════════════════════════\n`);
 
-  output.appendLine(`▸ Activating profile: ${opts.profile}`);
-  await activateProfile(opts.profile, opts.cwd);
-  output.appendLine(`✓ Profile activated\n`);
+  output.appendLine(`▸ Using profile: ${opts.profile}\n`);
 
   const args = opts.mode === "deploy" ? ["deploy", runnerFilename] : ["run", runnerFilename];
   output.appendLine(`▸ Running: modal ${args.join(" ")}\n`);
@@ -130,13 +128,17 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   });
   if (driver) { sessionStore.update(sessionId, { liveSync: driver }); }
 
-  const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {
     cwd: opts.cwd,
-    shell: isWin,
+    shell: false,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    env: {
+      ...process.env,
+      MODAL_PROFILE: opts.profile,
+      PYTHONIOENCODING: "utf-8",
+      PYTHONUTF8: "1",
+    },
   });
   sessionStore.update(sessionId, { proc });
 

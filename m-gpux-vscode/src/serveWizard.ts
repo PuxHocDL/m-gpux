@@ -3,6 +3,7 @@
 // generates a vLLM-based OpenAI-compatible API script with the active
 // keys passed via vllm's --api-key flag.
 import * as vscode from "vscode";
+import { gpuQuickPickItems } from "./gpus";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -42,20 +43,14 @@ function getActiveKeys(): string[] {
 
 const VLLM_MODELS = [
   { label: "Qwen/Qwen2.5-1.5B-Instruct",        description: "1.5B — T4/L4 friendly, fast" },
-  { label: "Qwen/Qwen2.5-7B-Instruct",          description: "7B — A10G/A100, good quality" },
-  { label: "meta-llama/Llama-3.1-8B-Instruct",  description: "Llama 8B — A10G/A100" },
-  { label: "google/gemma-2-9b-it",              description: "Gemma 9B — A10G/A100" },
-  { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10G/A100" },
+  { label: "Qwen/Qwen2.5-7B-Instruct",          description: "7B — A10/A100, good quality" },
+  { label: "meta-llama/Llama-3.1-8B-Instruct",  description: "Llama 8B — A10/A100" },
+  { label: "google/gemma-2-9b-it",              description: "Gemma 9B — A10/A100" },
+  { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10/A100" },
   { label: "Custom",                             description: "Type a HuggingFace model id" },
 ];
 
-const SERVE_GPUS = [
-  { label: "T4",   description: "16 GB — only for tiny models (1B-3B)" },
-  { label: "L4",   description: "24 GB — 7B models in fp16" },
-  { label: "A10G", description: "24 GB — 7B models" },
-  { label: "A100", description: "40 GB — up to 13B" },
-  { label: "H100", description: "80 GB — up to 30B" },
-];
+const SERVE_GPUS = gpuQuickPickItems().filter((g) => !g.label.endsWith("!") && !g.label.endsWith("+"));
 
 function serveScript(model: string, gpu: string, activeKeys: string[]): string {
   // vLLM accepts a single --api-key value; for multiple keys we'd need an

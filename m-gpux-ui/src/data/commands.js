@@ -1,4 +1,4 @@
-// CLI command groups — mirrors `m-gpux --help` (v2.7.0) and the README reference.
+// CLI workflow areas — mirrors `m-gpux --help` v3 and the README reference.
 // `icon` is a lucide-react component name resolved in the showcase.
 
 export const COMMAND_GROUPS = [
@@ -21,7 +21,8 @@ export const COMMAND_GROUPS = [
     blurb: "Guided launcher for Jupyter, script runs, browser shells and vLLM — any GPU, any runtime.",
     commands: [
       { cmd: "m-gpux hub", desc: "Pick GPU + runtime + action, then launch" },
-      { cmd: "m-gpux dev", desc: "Persistent Modal dev container for this folder" },
+      { cmd: "m-gpux dev up", desc: "GPU dev box — SSH / VS Code Remote into /workspace" },
+      { cmd: "m-gpux dev pause", desc: "Snapshot everything & stop billing; `dev resume` later" },
       { cmd: "m-gpux sessions list", desc: "See running / tracked Hub & dev sessions" },
       { cmd: "m-gpux sessions open <id>", desc: "Reopen a generated app URL" },
     ],
@@ -35,17 +36,6 @@ export const COMMAND_GROUPS = [
       { cmd: "m-gpux preset create", desc: "Capture the current workload as a preset" },
       { cmd: "m-gpux preset list", desc: "Browse saved presets" },
       { cmd: "m-gpux preset run <name>", desc: "Replay a preset on Modal" },
-    ],
-  },
-  {
-    id: "vision",
-    icon: "Image",
-    title: "Vision",
-    blurb: "Image-classification from local folders: sample data, train, predict, export to ONNX / TorchScript.",
-    commands: [
-      { cmd: "m-gpux vision sample-data", desc: "Generate a tiny shapes dataset" },
-      { cmd: "m-gpux vision train", desc: "Fine-tune a TorchVision backbone on a GPU" },
-      { cmd: "m-gpux vision predict", desc: "Run inference on new images" },
     ],
   },
   {
@@ -85,12 +75,33 @@ export const COMMAND_GROUPS = [
   {
     id: "ops",
     icon: "Gauge",
-    title: "Billing & Ops",
-    blurb: "Cross-workspace spend, GPU probes, video generation and one-shot cleanup.",
+    title: "Billing & Budgets",
+    blurb: "Cross-profile usage, live prices and per-account limits that AUTO selection respects.",
     commands: [
       { cmd: "m-gpux billing usage --all", desc: "Total spend across every profile" },
+      { cmd: "m-gpux budget set 20", desc: "Monthly limit per account — AUTO respects it" },
+      { cmd: "m-gpux budget show", desc: "Compare current spend with configured limits" },
+    ],
+  },
+  {
+    id: "images",
+    icon: "Activity",
+    title: "Images & Hardware",
+    blurb: "Publish repeatable environments and inspect the exact hardware Modal assigned.",
+    commands: [
+      { cmd: "m-gpux image build torch", desc: "Publish a prebuilt image for instant starts" },
       { cmd: "m-gpux load probe", desc: "Probe a GPU & print hardware metrics" },
-      { cmd: "m-gpux video generate", desc: "Text-to-video with LTX" },
+      { cmd: "m-gpux image list", desc: "Browse reusable images across profiles" },
+    ],
+  },
+  {
+    id: "lifecycle",
+    icon: "Radar",
+    title: "Lifecycle & Cleanup",
+    blurb: "Discover running work, reopen it later and release compute without crossing profiles.",
+    commands: [
+      { cmd: "m-gpux sessions list", desc: "List tracked Hub and dev sessions" },
+      { cmd: "m-gpux sessions open <id>", desc: "Reopen a live session URL" },
       { cmd: "m-gpux stop --all", desc: "Stop running apps & release GPUs" },
     ],
   },

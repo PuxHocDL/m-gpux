@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { GPU_CATALOG, gpuDescription } from "./gpus";
 import * as path from "path";
 import * as fs from "fs";
 import * as crypto from "crypto";
@@ -16,21 +17,9 @@ interface GpuOption {
   description: string;
 }
 
-const AVAILABLE_GPUS: GpuOption[] = [
-  { id: "T4", label: "T4", description: "Light inference / exploration (16 GB)" },
-  { id: "L4", label: "L4", description: "Balance of cost / performance (24 GB)" },
-  { id: "A10G", label: "A10G", description: "Training / inference (24 GB)" },
-  { id: "L40S", label: "L40S", description: "Ada Lovelace, great for inference (48 GB)" },
-  { id: "A100", label: "A100", description: "High performance (40 GB SXM)" },
-  { id: "A100-40GB", label: "A100-40GB", description: "Ampere 40 GB variant" },
-  { id: "A100-80GB", label: "A100-80GB", description: "Extreme performance (80 GB)" },
-  { id: "RTX-PRO-6000", label: "RTX-PRO-6000", description: "Pro workstation GPU (48 GB)" },
-  { id: "H100", label: "H100", description: "Hopper architecture (80 GB)" },
-  { id: "H100!", label: "H100!", description: "H100 priority / reserved" },
-  { id: "H200", label: "H200", description: "Next-gen Hopper HBM3e (141 GB)" },
-  { id: "B200", label: "B200", description: "Blackwell — latest gen" },
-  { id: "B200+", label: "B200+", description: "B200 priority / reserved" },
-];
+const AVAILABLE_GPUS: GpuOption[] = GPU_CATALOG.map((g) => ({
+  id: g.id, label: g.id, description: gpuDescription(g),
+}));
 
 const PYTHON_VERSIONS = [
   { label: "3.12", description: "Default, broadly compatible" },
@@ -491,67 +480,6 @@ def serve():
 `;
 }
 
-function interactiveScript(computeSpec: string, pythonVersion: string, localDir: string, scriptName: string, pipSection: string, excludePatterns: string[]): string {
-  const workspaceVolume = workspaceVolumeName(localDir);
-  return `import modal
-import subprocess
-import os
-import threading
-import time
-
-${METRICS_SNIPPET}
-
-app = modal.App("m-gpux-interactive")
-workspace_volume = modal.Volume.from_name("${workspaceVolume}", create_if_missing=True)
-image = (
-    modal.Image.debian_slim(python_version="${pythonVersion}")
-    .apt_install(
-        "bash", "curl", "tmux", "nano", "vim", "git", "htop", "btop",
-        "fzf", "ripgrep", "fd-find", "bat", "locales", "ca-certificates",
-        "swig", "build-essential", "unzip",
-    )
-    .run_commands(
-        "curl -sLo /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && chmod +x /usr/local/bin/ttyd",
-        "mkdir -p /root/.config",
-    )
-    ${pipSection}
-    .add_local_dir("${localDir}", remote_path="/workspace_seed", ignore=${JSON.stringify(toRecursiveIgnore(excludePatterns))})
-)
-
-def _prepare_workspace():
-    os.makedirs("/workspace", exist_ok=True)
-    # Local files should win on every launch, while remote-only outputs remain.
-    subprocess.run(["cp", "-a", "/workspace_seed/.", "/workspace/"], check=False)
-    workspace_volume.commit()
-
-${syncHelperBlock(workspaceVolume)}
-@app.function(image=image, ${computeSpec}, timeout=86400, volumes={"/workspace": workspace_volume})
-def run_interactive():
-    _print_metrics()
-    _prepare_workspace()
-    _install_sync_helper()
-    port = 8888
-    env = {**os.environ, "TERM": "xterm-256color", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-    with open("/root/.bashrc", "w", encoding="utf-8") as f:
-        f.write(${JSON.stringify(WEB_TERMINAL_BASHRC)})
-    with open("/root/.tmux.conf", "w", encoding="utf-8") as f:
-        f.write(${JSON.stringify(WEB_TERMINAL_TMUX_CONF)})
-    with modal.forward(port) as tunnel:
-        url = tunnel.url
-        print("\\n[INTERACTIVE TERMINAL READY]")
-        print("URL: " + url)
-        print("Workspace: /workspace   Run: python ${scriptName}")
-        print("Session: tmux 'main' (close & reopen URL to reattach running jobs)")
-        print("Sync volume: ${workspaceVolume} (auto-commit every ~20s)")
-        print("Pull later: modal volume get ${workspaceVolume} / ./m-gpux-workspace\\n")
-        proc = subprocess.Popen(
-            ["ttyd", *${JSON.stringify(STABLE_TTYD_FLAGS)}, "-p", str(port), "bash", "-lc", "tmux new-session -A -s main"],
-            env=env,
-        )
-        proc.wait()
-`;
-}
-
 function workspaceVolumeName(localDir: string): string {
   const normalized = path.resolve(localDir);
   const base = path.basename(normalized) || "workspace";
@@ -900,10 +828,10 @@ async function pickPythonFile(localDir: string): Promise<string | undefined> {
 async function pickVllmModel(): Promise<string | undefined> {
   const models = [
     { label: "Qwen/Qwen2.5-1.5B-Instruct", description: "Tiny 1.5B — T4/L4 friendly, fast" },
-    { label: "Qwen/Qwen2.5-7B-Instruct", description: "7B — A10G/A100, good quality" },
-    { label: "meta-llama/Llama-3.1-8B-Instruct", description: "Llama 8B — A10G/A100" },
-    { label: "google/gemma-2-9b-it", description: "Gemma 9B — A10G/A100" },
-    { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10G/A100" },
+    { label: "Qwen/Qwen2.5-7B-Instruct", description: "7B — A10/A100, good quality" },
+    { label: "meta-llama/Llama-3.1-8B-Instruct", description: "Llama 8B — A10/A100" },
+    { label: "google/gemma-2-9b-it", description: "Gemma 9B — A10/A100" },
+    { label: "mistralai/Mistral-7B-Instruct-v0.3", description: "Mistral 7B — A10/A100" },
   ];
   const pick = await vscode.window.showQuickPick(models, {
     title: "Select model to serve",
@@ -954,16 +882,7 @@ async function showAndExecuteScript(
   outputChannel.appendLine(`  Time: ${new Date().toLocaleString()}`);
   outputChannel.appendLine(`═══════════════════════════════════════════════\n`);
 
-  // Activate profile first (silent — log to channel only)
-  if (profileName !== "default") {
-    outputChannel.appendLine(`▸ Activating profile: ${profileName}`);
-    const activateResult = await runCommand("modal", ["profile", "activate", profileName], localDir);
-    if (activateResult.exitCode !== 0) {
-      outputChannel.appendLine(`⚠ Profile activation warning: ${activateResult.stderr}`);
-    } else {
-      outputChannel.appendLine(`✓ Profile activated\n`);
-    }
-  }
+  outputChannel.appendLine(`▸ Using profile: ${profileName}\n`);
 
   const runnerFilename = path.basename(runnerPath);
   const args = mode === "deploy"
@@ -1023,13 +942,17 @@ async function showAndExecuteScript(
   // `detached: true` (which spawns a visible console window on Windows even
   // with windowsHide). For `modal run` we let the local process die with
   // VS Code: the user explicitly chose foreground mode.
-  const isWin = process.platform === "win32";
   const proc = spawn("modal", args, {
     cwd: localDir,
-    shell: isWin,
+    shell: false,
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
+    env: {
+      ...process.env,
+      MODAL_PROFILE: profileName,
+      PYTHONIOENCODING: "utf-8",
+      PYTHONUTF8: "1",
+    },
   });
 
   sessionStore.update(sessionId, { proc });
@@ -1163,23 +1086,5 @@ async function showAndExecuteScript(
     outputChannel.appendLine(`\n✗ Failed to start: ${err.message}`);
     sessionStore.update(sessionId, { status: "failed", proc: undefined });
     vscode.window.showErrorMessage(`M-GPUX: failed to run modal: ${err.message}`);
-  });
-}
-
-/** Helper: run a command and return stdout/stderr/exitCode */
-function runCommand(cmd: string, args: string[], cwd: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const { spawn } = require("child_process");
-  return new Promise((resolve) => {
-    const proc = spawn(cmd, args, { cwd, shell: true, env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" } });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-    proc.on("close", (code: number | null) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
-    });
-    proc.on("error", () => {
-      resolve({ stdout, stderr, exitCode: 1 });
-    });
   });
 }

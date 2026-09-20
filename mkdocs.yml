@@ -34,13 +34,13 @@ nav:
   - Guide:
       - Getting Started: getting-started.md
       - Command Reference: commands.md
-      - Dev Container Mode: dev-container.md
+      - Dev Boxes: dev-container.md
+      - Costs, Budgets & Images: costs.md
       - Session Manager: sessions.md
       - Workload Presets: presets.md
       - Recipes: recipes.md
       - Web Hosting: web-hosting.md
       - Docker Compose: compose.md
-      - Vision Training: vision.md
       - Architecture: architecture.md
   - Support:
       - FAQ and Troubleshooting: faq.md

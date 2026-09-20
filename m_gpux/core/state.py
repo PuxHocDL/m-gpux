@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 STATE_DIR = Path.home() / ".m-gpux"
 SESSIONS_PATH = STATE_DIR / "sessions.json"
 PRESETS_PATH = STATE_DIR / "presets.json"
+SERVE_PATH = STATE_DIR / "serve.json"
 
 
 def utc_now() -> str:
@@ -28,10 +31,28 @@ def _read_json(path: Path, default: Any) -> Any:
 
 
 def _write_json(path: Path, data: Any) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-        f.write("\n")
+    """Atomically replace a JSON state file.
+
+    CLI commands and the VS Code extension can read these files while another
+    command is saving them. Writing directly to the destination briefly
+    exposes truncated JSON (and a killed process can leave it corrupted), so
+    materialise the complete document beside it and replace it in one step.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            json.dump(data, f, indent=2, sort_keys=True)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def new_session_id() -> str:
@@ -118,3 +139,13 @@ def delete_preset(name: str) -> bool:
     del presets[name]
     _write_json(PRESETS_PATH, presets)
     return True
+
+
+def get_serve_endpoint() -> dict[str, Any] | None:
+    """Return the last ``serve deploy`` endpoint (``url``, ``model``, ``profile``)."""
+    data = _read_json(SERVE_PATH, None)
+    return data if isinstance(data, dict) and data.get("url") else None
+
+
+def save_serve_endpoint(url: str, **extra: Any) -> None:
+    _write_json(SERVE_PATH, {"url": url, **extra, "updated_at": utc_now()})

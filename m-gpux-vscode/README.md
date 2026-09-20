@@ -7,8 +7,10 @@
 ## Features
 
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
+- **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
-- **Live Billing** — See remaining credits per account directly in the sidebar; hover for detailed breakdown
+- **Budget-Aware Billing** — See current-cycle usage and remaining m-gpux budget/credit per account
+- **Session Management** — Restore, discover, stop, and sync remote sessions without losing profile context
 - **Hardware Probing** — Inspect GPU/CPU/RAM metrics on any Modal container
 - **Native VS Code UI** — Output Channels for logs, progress notifications with cancel, clickable URL pop-ups when tunnels are ready
 
@@ -19,9 +21,14 @@
 | Requirement | Purpose |
 |-------------|---------|
 | **VS Code** ≥ 1.85 | Extension host |
-| **Python** ≥ 3.9 | Required by Modal CLI |
-| **Modal CLI** (`pip install modal`) | Core cloud runtime |
-| **m-gpux CLI** (`pip install m-gpux`) | Optional — needed for Load Probe and Billing Usage commands |
+| **Python** ≥ 3.10 | Used once to create the extension's private CLI environment |
+| **Modal account** | Token credentials for cloud workloads |
+
+You do **not** need to install `m-gpux` or `modal` globally. On first use the
+extension offers **Set up CLI**, creates an isolated virtual environment in VS
+Code's extension storage, and installs a compatible version of both tools. An
+existing CLI on `PATH` or the explicit `mgpux.cliPath` setting is still
+preferred.
 
 ---
 
@@ -29,7 +36,7 @@
 
 ```bash
 # From VSIX file
-code --install-extension m-gpux-2.5.0.vsix
+code --install-extension m-gpux-3.0.0.vsix
 ```
 
 Or in VS Code: `Ctrl+Shift+P` → **Extensions: Install from VSIX...**
@@ -42,12 +49,14 @@ After installing, run **Reload Window** (`Ctrl+Shift+P` → `Reload Window`).
 
 ### 1. Open the Sidebar
 
-Click the **GPU chip icon** on the Activity Bar (left edge). Two panels appear:
+Click the **GPU chip icon** on the Activity Bar (left edge). Four panels appear:
 
 | Panel | Description |
 |-------|-------------|
 | **Accounts** | Lists all configured Modal profiles with active status and remaining credit |
-| **Quick Actions** | One-click access to GPU Hub, Probe, Billing, and Info |
+| **Active Sessions** | Live/restored workloads with logs, stop, and workspace sync actions |
+| **Presets** | Shared CLI/extension workload presets |
+| **Quick Actions** | GPU Hub, Dev Box, hosting, serving, Compose, billing, and management |
 
 ### 2. Add Your First Account
 
@@ -75,17 +84,18 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 |-----|------|-------|
 | T4 | 16 GB | Budget inference |
 | L4 | 24 GB | Balanced cost/perf |
-| A10G | 24 GB | Training/inference |
+| A10 | 24 GB | Training/inference (formerly A10G) |
 | L40S | 48 GB | Ada Lovelace |
 | A100 | 40 GB | High performance (SXM) |
 | A100-40GB | 40 GB | Ampere 40 GB variant |
 | A100-80GB | 80 GB | Extreme performance |
-| RTX-PRO-6000 | 48 GB | Pro workstation |
+| RTX-PRO-6000 | 96 GB | Blackwell workstation GPU |
 | H100 | 80 GB | Hopper |
 | H100! | 80 GB | H100 reserved/priority |
 | H200 | 141 GB | Hopper + HBM3e |
-| B200 | — | Blackwell (latest gen) |
-| B200+ | — | B200 reserved/priority |
+| B200 | 180 GB | Blackwell |
+| B200+ | 180 GB | B200 or B300, whichever is available first |
+| B300 | 288 GB | Blackwell Ultra |
 
 #### Step 3 — Choose Application
 
@@ -121,8 +131,8 @@ The bottom-left of VS Code shows `☁ M-GPUX: <profile-name>`. Click it to switc
 
 ### Billing
 
-- **Sidebar** — Each account shows remaining credit (e.g. `$27.50 left`). Hover for a used/remaining breakdown.
-- **Billing Usage** — Click in Quick Actions to run `m-gpux billing usage --all` and see a detailed cost table.
+- **Sidebar** — Each account shows remaining m-gpux budget when configured, otherwise remaining monthly credit.
+- **Billing Usage** — Uses Modal's current-cycle billing API with a compatibility fallback, across profiles in parallel.
 - **Billing Dashboard** — Opens [modal.com/settings/usage](https://modal.com/settings/usage) in your browser.
 
 ---
@@ -133,7 +143,10 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `M-GPUX`:
 
 | Command | Description |
 |---------|-------------|
+| `M-GPUX: Set Up / Update CLI` | Install, repair, update, or select the CLI used by the extension |
 | `M-GPUX: Open GPU Hub` | Launch the GPU provisioning wizard |
+| `M-GPUX: Create / Start Dev Box` | Start a Sandbox dev box for the workspace |
+| `M-GPUX: Manage Dev Box` | Open, pause, resume, sync, list, or delete a dev box |
 | `M-GPUX: Add Account` | Add a new Modal profile |
 | `M-GPUX: Switch Account` | Switch the active profile |
 | `M-GPUX: Remove Account` | Delete a profile |
@@ -147,7 +160,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `M-GPUX`:
 
 ## Configuration
 
-The extension reads and writes `~/.modal.toml` directly — the same file used by the Modal CLI. No separate config needed.
+The extension reads and writes `~/.modal.toml` directly — the same file used by the Modal CLI. `mgpux.cliPath` can point to an existing compatible executable; otherwise the extension uses `PATH` or its private managed environment.
 
 Example `~/.modal.toml`:
 
@@ -183,8 +196,8 @@ token_secret = "as-yyyy"
 | Problem | Solution |
 |---------|----------|
 | Extension not visible in sidebar | `Ctrl+Shift+P` → `Reload Window` |
-| `modal: command not found` | Install Modal: `pip install modal` |
-| Load Probe doesn't work | Install the CLI: `pip install m-gpux` |
+| `modal: command not found` | Run `M-GPUX: Set Up / Update CLI`; the managed environment includes Modal |
+| Dev Box or Compose action says CLI is missing | Choose **Install automatically**, or set `mgpux.cliPath` to an existing executable |
 | `charmap codec can't encode` error | Update to the latest extension version (fixed: sets `PYTHONIOENCODING=utf-8`) |
 | Profile won't switch | Verify `~/.modal.toml` is valid TOML |
 | Billing shows no data | Click ⟳ Refresh — billing is fetched async via the Modal SDK |

@@ -12,6 +12,8 @@ export interface ModalProfile {
 }
 
 const CONFIG_PATH = path.join(os.homedir(), ".modal.toml");
+const BUDGETS_PATH = path.join(os.homedir(), ".m-gpux", "budgets.json");
+const MONTHLY_CREDIT = 30.0;
 
 export function getConfigPath(): string {
   return CONFIG_PATH;
@@ -118,9 +120,24 @@ export interface BillingInfo {
   profileName: string;
   used: number;     // -1 means error
   remaining: number;
+  limit: number;
+  hasCustomBudget: boolean;
 }
 
-const MONTHLY_CREDIT = 30.0;
+function loadBudgets(): Record<string, number> {
+  try {
+    const raw = JSON.parse(fs.readFileSync(BUDGETS_PATH, "utf-8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) { return {}; }
+    const out: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      const amount = Number(value);
+      if (Number.isFinite(amount) && amount >= 0) { out[key] = amount; }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Fetch billing for a single profile using the Modal SDK via Python subprocess.
@@ -138,26 +155,41 @@ async function fetchUsageForProfile(tokenId: string, tokenSecret: string): Promi
       "import json,sys",
       "from datetime import datetime,timezone",
       "try:",
-      "  from modal.billing import workspace_billing_report",
+      "  creds=json.load(sys.stdin)",
       "  from modal.client import Client",
-      "  now=datetime.now(timezone.utc)",
-      "  start=now.replace(day=1,hour=0,minute=0,second=0,microsecond=0)",
-      "  client=Client.from_credentials(sys.argv[1],sys.argv[2])",
-      "  reports=workspace_billing_report(start=start,resolution='d',client=client)",
-      "  total=sum(float(r.get('cost',0)) for r in reports)",
+      "  client=Client.from_credentials(creds['tokenId'],creds['tokenSecret'])",
+      "  total=None",
+      "  try:",
+      "    import modal",
+      "    ws=getattr(modal,'Workspace',None)",
+      "    if ws is not None and hasattr(ws,'from_context'):",
+      "      billing=ws.from_context(client=client).billing",
+      "      if hasattr(billing,'summary'):",
+      "        total=float(billing.summary().metered_cost)",
+      "  except Exception:",
+      "    total=None",
+      "  if total is None:",
+      "    from modal.billing import workspace_billing_report",
+      "    now=datetime.now(timezone.utc)",
+      "    start=now.replace(day=1,hour=0,minute=0,second=0,microsecond=0)",
+      "    reports=workspace_billing_report(start=start,resolution='d',client=client)",
+      "    total=sum(float(r.get('cost',0) if isinstance(r,dict) else getattr(r,'cost',0)) for r in reports)",
       "  print(json.dumps({'cost':total}))",
       "except Exception as e:",
       "  print(json.dumps({'error':str(e)}))",
     ].join("\n");
-    execFile(py.cmd, [...py.args, "-c", script, tokenId, tokenSecret], {
+    const child = execFile(py.cmd, [...py.args, "-c", script], {
       timeout: 15000,
     }, (err: any, stdout: string) => {
       if (err) { resolve(-1); return; }
       try {
-        const data = JSON.parse(stdout.trim());
+        const lastLine = stdout.trim().split(/\r?\n/).pop() ?? "";
+        const data = JSON.parse(lastLine);
         resolve(data.error ? -1 : (data.cost ?? -1));
       } catch { resolve(-1); }
     });
+    child.stdin.on("error", () => { /* process may exit before reading */ });
+    child.stdin.end(JSON.stringify({ tokenId, tokenSecret }));
   });
 }
 
@@ -189,44 +221,58 @@ export async function fetchFunctionWebUrl(
     const script = [
       "import json,sys",
       "try:",
+      "  req=json.load(sys.stdin)",
       "  from modal import Function",
       "  from modal.client import Client",
-      "  client = Client.from_credentials(sys.argv[1], sys.argv[2])",
-      "  fn = Function.from_name(sys.argv[3], sys.argv[4], environment_name=sys.argv[5], client=client)",
+      "  client = Client.from_credentials(req['tokenId'], req['tokenSecret'])",
+      "  fn = Function.from_name(req['appName'], req['functionName'], environment_name=req['environmentName'], client=client)",
       "  print(json.dumps({'url': fn.get_web_url() or ''}))",
       "except Exception as e:",
       "  print(json.dumps({'error': str(e)}))",
     ].join("\n");
-    execFile(py.cmd, [
-      ...py.args, "-c", script, tokenId, tokenSecret, appName, functionName, environmentName,
-    ], { timeout: 20000 }, (err: any, stdout: string) => {
+    const child = execFile(py.cmd, [...py.args, "-c", script], { timeout: 20000 }, (err: any, stdout: string) => {
       if (err) { resolve(undefined); return; }
       try {
-        const data = JSON.parse(stdout.trim());
+        const lastLine = stdout.trim().split(/\r?\n/).pop() ?? "";
+        const data = JSON.parse(lastLine);
         resolve(data.url ? data.url : undefined);
       } catch { resolve(undefined); }
     });
+    child.stdin.on("error", () => { /* process may exit before reading */ });
+    child.stdin.end(JSON.stringify({ tokenId, tokenSecret, appName, functionName, environmentName }));
   });
 }
 
 export async function fetchAllBilling(): Promise<BillingInfo[]> {
   const profiles = loadProfiles();
-  const results: BillingInfo[] = [];
-  for (const p of profiles) {
-    if (!p.token_id || !p.token_secret) {
-      results.push({ profileName: p.name, used: -1, remaining: -1 });
-      continue;
-    }
-    const used = await fetchUsageForProfile(p.token_id, p.token_secret);
-    if (used < 0) {
-      results.push({ profileName: p.name, used: -1, remaining: -1 });
-    } else {
-      results.push({
+  const budgets = loadBudgets();
+  const results = new Array<BillingInfo>(profiles.length);
+  let next = 0;
+
+  // A few profiles in parallel keeps a large multi-account setup responsive
+  // without opening one Python/Modal connection for every account at once.
+  async function worker(): Promise<void> {
+    while (true) {
+      const index = next++;
+      if (index >= profiles.length) { return; }
+      const p = profiles[index];
+      const hasCustomBudget = budgets[p.name] !== undefined || budgets["*"] !== undefined;
+      const limit = budgets[p.name] ?? budgets["*"] ?? MONTHLY_CREDIT;
+      if (!p.token_id || !p.token_secret) {
+        results[index] = { profileName: p.name, used: -1, remaining: -1, limit, hasCustomBudget };
+        continue;
+      }
+      const used = await fetchUsageForProfile(p.token_id, p.token_secret);
+      results[index] = {
         profileName: p.name,
         used,
-        remaining: Math.max(MONTHLY_CREDIT - used, 0),
-      });
+        remaining: used < 0 ? -1 : Math.max(limit - used, 0),
+        limit,
+        hasCustomBudget,
+      };
     }
   }
+  const concurrency = Math.min(6, profiles.length);
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
   return results;
 }

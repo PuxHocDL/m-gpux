@@ -13,29 +13,33 @@
 
   body {
     @apply bg-cream-50 text-ink font-sans antialiased;
-    /* soft warm wash so white never looks sterile */
     background-image:
-      radial-gradient(60rem 60rem at 110% -10%, rgba(253, 186, 116, 0.22), transparent 55%),
-      radial-gradient(48rem 48rem at -10% 0%, rgba(251, 146, 60, 0.16), transparent 55%);
+      radial-gradient(rgba(0, 82, 64, 0.10) 0.8px, transparent 0.8px),
+      radial-gradient(52rem 52rem at 108% -10%, rgba(0, 122, 94, 0.08), transparent 58%);
+    background-size: 26px 26px, auto;
     background-attachment: fixed;
   }
 
-  ::selection {
-    background: rgba(251, 146, 60, 0.28);
-    color: #7c2d12;
+  a, button, input {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-cream-50;
   }
 
-  /* Warm thin scrollbar */
+  ::selection {
+    background: rgba(53, 162, 127, 0.24);
+    color: #073f34;
+  }
+
+  /* Quiet emerald scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #fdba74 transparent;
+    scrollbar-color: #7fc4ac transparent;
   }
   *::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   *::-webkit-scrollbar-thumb {
-    background: linear-gradient(#fdba74, #fb923c);
+    background: linear-gradient(#7fc4ac, #007a5e);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: padding-box;
@@ -44,12 +48,11 @@
 
 @layer components {
   .container-px {
-    @apply mx-auto w-full max-w-7xl px-5 sm:px-8;
+    @apply mx-auto w-full max-w-[90rem] px-5 sm:px-8 lg:px-10;
   }
 
-  /* Glassy card on warm white */
   .card {
-    @apply rounded-2xl border border-line/80 bg-white/80 backdrop-blur-xl shadow-soft;
+    @apply rounded-[1.4rem] border border-ink/10 bg-white/75 backdrop-blur-xl shadow-soft;
   }
 
   .pill {
@@ -57,25 +60,64 @@
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-grad px-5 py-3 text-sm font-semibold text-white shadow-soft
-      transition-all duration-200 hover:shadow-glow hover:brightness-[1.03] active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-brand-600 bg-brand-500 px-5 py-3 text-sm font-bold text-white shadow-soft
+      transition-all duration-200 hover:-translate-y-0.5 hover:bg-brand-600 hover:shadow-glow active:translate-y-0 active:scale-[0.98];
   }
 
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-line bg-white/70 px-5 py-3 text-sm font-semibold text-ink-soft
-      transition-all duration-200 hover:border-brand-300 hover:text-brand-700 hover:bg-brand-50 active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-ink/15 bg-white/65 px-5 py-3 text-sm font-bold text-ink-soft
+      transition-all duration-200 hover:-translate-y-0.5 hover:border-ink/30 hover:bg-white hover:text-ink active:translate-y-0 active:scale-[0.98];
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-brand-600;
+  }
+
+  .section-kicker {
+    @apply inline-flex items-center gap-2 rounded-full border border-ink/10 bg-white/70 px-3 py-1.5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-ink-muted;
   }
 }
 
 @layer utilities {
-  .text-gradient {
-    @apply bg-gradient-to-br from-brand-500 via-brand-400 to-brand-300 bg-clip-text text-transparent;
+  /* Subtle editorial dot grid background */
+  .bg-dotgrid {
+    background-image: radial-gradient(rgba(0, 82, 64, 0.15) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
 
-  /* Subtle warm dot grid background */
-  .bg-dotgrid {
-    background-image: radial-gradient(rgba(234, 88, 12, 0.12) 1px, transparent 1px);
-    background-size: 22px 22px;
+  .bg-blueprint {
+    background-image:
+      linear-gradient(rgba(0,82,64,0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,82,64,0.055) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  /* Lightweight, non-interactive take on React Bits' Grid Scan background. */
+  .grid-scan {
+    overflow: hidden;
+  }
+
+  .grid-scan::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: -28%;
+    height: 30%;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(53, 162, 127, 0.03) 42%,
+      rgba(0, 122, 94, 0.16) 50%,
+      rgba(53, 162, 127, 0.03) 58%,
+      transparent
+    );
+    filter: blur(1px);
+    animation: grid-scan 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    will-change: transform;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 
   .mask-fade-b {
@@ -90,10 +132,36 @@
 
   /* Shimmering sheen used by ShinyText */
   .shine-text {
-    background: linear-gradient(110deg, #9a3412 35%, #fdba74 50%, #9a3412 65%);
+    background: linear-gradient(110deg, #005240 35%, #35a27f 50%, #005240 65%);
     background-size: 220% 100%;
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+  }
+}
+
+@keyframes grid-scan {
+  0%, 12% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  22% {
+    opacity: 0.8;
+  }
+  72% {
+    opacity: 0.8;
+  }
+  86%, 100% {
+    transform: translateY(440%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

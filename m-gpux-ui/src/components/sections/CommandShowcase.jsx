@@ -37,12 +37,12 @@ export default function CommandShowcase() {
     <section id="commands" className="relative scroll-mt-24 py-20 sm:py-28">
       <div className="container-px">
         <div className="mx-auto max-w-2xl text-center">
-          <span className="pill mx-auto">9 command groups</span>
-          <h2 className="mt-4 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
-            <SplitText text="The whole CLI, at a glance." />
+          <span className="section-kicker mx-auto">{COMMAND_GROUPS.length} workflow areas · 14 command groups</span>
+          <h2 className="mt-5 font-display text-4xl font-semibold tracking-[-0.025em] text-ink sm:text-5xl">
+            <SplitText text="The CLI, mapped by intent." />
           </h2>
           <p className="mt-4 text-ink-soft">
-            Every workflow from the tutorial — and more. Hover a card, click any command to copy it.
+            Find the workflow you need, then copy the exact command. No flags to memorize.
           </p>
         </div>
 

@@ -32,8 +32,6 @@ m_gpux/
     serve/                   # LLM API deployment and API key management
     sessions/                # local session tracking and workspace pull
     stop/                    # discover and stop running apps
-    video/                   # text-to-video workflows
-    vision/                  # image-classification workflows
 ```
 
 ## CLI Framework
@@ -43,7 +41,7 @@ The root command is `m_gpux.main:app`, registered in `pyproject.toml` as the `m-
 This keeps the feature surface easy to extend:
 
 - Core modules own shared behavior such as profiles, generated-script execution, GPU catalogs, and UI helpers.
-- Plugins own user-facing workflows such as `hub`, `serve`, `vision`, `host`, and `billing`.
+- Plugins own user-facing workflows such as `hub`, `serve`, `host`, and `billing`.
 - Local state in `~/.m-gpux` tracks sessions, API keys, and workload presets.
 - Third-party packages can add commands without editing the root CLI.
 
@@ -78,7 +76,7 @@ Most workflows follow the same transparent execution pattern:
 3. Show the script for review before execution.
 4. Run it with `modal run`, or deploy it with `modal deploy`.
 
-This pattern is used by `hub`, `host`, `compose`, `vision`, `video`, and `serve`. The generated script is intentionally editable so users can inspect Modal decorators, dependencies, timeout settings, volumes, and uploaded paths before committing to a run.
+This pattern is used by `hub`, `host`, `compose`, and `serve`. The generated script is intentionally editable so users can inspect Modal decorators, dependencies, timeout settings, volumes, and uploaded paths before committing to a run.
 
 ## Compose Deployment Architecture
 
@@ -107,23 +105,6 @@ The important choices are:
 - Terminal rendering options favor stable glyph layout and repaint behavior.
 
 This reduces the common browser-terminal problems where tmux status lines, unicode prompt glyphs, or font-width mismatches make characters appear overwritten.
-
-## Vision Training Architecture
-
-`vision train` packages a local dataset into the Modal container with `Image.add_local_dir`, then runs a PyTorch image-classification training loop on the selected GPU.
-
-The generated training app includes:
-
-- Dataset layout validation for `train/`, `val/`, optional `test/`, or a single folder of class subdirectories.
-- TorchVision model initialization with optional pretrained weights.
-- Configurable optimizer, scheduler, augmentation, mixed precision, early stopping, and gradient accumulation.
-- Persistent checkpoint and metrics storage in a Modal Volume.
-
-Downstream commands reuse the same artifacts:
-
-- `vision predict` loads checkpoints and class labels to classify new local images.
-- `vision evaluate` loads checkpoints and computes accuracy, top-k accuracy, confusion matrix, macro F1, and per-class metrics.
-- `vision export` writes deployment artifacts such as ONNX, TorchScript, labels, and export summaries.
 
 ## LLM API Server Architecture
 

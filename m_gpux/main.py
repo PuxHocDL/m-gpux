@@ -10,7 +10,24 @@ is no need to modify this file.
 from __future__ import annotations
 
 import os
+import sys
 import time
+
+
+def _configure_windows_utf8() -> None:
+    """Keep Rich/Typer output Unicode-safe on legacy Windows code pages."""
+    if os.name != "nt":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (AttributeError, OSError, ValueError):
+                pass
+
+
+_configure_windows_utf8()
 
 import typer
 from rich.align import Align
@@ -84,23 +101,42 @@ def render_welcome() -> None:
     _render_intro_animation()
     quick_actions = Table.grid(padding=(0, 2))
     quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
-    quick_actions.add_row("[bold yellow]m-gpux dev[/bold yellow]", "Open a persistent Modal dev container for this folder")
+    quick_actions.add_row(
+        "[bold yellow]m-gpux dev up[/bold yellow]", "GPU dev box for this folder: SSH / VS Code, pause & resume"
+    )
     quick_actions.add_row("[bold yellow]m-gpux hub[/bold yellow]", "Launch Jupyter, script runner, or web shell")
     quick_actions.add_row("[bold yellow]m-gpux sessions list[/bold yellow]", "See running/tracked Hub and dev sessions")
     quick_actions.add_row("[bold yellow]m-gpux preset list[/bold yellow]", "Save and rerun common workload presets")
-    quick_actions.add_row("[bold yellow]m-gpux vision train[/bold yellow]", "Train an image classifier from a local dataset")
     quick_actions.add_row("[bold yellow]m-gpux serve deploy[/bold yellow]", "Deploy LLM as OpenAI-compatible API")
-    quick_actions.add_row("[bold yellow]m-gpux video generate[/bold yellow]", "Generate video from text prompt (LTX-2.3)")
+    quick_actions.add_row("[bold yellow]m-gpux budget show[/bold yellow]", "Spend vs. monthly budget on every account")
     quick_actions.add_row("[bold yellow]m-gpux stop[/bold yellow]", "Stop running apps and release GPUs")
     quick_actions.add_row("[bold yellow]m-gpux load probe[/bold yellow]", "Probe a GPU and display hardware metrics")
-    quick_actions.add_row("[bold yellow]m-gpux billing usage --all[/bold yellow]", "See total spend across configured accounts")
+    quick_actions.add_row(
+        "[bold yellow]m-gpux billing usage --all[/bold yellow]", "See total spend across configured accounts"
+    )
 
     console.print(Panel.fit(HERO_LOGO.strip(), border_style="bright_cyan", title="M-GPUX", subtitle=f"v{__version__}"))
     console.print(Panel(quick_actions, title="Quick Actions", border_style="cyan"))
     console.print("[dim]Tip: run m-gpux --help for full command reference.[/dim]\n")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"m-gpux {__version__}")
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
-def main_callback(ctx: typer.Context):
+def main_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show the installed m-gpux version and exit.",
+    ),
+):
     if ctx.invoked_subcommand is None:
         render_welcome()

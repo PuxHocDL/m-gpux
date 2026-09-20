@@ -1,43 +1,63 @@
 export const STATS = [
-  { value: 9, suffix: "", label: "Command groups", hint: "accounts → vision → serve" },
-  { value: 30, suffix: "+", label: "VS Code actions", hint: "the Hub, in your editor" },
-  { value: 6, suffix: "", label: "Python runtimes", hint: "3.10 → 3.14 + custom" },
-  { value: 0, suffix: "→∞", label: "Scale to zero", hint: "pay only when busy" },
+  { value: 14, suffix: "", label: "Command groups", hint: "one coherent control surface" },
+  { value: 37, suffix: "", label: "VS Code actions", hint: "the CLI, translated to UI" },
+  { value: 3, suffix: "", label: "Compute modes", hint: "GPU · CPU · Sandbox" },
+  { value: 0, suffix: "", label: "Idle compute", hint: "pause, snapshot, scale down" },
 ];
 
 export const FEATURES = [
   {
     icon: "Cpu",
-    title: "Interactive GPU Hub",
-    body: "Pick a GPU or CPU, a Python runtime and an action — Jupyter, a script, a browser bash shell or vLLM — and m-gpux writes & launches the Modal app for you.",
+    eyebrow: "launch",
+    title: "A guided GPU Hub",
+    body: "Pick compute, runtime and workload. m-gpux writes the Modal app, launches it, captures the URL and tracks the session.",
+    metric: "14 GPU targets",
+    visual: "hub",
+    wide: true,
   },
   {
-    icon: "Sparkles",
-    title: "OpenAI-compatible serving",
-    body: "Deploy any Hugging Face model behind a streaming, bearer-auth API with warmup, logs, API keys and a live metrics dashboard.",
+    icon: "Box",
+    eyebrow: "develop",
+    title: "Dev boxes that can sleep",
+    body: "SSH or open VS Code Remote, snapshot the whole filesystem, stop compute billing and resume exactly where you left off.",
+    metric: "pause → resume",
+    visual: "lifecycle",
   },
   {
-    icon: "Globe",
-    title: "One-command web hosting",
-    body: "Give FastAPI, Flask, Django or a static folder a persistent Modal URL. Auto-detected deps, file upload and scale-to-zero out of the box.",
+    icon: "PanelLeft",
+    eyebrow: "editor",
+    title: "VS Code, zero CLI setup",
+    body: "The extension carries a matching CLI wheel and can install it into a private environment on first use.",
+    metric: "37 actions",
+    visual: "managed",
   },
   {
     icon: "Container",
-    title: "Docker Compose on Modal",
-    body: "Analyze services, ports and volumes, then deploy via subprocess, VM or isolated Sandbox modes — Triton-aware and BuildKit-friendly.",
+    eyebrow: "orchestrate",
+    title: "Compose, mapped to Modal",
+    body: "Analyze ports, images, volumes and dependencies, then run as a shared app, VM, or isolated Sandboxes.",
+    metric: "3 deploy modes",
+    visual: "compose",
+    wide: true,
   },
   {
-    icon: "Image",
-    title: "Vision workflows",
-    body: "Sample data, train a TorchVision backbone on a GPU, evaluate, predict and export to ONNX or TorchScript — all from local image folders.",
+    icon: "Sparkles",
+    eyebrow: "serve",
+    title: "Ship models and web apps",
+    body: "Host ASGI, WSGI or static apps, and deploy authenticated OpenAI-compatible endpoints with streaming and metrics.",
+    metric: "one persistent URL",
+    visual: "serve",
   },
   {
     icon: "Gauge",
-    title: "Spend you can see",
-    body: "Multi-profile accounts, session tracking, GPU probes and cross-workspace billing reports so cloud cost never surprises you.",
+    eyebrow: "govern",
+    title: "Profiles, budgets, visibility",
+    body: "Pin every process to the right profile, aggregate billing, set monthly budgets and stop workloads without losing context.",
+    metric: "multi-profile",
+    visual: "billing",
   },
 ];
 
 export const RUNTIMES = ["3.10", "3.11", "3.12", "3.13", "3.14", "custom"];
 
-export const GPUS = ["T4", "L4", "A10G", "A100", "H100", "L40S", "CPU"];
+export const GPUS = ["T4", "L4", "A10", "L40S", "A100", "H100", "H200", "B200", "B300", "CPU"];

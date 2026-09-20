@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich.table import Table
 
 from m_gpux.core.console import console
+from m_gpux.core.modal_cli import app_logs_cmd, modal_env, stop_app
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.state import forget_session, get_session, list_sessions, update_session
 
@@ -66,17 +67,24 @@ def show_command(session_id: str) -> None:
 
 
 @app.command("logs")
-def logs_command(session_id: str) -> None:
-    """Stream Modal logs for a tracked session."""
+def logs_command(
+    session_id: str,
+    follow: bool = typer.Option(True, "--follow/--no-follow", help="Keep streaming new log lines"),
+    tail: Optional[int] = typer.Option(None, "--tail", "-n", help="Show only the last N entries"),
+    since: Optional[str] = typer.Option(None, "--since", help="Start of range, e.g. 2h or 2026-09-01T05:00"),
+    search: Optional[str] = typer.Option(None, "--search", "-s", help="Only lines containing this text"),
+) -> None:
+    """Stream (or fetch historical) Modal logs for a tracked session."""
     session = _require_session(session_id)
     app_name = session.get("app_name")
     if not app_name:
         console.print("[red]Session has no app_name.[/red]")
         raise typer.Exit(1)
-    env = {**os.environ}
-    if session.get("profile"):
-        env["MODAL_PROFILE"] = str(session["profile"])
-    subprocess.run(["modal", "app", "logs", str(app_name)], env=env)
+    cmd = app_logs_cmd(str(app_name), follow=follow, tail=tail, since=since, search=search)
+    try:
+        subprocess.run(cmd, env=modal_env(session.get("profile")))
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped watching logs.[/dim]")
 
 
 @app.command("open")
@@ -105,7 +113,13 @@ def pull_command(
         console.print("[red]Session has no workspace_volume.[/red]")
         raise typer.Exit(1)
     to.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["modal", "volume", "get", str(volume), "/", str(to)])
+    result = subprocess.run(
+        ["modal", "volume", "get", str(volume), "/", str(to)],
+        env=modal_env(session.get("profile")),
+    )
+    if result.returncode != 0:
+        console.print(f"[red]Could not pull workspace volume (exit {result.returncode}).[/red]")
+        raise typer.Exit(result.returncode)
 
 
 @app.command("stop")
@@ -116,13 +130,13 @@ def stop_command(session_id: str) -> None:
     if not app_name:
         console.print("[red]Session has no app_name.[/red]")
         raise typer.Exit(1)
-    env = {**os.environ}
-    if session.get("profile"):
-        env["MODAL_PROFILE"] = str(session["profile"])
-    result = subprocess.run(["modal", "app", "stop", str(app_name)], env=env)
+    result = stop_app(str(app_name), profile=session.get("profile"))
     if result.returncode == 0:
         update_session(session_id, state="stopped")
         console.print(f"[green]Stopped session {session_id}.[/green]")
+    else:
+        console.print(f"[red]Could not stop {app_name}:[/red] {(result.stderr or '').strip()}")
+        raise typer.Exit(1)
 
 
 @app.command("forget")

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 
 import typer
@@ -11,6 +10,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from m_gpux.core.console import console
+from m_gpux.core.modal_cli import stop_app
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.runner import ALIVE_APP_STATES, scan_apps_across_profiles
 
@@ -19,12 +19,16 @@ def _scan_current_profile() -> list[tuple[str, str, str, str]]:
     try:
         result = subprocess.run(
             ["modal", "app", "list", "--json"],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         raw = json.loads(result.stdout) if result.stdout.strip() else []
         p_result = subprocess.run(
             ["modal", "profile", "current"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         current_profile = p_result.stdout.strip() if p_result.returncode == 0 else "unknown"
         apps: list[tuple[str, str, str, str]] = []
@@ -40,9 +44,7 @@ def _scan_current_profile() -> list[tuple[str, str, str, str]]:
 
 
 def stop_command(
-    all_profiles: bool = typer.Option(
-        False, "--all", help="Scan and stop apps across ALL Modal profiles"
-    ),
+    all_profiles: bool = typer.Option(False, "--all", help="Scan and stop apps across ALL Modal profiles"),
 ) -> None:
     """Stop running m-gpux apps (Jupyter, shells, LLM servers, etc.)."""
     console.print("[cyan]Scanning for running m-gpux apps...[/cyan]")
@@ -78,19 +80,17 @@ def stop_command(
             console.print("[red]Invalid choice.[/red]")
             return
 
+    stopped = 0
     for profile, app_id, desc, _ in targets:
         console.print(f"  [cyan]Stopping {desc} on {profile}...[/cyan]")
-        result = subprocess.run(
-            ["modal", "app", "stop", app_id],
-            capture_output=True, text=True,
-            env={**os.environ, "MODAL_PROFILE": profile},
-        )
+        result = stop_app(app_id, profile=profile)
         if result.returncode == 0:
+            stopped += 1
             console.print(f"  [green]Stopped {desc}[/green]")
         else:
             console.print(f"  [red]Failed: {result.stderr.strip()}[/red]")
 
-    console.print(f"\n[bold green]Done. {len(targets)} app(s) stopped.[/bold green]")
+    console.print(f"\n[bold green]Done. {stopped}/{len(targets)} app(s) stopped.[/bold green]")
 
 
 class StopPlugin(PluginBase):

@@ -60,5 +60,4 @@ Useful presets to keep around:
 
 - `rl-a100` for reinforcement learning experiments
 - `debug-cpu` for cheap CPU-only debugging
-- `vision-l4` for image-classification work
 - `shell-h100` for short high-end GPU debugging

@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "2.11.0",
+  "version": "3.0.0",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -63,10 +63,28 @@
     },
     "commands": [
       {
+        "command": "mgpux.setupCli",
+        "title": "Set Up / Update CLI",
+        "category": "M-GPUX",
+        "icon": "$(tools)"
+      },
+      {
         "command": "mgpux.openHub",
         "title": "Open GPU Hub",
         "category": "M-GPUX",
         "icon": "$(rocket)"
+      },
+      {
+        "command": "mgpux.devUp",
+        "title": "Create / Start Dev Box",
+        "category": "M-GPUX",
+        "icon": "$(vm-running)"
+      },
+      {
+        "command": "mgpux.devManage",
+        "title": "Manage Dev Box",
+        "category": "M-GPUX",
+        "icon": "$(remote-explorer)"
       },
       {
         "command": "mgpux.addAccount",
@@ -276,6 +294,12 @@
           "scope": "machine-overridable",
           "description": "Path or command to a Python interpreter with `modal` installed (used for billing). Leave empty to auto-detect across py launcher / python3.13 / python3.12 / ... / python."
         },
+        "mgpux.cliPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Optional path to an existing m-gpux executable. Leave empty to use PATH or the extension-managed private CLI."
+        },
         "mgpux.autoSync": {
           "type": "boolean",
           "default": false,
@@ -409,19 +433,22 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run build:cli && npm run compile",
+    "build:cli": "node scripts/build-cli-wheel.js",
     "compile": "node esbuild.js",
+    "typecheck": "tsc --noEmit",
     "watch": "node esbuild.js --watch",
     "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/vscode": "^1.85.0",
-    "esbuild": "^0.20.0",
-    "sharp": "^0.34.5",
+    "@types/vscode": "1.85.0",
+    "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.4",
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "smol-toml": "^1.1.0"
+    "smol-toml": "^1.8.0"
   }
 }

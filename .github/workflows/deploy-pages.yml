@@ -33,10 +33,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install docs dependencies
-        run: pip install mkdocs mkdocs-material
+        run: python -m pip install ".[docs]"
 
       - name: Build site
-        run: mkdocs build --clean
+        run: mkdocs build --clean --strict
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

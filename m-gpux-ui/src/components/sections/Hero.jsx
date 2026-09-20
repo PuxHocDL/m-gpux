@@ -1,54 +1,80 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Github, Sparkles, Zap } from "lucide-react";
-import {
-  AuroraBackground,
-  Particles,
-  SplitText,
-  GradientText,
-  Magnet,
-  StarBorder,
-  TiltCard,
-  Marquee,
-} from "../reactbits";
+import { ArrowRight, Github, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { Magnet, Marquee } from "../reactbits";
 import AutoTerminal from "../ui/AutoTerminal";
 import CopyChip from "../ui/CopyChip";
-import { GPUS, RUNTIMES } from "../../data/site";
+import { GPUS } from "../../data/site";
 
 const REPO = "https://github.com/PuxHocDL/m-gpux";
 
 const HERO_SCRIPT = [
   {
-    cmd: "m-gpux hub",
+    cmd: "m-gpux dev up --name studio",
     output: [
-      { tone: "accent", text: "? Compute › GPU · A10G   ? Action › Jupyter   ? Runtime › 3.12" },
-      { tone: "warn", text: "⠿ Building image & starting Jupyter…" },
-      { tone: "ok", text: "✔ Jupyter is live" },
-      { tone: "url", text: "https://pux--m-gpux-hub-jupyter.modal.run" },
+      { tone: "accent", text: "Compute  GPU · L4    Workspace  ./studio" },
+      { tone: "warn", text: "◌ Building image and starting Sandbox..." },
+      { tone: "ok", text: "✓ Dev box 'studio' is ready · auto-stop 12h" },
+      { tone: "url", text: "ssh m-gpux-studio" },
     ],
-    pause: 2000,
+    pause: 2100,
   },
   {
-    cmd: "m-gpux serve deploy",
+    cmd: "m-gpux dev pause studio",
     output: [
-      { tone: "accent", text: "? Model › Qwen2.5-7B-Instruct   ? GPU › L4   ? Warm › 1" },
-      { tone: "warn", text: "⠿ Deploying OpenAI-compatible API…" },
-      { tone: "ok", text: "✔ Deployed in 12s" },
-      { tone: "url", text: "https://pux--m-gpux-llm-api.modal.run/v1" },
+      { tone: "warn", text: "◌ Snapshotting packages + /workspace..." },
+      { tone: "ok", text: "✓ Paused · compute billing stopped" },
+      { tone: "dim", text: "Resume later with: m-gpux dev resume studio" },
     ],
-    pause: 2000,
+    pause: 2100,
   },
 ];
 
-function FloatingCard({ className, children, delay = 0 }) {
+function Signal({ label, value, active = false }) {
+  return (
+    <div className="rounded-xl border border-ink/10 bg-cream-50/70 p-3">
+      <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">{label}</p>
+      <div className="mt-2 flex items-center gap-2">
+        <span className={`h-2 w-2 rounded-full ${active ? "bg-brand-500 shadow-[0_0_12px_rgba(0,122,94,.45)]" : "bg-brand-300"}`} />
+        <p className="truncate font-mono text-xs font-semibold text-ink">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ControlDeck() {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ delay, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-      className={`absolute z-20 ${className}`}
+      initial={false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.2, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+      className="relative min-w-0"
     >
-      <div className="animate-floaty rounded-2xl border border-line bg-white/90 px-4 py-3 shadow-card backdrop-blur-xl">
-        {children}
+      <div className="absolute -inset-10 rounded-full bg-brand-200/40 blur-3xl" />
+      <div className="relative overflow-hidden rounded-[1.5rem] border border-ink/10 bg-white/85 p-3 shadow-card backdrop-blur-xl sm:p-4">
+        <div className="flex items-center justify-between px-2 pb-3 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-brand-500 shadow-[0_0_14px_rgba(0,122,94,.55)]" />
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">
+              control / tool1
+            </span>
+          </div>
+          <span className="rounded-md border border-brand-200 bg-brand-50 px-2 py-1 font-mono text-[9px] text-brand-700">live</span>
+        </div>
+
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <Signal label="runtime" value="modal 1.5" />
+          <Signal label="compute" value="L4 · ready" active />
+          <Signal label="budget" value="$24.82 left" />
+        </div>
+
+        <AutoTerminal script={HERO_SCRIPT} title="m-gpux — dev lifecycle" className="shadow-none" />
+
+        <div className="mt-3 flex items-center justify-between rounded-xl border border-ink/10 bg-cream-50/70 px-3 py-2.5">
+          <span className="flex items-center gap-2 font-mono text-[10px] text-ink-muted">
+            <ShieldCheck size={13} className="text-brand-600" /> profile pinned · state persisted
+          </span>
+          <span className="font-mono text-[10px] text-ink-faint">v3.0.0</span>
+        </div>
       </div>
     </motion.div>
   );
@@ -56,107 +82,78 @@ function FloatingCard({ className, children, delay = 0 }) {
 
 export default function Hero() {
   return (
-    <section id="top" className="relative overflow-hidden pt-28 sm:pt-36">
-      <AuroraBackground />
-      <Particles className="opacity-70" quantity={42} />
-      <div className="absolute inset-0 bg-dotgrid opacity-[0.5] mask-fade-b" />
+    <section id="top" className="relative overflow-hidden border-b border-ink/10 pt-[68px]">
+      <div className="grid-scan absolute inset-0 bg-dotgrid opacity-45" aria-hidden="true" />
+      <div className="container-px relative py-16 sm:py-24 lg:py-28">
+        <div className="grid min-w-0 items-center gap-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)] xl:gap-20">
+          <div className="relative z-10 min-w-0">
+            <motion.p
+              initial={false}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-3 font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-ink-muted"
+            >
+              <span className="h-2 w-2 rounded-full bg-brand-500" /> Modal workloads · one control plane
+            </motion.p>
 
-      <div className="container-px relative grid items-center gap-12 pb-16 lg:grid-cols-[1.05fr_1fr] lg:pb-24">
-        {/* Left: copy */}
-        <div className="relative z-10">
-          <motion.span
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="pill"
-          >
-            <Zap size={13} className="fill-brand-500 text-brand-500" />
-            v2.7.0 · Modal GPU Orchestrator
-          </motion.span>
+            <h1 className="mt-8 max-w-4xl font-display text-[clamp(3.7rem,7.2vw,7.2rem)] leading-[0.94] tracking-[-0.025em] text-ink">
+              Run GPU infrastructure
+              <span className="mt-2 block italic text-brand-600">without the drag.</span>
+            </h1>
 
-          <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-6xl">
-            <SplitText text="Spin up GPUs." className="block" />
-            <span className="block">
-              <GradientText>Ship AI.</GradientText>{" "}
-              <SplitText text="One terminal." delay={0.25} className="inline" />
-            </span>
-          </h1>
+            <motion.p
+              initial={false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15, duration: 0.6 }}
+              className="mt-8 max-w-2xl text-balance text-base leading-relaxed text-ink-muted sm:text-lg"
+            >
+              Launch sessions, operate Sandbox dev boxes, deploy Compose stacks and track every
+              profile—from one CLI or directly inside VS Code.
+            </motion.p>
 
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35, duration: 0.6 }}
-            className="mt-6 max-w-xl text-lg leading-relaxed text-ink-soft"
-          >
-            <strong className="font-semibold text-ink">m-gpux</strong> is a professional, interactive
-            hub & CLI for Modal. Manage profiles, launch GPU sessions, host apps, serve LLMs and
-            watch your spend — then <em>learn it by doing</em> in the tutorial below.
-          </motion.p>
+            <motion.div
+              initial={false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.28, duration: 0.6 }}
+              className="mt-9 max-w-2xl rounded-2xl border border-ink/10 bg-white/85 p-2 shadow-soft backdrop-blur"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3 px-3">
+                  <Search size={19} className="shrink-0 text-ink-faint" />
+                  <CopyChip text="pip install -U m-gpux" className="border-0 bg-transparent p-0 shadow-none hover:border-0" />
+                </div>
+                <Magnet>
+                  <a href="/docs/" className="btn-primary w-full px-7 sm:w-auto">
+                    Read the docs <ArrowRight size={17} />
+                  </a>
+                </Magnet>
+              </div>
+            </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.6 }}
-            className="mt-8 flex flex-wrap items-center gap-3"
-          >
-            <Magnet>
-              <a href="#tutorial" className="btn-primary text-base">
-                <Sparkles size={17} /> Start the tutorial <ArrowRight size={16} />
+            <div className="mt-6 flex flex-wrap items-center gap-5 text-sm font-medium text-ink-muted">
+              <a href="#get-started" className="inline-flex items-center gap-2 transition-colors hover:text-brand-700">
+                <Sparkles size={15} /> Get m-gpux <ArrowRight size={14} />
               </a>
-            </Magnet>
-            <StarBorder as="a" href={REPO} target="_blank" rel="noreferrer">
-              <Github size={16} /> View on GitHub
-            </StarBorder>
-          </motion.div>
+              <a href={REPO} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 transition-colors hover:text-brand-700">
+                <Github size={16} /> GitHub
+              </a>
+            </div>
+          </div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.7, duration: 0.6 }}
-            className="mt-6"
-          >
-            <CopyChip text="pip install m-gpux" />
-          </motion.div>
+          <ControlDeck />
+        </div>
 
-          <div className="mt-10 max-w-md">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-faint">
-              Any GPU · any runtime
-            </p>
+        <div className="relative mt-16 border-t border-ink/10 pt-5">
+          <div className="grid gap-4 md:grid-cols-[auto_1fr] md:items-center">
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">provision any compute</p>
             <Marquee
-              items={[...GPUS, ...RUNTIMES.map((r) => `py ${r}`)]}
-              renderItem={(it) => (
-                <span className="rounded-lg border border-line bg-white/70 px-3 py-1.5 font-mono text-xs text-ink-soft">
-                  {it}
+              items={GPUS}
+              renderItem={(item) => (
+                <span className="rounded-lg border border-ink/10 bg-white/65 px-3 py-1.5 font-mono text-[10px] text-ink-muted">
+                  {item}
                 </span>
               )}
             />
           </div>
-        </div>
-
-        {/* Right: live terminal + floating cards */}
-        <div className="relative z-10">
-          <TiltCard max={6}>
-            <AutoTerminal script={HERO_SCRIPT} />
-          </TiltCard>
-
-          <FloatingCard className="-left-4 top-6 hidden sm:block" delay={0.7}>
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-100 text-emerald-600">
-                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500" />
-              </span>
-              <div className="leading-tight">
-                <p className="font-mono text-xs font-semibold text-ink">A100 · live</p>
-                <p className="text-[11px] text-ink-muted">session tracked</p>
-              </div>
-            </div>
-          </FloatingCard>
-
-          <FloatingCard className="-right-3 bottom-8 hidden sm:block" delay={0.9}>
-            <div className="leading-tight">
-              <p className="text-[11px] text-ink-muted">30-day spend · all profiles</p>
-              <p className="font-display text-lg font-extrabold text-brand-600">$10.36</p>
-            </div>
-          </FloatingCard>
         </div>
       </div>
     </section>

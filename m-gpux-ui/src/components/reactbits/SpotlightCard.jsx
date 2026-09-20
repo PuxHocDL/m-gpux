@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 /**
  * SpotlightCard — a warm radial glow tracks the pointer across the card surface.
  */
-export default function SpotlightCard({ children, className = "", spotlight = "rgba(251,146,60,0.18)" }) {
+export default function SpotlightCard({ children, className = "", spotlight = "rgba(53,162,127,0.16)" }) {
   const ref = useRef(null);
   const [pos, setPos] = useState({ x: -200, y: -200 });
   const [active, setActive] = useState(false);
