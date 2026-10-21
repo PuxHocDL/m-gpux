@@ -25,6 +25,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from m_gpux.core.ui import arrow_select
+from m_gpux.core.modal_cli import modal_cmd
 from m_gpux.core.runner import execute_modal_temp_script
 from m_gpux.core.state import new_session_id
 
@@ -1675,7 +1676,7 @@ def compose_sync(
                     local_path = os.path.join(local_dir, rel_path.replace("/", os.sep))
                     remote_path = f"/workspace/{rel_path}"
                     result = subprocess.run(
-                        ["modal", "volume", "put", workspace_volume, local_path, remote_path, "--force"],
+                        modal_cmd("volume", "put", workspace_volume, local_path, remote_path, "--force"),
                         capture_output=True,
                         text=True,
                         env=env,
@@ -1690,7 +1691,7 @@ def compose_sync(
                 for rel_path in deleted:
                     remote_path = f"/workspace/{rel_path}"
                     subprocess.run(
-                        ["modal", "volume", "rm", workspace_volume, remote_path],
+                        modal_cmd("volume", "rm", workspace_volume, remote_path),
                         capture_output=True,
                         text=True,
                         env=env,
@@ -3936,7 +3937,7 @@ print(matches[0].object_id)
     console.print(f"[green]Found sandbox:[/green] {sandbox_id[0]}")
     if not command and os.name != "nt":
         # Interactive shell: `modal shell` takes sandbox IDs (sb-…) but isn't supported on Windows.
-        subprocess.run(["modal", "shell", sandbox_id[0]])
+        subprocess.run(modal_cmd("shell", sandbox_id[0]))
         return
     if not command:
         console.print(

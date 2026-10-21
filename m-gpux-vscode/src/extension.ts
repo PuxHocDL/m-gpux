@@ -11,7 +11,7 @@ import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox } from "./composeActions";
 import { devUp, devManage } from "./devActions";
-import { listApps, activateProfile, runCommand, isAliveAppState } from "./modalCli";
+import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
 import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
 import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
@@ -349,15 +349,23 @@ export function activate(context: vscode.ExtensionContext) {
       out.appendLine(`  GPU: ${gpuPick.label}`);
       out.appendLine(`  CWD: ${workspaceFolder}\n`);
 
-      const proc = spawn("modal", ["run", ".mgpux-probe.py"], {
+      const modal = await modalCommand(["run", ".mgpux-probe.py"]);
+      const proc = spawn(modal.cmd, modal.args, {
         cwd: workspaceFolder,
         shell: false,
+        windowsHide: true,
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
       proc.stdout.on("data", (d: Buffer) => out.append(d.toString()));
       proc.stderr.on("data", (d: Buffer) => out.append(d.toString()));
       proc.on("close", (code: number | null) => {
         out.appendLine(`\nExit ${code}`);
+        try { require("fs").unlinkSync(probePath); } catch { /* ignore */ }
+      });
+      // Without a listener a spawn failure (e.g. modal not installed) would be
+      // an uncaught exception in the extension host.
+      proc.on("error", (err: Error) => {
+        out.appendLine(`\n✗ Failed to start modal: ${err.message}`);
         try { require("fs").unlinkSync(probePath); } catch { /* ignore */ }
       });
     })
@@ -675,10 +683,12 @@ export function activate(context: vscode.ExtensionContext) {
           title: `M-GPUX: stopping ${s.appId}...`,
         },
         async () => {
+          const modal = await modalCommand(["app", "stop", "--yes", s.appId!]);
           const result = await new Promise<{ code: number; out: string }>((resolve) => {
-            const p = spawn("modal", ["app", "stop", "--yes", s.appId!], {
+            const p = spawn(modal.cmd, modal.args, {
               cwd: s.cwd,
               shell: false,
+              windowsHide: true,
               env: {
                 ...process.env,
                 MODAL_PROFILE: s.profile,
@@ -918,8 +928,7 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
           message: `${entry.name} (${entry.profile})`,
           increment: 100 / plan.length,
         });
-        const res = await runCommand(
-          "modal",
+        const res = await runModal(
           ["app", "stop", "--yes", entry.appId],
           { env: { MODAL_PROFILE: entry.profile } }
         );

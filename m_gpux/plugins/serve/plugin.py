@@ -15,7 +15,7 @@ from datetime import datetime
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core import _select_profile, _activate_profile, AVAILABLE_GPUS, AVAILABLE_CPUS
 from m_gpux.core.ui import arrow_select
-from m_gpux.core.modal_cli import DEPLOY_STRATEGIES, app_logs_cmd, deploy_cmd, stop_app
+from m_gpux.core.modal_cli import DEPLOY_STRATEGIES, app_logs_cmd, deploy_cmd, modal_cmd, stop_app
 from m_gpux.core.state import get_serve_endpoint, save_serve_endpoint
 
 SERVE_APP_NAME = "m-gpux-llm-api"
@@ -1431,7 +1431,7 @@ def restart(
         console.print(f"[red]--strategy must be one of: {', '.join(DEPLOY_STRATEGIES)}[/red]")
         raise typer.Exit(1)
     console.print(f"[cyan]Rolling over {SERVE_APP_NAME} ({strategy})...[/cyan]")
-    result = subprocess.run(["modal", "app", "rollover", SERVE_APP_NAME, "--strategy", strategy])
+    result = subprocess.run(modal_cmd("app", "rollover", SERVE_APP_NAME, "--strategy", strategy))
     if result.returncode == 0:
         console.print(
             "[bold green]Rollover triggered. New containers will load the model on next request.[/bold green]"
@@ -1524,7 +1524,7 @@ def _load_profiles_for_url():
         return []
     try:
         result = subprocess.run(
-            ["modal", "profile", "list", "--json"],
+            modal_cmd("profile", "list", "--json"),
             capture_output=True,
             text=True,
             timeout=30,

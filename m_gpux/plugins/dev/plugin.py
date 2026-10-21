@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -37,7 +38,7 @@ from m_gpux.plugins.hub.plugin import (
 from m_gpux.plugins.preset.plugin import run_preset_by_name
 from m_gpux.core.gpus import ask_gpu_count
 from m_gpux.core.images import pick_published_image
-from m_gpux.core.modal_cli import modal_env
+from m_gpux.core.modal_cli import modal_cmd, modal_env
 from m_gpux.core.pricing import cpu_hourly, fmt_hourly, gpu_hourly
 from m_gpux.plugins.dev import devbox
 
@@ -359,12 +360,44 @@ def ssh_command(name: Optional[str] = typer.Argument(None)) -> None:
     subprocess.run(["ssh", devbox.ssh_host_alias(name)])
 
 
+def _find_vscode_cli() -> Optional[str]:
+    """`code` from PATH, else the CLI bundled in a standard VS Code install.
+
+    On macOS `code` is only on PATH after "Shell Command: Install 'code'
+    command in PATH"; on Windows a per-user install may not be on PATH yet.
+    """
+    for name in ("code", "code-insiders"):
+        found = shutil.which(name)
+        if found:
+            return found
+    home = Path.home()
+    if sys.platform == "darwin":
+        candidates = [
+            Path(apps) / app / "Contents/Resources/app/bin" / cli
+            for apps in ("/Applications", home / "Applications")
+            for app, cli in (
+                ("Visual Studio Code.app", "code"),
+                ("Visual Studio Code - Insiders.app", "code-insiders"),
+            )
+        ]
+    elif os.name == "nt":
+        local = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+        program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+        candidates = [
+            local / "Programs" / "Microsoft VS Code" / "bin" / "code.cmd",
+            program_files / "Microsoft VS Code" / "bin" / "code.cmd",
+        ]
+    else:
+        candidates = [Path("/usr/share/code/bin/code"), Path("/snap/bin/code")]
+    return next((str(c) for c in candidates if c.is_file()), None)
+
+
 @app.command("code")
 def code_command(name: Optional[str] = typer.Argument(None)) -> None:
     """Open the dev box in VS Code (Remote-SSH)."""
     name, box = _box_or_exit(name)
     _running_or_exit(box)
-    code = shutil.which("code")
+    code = _find_vscode_cli()
     if not code:
         console.print(
             f"[yellow]`code` not on PATH. In VS Code: Remote-SSH → Connect to Host → "
@@ -390,7 +423,7 @@ def shell_command(name: Optional[str] = typer.Argument(None)) -> None:
             raise typer.Exit(1)
         subprocess.run(["ssh", devbox.ssh_host_alias(name)])
         return
-    subprocess.run(["modal", "shell", sb.object_id], env=modal_env(box["profile"]))
+    subprocess.run(modal_cmd("shell", sb.object_id), env=modal_env(box["profile"]))
 
 
 @app.command("pause")

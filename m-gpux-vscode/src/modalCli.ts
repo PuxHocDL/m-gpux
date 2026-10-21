@@ -3,8 +3,47 @@
 // reuse CLI features that would be costly to re-implement in TypeScript
 // (compose, preset).
 export { hasMgpuxCli, ensureMgpuxCli } from "./cliBootstrap";
+import { resolvePython } from "./pythonResolver";
 
 const { spawn } = require("child_process");
+
+// Runs the modal CLI inside a resolved interpreter. A bare `modal` is often not
+// on the extension host's PATH (VS Code launched from the macOS Dock, pipx,
+// `pip install --user`, Windows Scripts dir) even though `import modal` works.
+// `-m modal` is avoided because it puts the cwd first on sys.path, letting a
+// project file such as `click.py` shadow modal's own dependencies.
+const MODAL_BOOTSTRAP = [
+  "import sys",
+  "if sys.path and sys.path[0] in ('', '.'):",
+  "    del sys.path[0]",
+  "sys.argv[0] = 'modal'",
+  "from modal.__main__ import main",
+  "main()",
+].join("\n");
+
+export interface ModalCommand {
+  cmd: string;
+  args: string[];
+}
+
+/** Resolve how to launch `modal <args>`: through a Python that can import
+ *  modal when one exists, else the `modal` executable on PATH. */
+export async function modalCommand(args: string[]): Promise<ModalCommand> {
+  const py = await resolvePython();
+  if (py?.hasModal) {
+    return { cmd: py.cmd, args: [...py.args, "-c", MODAL_BOOTSTRAP, ...args] };
+  }
+  return { cmd: "modal", args };
+}
+
+/** Like runCommand, but for the modal CLI (see modalCommand). */
+export async function runModal(
+  args: string[],
+  opts: { cwd?: string; env?: Record<string, string>; timeoutMs?: number } = {}
+): Promise<SpawnResult> {
+  const modal = await modalCommand(args);
+  return runCommand(modal.cmd, modal.args, opts);
+}
 
 export interface SpawnResult {
   stdout: string;
@@ -42,7 +81,7 @@ export function runCommand(
 }
 
 export async function activateProfile(profile: string, cwd?: string): Promise<void> {
-  const result = await runCommand("modal", ["profile", "activate", profile], { cwd });
+  const result = await runModal(["profile", "activate", profile], { cwd });
   if (result.exitCode !== 0) {
     const detail = (result.stderr || result.stdout || "unknown error").trim();
     throw new Error(`Could not activate Modal profile '${profile}': ${detail}`);
@@ -95,8 +134,7 @@ export function extractWebEndpoint(scriptContent: string): { appName: string; fu
  *  transient outage cannot be mistaken for an empty account. Pass
  *  `strict=false` only for explicitly best-effort callers. */
 export async function listApps(profile: string, env = "main", strict = true): Promise<ModalAppEntry[]> {
-  const res = await runCommand(
-    "modal",
+  const res = await runModal(
     ["app", "list", "--env", env, "--json"],
     { env: { MODAL_PROFILE: profile } }
   );
