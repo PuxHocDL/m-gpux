@@ -45,6 +45,26 @@ const DEFAULT_EXCLUDES = [
 ];
 const URL_MARKER = "MGPUX_JUPYTER_URL=";
 const PIP_SPEC = /^[A-Za-z0-9_.\[\]=<>!~,-]+$/;
+// tensorrt-* and many nvidia-* packages on PyPI are placeholders that fetch
+// the real wheel from NVIDIA at install time, which fails inside image builds;
+// pointing pip at NVIDIA's index installs the real wheel directly.
+const NVIDIA_INDEX = "https://pypi.nvidia.com";
+const NVIDIA_PACKAGE = /^(tensorrt|nvidia-|polygraphy|onnx-graphsurgeon|cuda-python)/i;
+
+function needsNvidiaIndex(specs: string[]): boolean {
+  return specs.some((spec) => NVIDIA_PACKAGE.test(spec.trim()));
+}
+
+/** Package names listed in a requirements file (options, comments and blanks skipped). */
+function requirementNames(file: string): string[] {
+  try {
+    return fs.readFileSync(file, "utf-8").split(/\r?\n/)
+      .map((line) => line.replace(/#.*/, "").trim())
+      .filter((line) => line && !line.startsWith("-"));
+  } catch {
+    return [];
+  }
+}
 
 interface NotebookServer {
   id: string;
@@ -71,11 +91,12 @@ export function serverScript(opts: LaunchOptions): string {
   const volume = opts.localDir ? workspaceVolumeName(opts.localDir) : "m-gpux-notebook-scratch";
   const steps = [`modal.Image.debian_slim(python_version=${JSON.stringify(PYTHON_VERSION)})`];
   steps.push(`.pip_install("jupyter-server>=2.14", "ipykernel>=6.29", "ipywidgets>=8")`);
+  const nvidiaIndex = (specs: string[]) => (needsNvidiaIndex(specs) ? `, extra_index_url=${JSON.stringify(NVIDIA_INDEX)}` : "");
   if (opts.requirements) {
-    steps.push(`.pip_install_from_requirements(${JSON.stringify(opts.requirements)})`);
+    steps.push(`.pip_install_from_requirements(${JSON.stringify(opts.requirements)}${nvidiaIndex(requirementNames(opts.requirements))})`);
   }
   if (opts.packages.length) {
-    steps.push(`.pip_install(${opts.packages.map((p) => JSON.stringify(p)).join(", ")})`);
+    steps.push(`.pip_install(${opts.packages.map((p) => JSON.stringify(p)).join(", ")}${nvidiaIndex(opts.packages)})`);
   }
   if (opts.localDir) {
     steps.push(
@@ -439,7 +460,11 @@ class ModalNotebookServers implements JupyterServerProvider, JupyterServerComman
     let urlAnnounced = false;
     while (true) {
       if (cancel.isCancellationRequested) { return fail("cancelled"); }
-      if (exitCode !== undefined) { return fail("the notebook server exited before it was ready."); }
+      if (exitCode !== undefined) {
+        return fail(/Image build for \S+ failed/.test(buffer)
+          ? "a package failed to install while building the image. Fix it in requirements.txt (or leave requirements.txt unticked) and start again."
+          : "the notebook server exited before it was ready.");
+      }
       if (Date.now() > deadline) { return fail("the notebook server did not become ready in time."); }
       if (baseUrl) {
         if (!urlAnnounced) { progress.report({ message: "waiting for Jupyter to answer…" }); urlAnnounced = true; }
