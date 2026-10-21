@@ -114,7 +114,7 @@ export default function Hero() {
               initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.28, duration: 0.6 }}
-              className="mt-9 max-w-2xl rounded-2xl border border-ink/10 bg-white/85 p-2 shadow-soft backdrop-blur"
+              className="mt-9 max-w-2xl rounded-2xl border border-ink/10 bg-white/85 p-2 shadow-soft backdrop-blur-sm"
             >
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="flex min-w-0 flex-1 items-center gap-3 px-3">

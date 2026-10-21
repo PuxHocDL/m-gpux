@@ -28,14 +28,14 @@ export default function CTASection() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-5 backdrop-blur">
+              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-5 backdrop-blur-sm">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-500"><TerminalSquare size={18} /></span>
                 <h3 className="mt-5 font-display text-lg font-semibold">Install the CLI</h3>
                 <p className="mt-1 text-xs leading-relaxed text-white/45">Python 3.10+ · Windows, macOS and Linux</p>
                 <CopyChip text="pip install -U m-gpux" dark className="mt-5 w-full justify-between" />
               </div>
 
-              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-5 backdrop-blur">
+              <div className="rounded-2xl border border-white/12 bg-white/[0.055] p-5 backdrop-blur-sm">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-200 text-brand-900"><MonitorDown size={18} /></span>
                 <h3 className="mt-5 font-display text-lg font-semibold">Install the extension</h3>
                 <p className="mt-1 text-xs leading-relaxed text-white/45">Managed CLI included · one-click setup</p>

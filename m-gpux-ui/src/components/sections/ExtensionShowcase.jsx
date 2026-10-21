@@ -66,7 +66,7 @@ function ExtensionWindow() {
           </div>
 
           <SectionTitle action={<Plus size={12} />}>Accounts</SectionTitle>
-          <div className="mx-2 rounded bg-[#303030] px-3 py-2">
+          <div className="mx-2 rounded-sm bg-[#303030] px-3 py-2">
             <div className="flex items-center gap-2 text-[11px]">
               <span className="h-2 w-2 rounded-full bg-[#89d185]" />
               <span className="font-semibold text-white">tool1</span>
@@ -90,7 +90,7 @@ function ExtensionWindow() {
           <SectionTitle>Quick actions</SectionTitle>
           <div className="grid grid-cols-2 gap-1.5 px-2">
             {quickActions.map(([Icon, label]) => (
-              <div key={label} className="rounded border border-[#3b3b3b] bg-[#2a2a2a] p-2 text-[9px] text-[#c8c8c8]">
+              <div key={label} className="rounded-sm border border-[#3b3b3b] bg-[#2a2a2a] p-2 text-[9px] text-[#c8c8c8]">
                 <Icon size={12} className="mb-1.5 text-brand-300" />{label}
               </div>
             ))}
