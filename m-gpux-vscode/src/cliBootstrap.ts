@@ -55,6 +55,38 @@ function prependToProcessPath(directory: string): void {
   }
 }
 
+/** VS Code started from the macOS Dock/Finder (or a Linux desktop launcher)
+ *  can inherit a minimal PATH such as /usr/bin:/bin, which hides Homebrew,
+ *  pyenv, python.org and `pip install --user` Pythons and their `modal` /
+ *  `m-gpux` scripts. Append the usual locations that exist, after whatever the
+ *  user already has, so their own ordering still wins. */
+function appendWellKnownBinDirs(): void {
+  const platform = os.platform();
+  if (platform === "win32") { return; }
+  const home = os.homedir();
+  const dirs = [
+    path.join(home, ".local", "bin"),
+    path.join(home, ".pyenv", "shims"),
+    "/usr/local/bin",
+  ];
+  if (platform === "darwin") {
+    dirs.unshift("/opt/homebrew/bin");
+    dirs.push("/Library/Frameworks/Python.framework/Versions/Current/bin");
+    const userPythons = path.join(home, "Library", "Python");
+    try {
+      for (const version of fs.readdirSync(userPythons).sort().reverse()) {
+        dirs.push(path.join(userPythons, version, "bin"));
+      }
+    } catch { /* no `pip install --user` Pythons */ }
+  }
+  const key = pathKey();
+  const entries = (process.env[key] ?? "").split(path.delimiter).filter(Boolean);
+  for (const dir of dirs) {
+    if (!entries.includes(dir) && fs.existsSync(dir)) { entries.push(dir); }
+  }
+  process.env[key] = entries.join(path.delimiter);
+}
+
 function configureResolvedCommand(command: string): void {
   cachedMgpux = command;
   if (path.isAbsolute(command)) {
@@ -136,6 +168,7 @@ async function probeMgpux(command: string): Promise<boolean> {
 /** Configure the per-extension managed environment. Must run during activate(). */
 export function initializeCliBootstrap(context: vscode.ExtensionContext): void {
   extensionContext = context;
+  appendWellKnownBinDirs();
   extensionVersion = String(context.extension.packageJSON.version ?? extensionVersion);
   managedRoot = path.join(context.globalStorageUri.fsPath, "cli");
   const names = executableNames(managedRoot);

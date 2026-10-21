@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+from m_gpux.core import modal_cli
 from m_gpux.core.profiles import activate_profile, select_profile
 from m_gpux.core.state import _write_json
 from m_gpux.plugins.dev import devbox
@@ -42,6 +43,32 @@ class ProfileActivationTests(unittest.TestCase):
     @mock.patch("m_gpux.core.profiles.subprocess.run", side_effect=FileNotFoundError("modal"))
     def test_missing_modal_executable_is_reported_to_caller(self, _run: mock.Mock) -> None:
         self.assertFalse(activate_profile("account"))
+
+
+class ModalExecutableTests(unittest.TestCase):
+    def setUp(self) -> None:
+        modal_cli.modal_executable.cache_clear()
+        self.addCleanup(modal_cli.modal_executable.cache_clear)
+
+    def test_prefers_modal_script_next_to_interpreter(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / ("modal.exe" if os.name == "nt" else "modal")
+            script.write_text("", encoding="utf-8")
+            script.chmod(0o755)
+            with (
+                mock.patch.dict(os.environ, {"MGPUX_MODAL_CLI": ""}),
+                mock.patch.object(modal_cli, "_script_dirs", return_value=[Path(tmp)]),
+            ):
+                self.assertEqual(modal_cli.modal_cmd("app", "list"), [str(script), "app", "list"])
+
+    def test_falls_back_to_this_interpreter_when_script_is_missing(self) -> None:
+        with (
+            mock.patch.dict(os.environ, {"MGPUX_MODAL_CLI": ""}),
+            mock.patch.object(modal_cli, "_script_dirs", return_value=[]),
+        ):
+            cmd = modal_cli.modal_cmd("profile", "current")
+        self.assertEqual(cmd[:2], [modal_cli.sys.executable, "-c"])
+        self.assertEqual(cmd[3:], ["profile", "current"])
 
 
 class DevboxSyncTests(unittest.TestCase):
@@ -105,6 +132,47 @@ class DevboxSyncTests(unittest.TestCase):
             self.assertEqual((dest / "good.txt").read_text(encoding="utf-8"), "ok")
             self.assertFalse((Path(tmp) / "escaped.txt").exists())
             self.assertFalse((dest / "link").exists())
+
+
+class InteractiveMenuTests(unittest.TestCase):
+    @staticmethod
+    def _cli_commands() -> dict[tuple[str, ...], object]:
+        import typer.main
+
+        from m_gpux.main import app
+
+        found: dict[tuple[str, ...], object] = {}
+
+        def walk(cmd, path: tuple[str, ...]) -> None:
+            if hasattr(cmd, "commands"):
+                for name, sub in cmd.commands.items():
+                    walk(sub, (*path, name))
+            else:
+                found[path] = cmd
+
+        walk(typer.main.get_command(app), ())
+        return found
+
+    @staticmethod
+    def _menu_paths() -> list[tuple[str, ...]]:
+        from m_gpux.core.menu import MENU
+
+        paths = []
+        for _, _, items in MENU:
+            for _, _, steps in items:
+                paths.append(tuple(step for step in steps if isinstance(step, str)))
+        return paths
+
+    def test_every_cli_command_is_reachable_from_the_menu(self) -> None:
+        commands = self._cli_commands()
+        menu = self._menu_paths()
+        missing = [path for path in commands if path != ("menu",) and path not in menu]
+        self.assertEqual(missing, [])
+
+    def test_every_menu_entry_runs_a_real_command(self) -> None:
+        commands = self._cli_commands()
+        unknown = [path for path in self._menu_paths() if path not in commands]
+        self.assertEqual(unknown, [])
 
 
 if __name__ == "__main__":

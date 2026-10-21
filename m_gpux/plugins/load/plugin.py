@@ -203,6 +203,7 @@ def _render_metrics(metrics: dict, gpu_type: str, elapsed: float) -> Panel:
 
 # Import the hub GPU/CPU lists so we stay in sync
 from m_gpux.core import AVAILABLE_GPUS, AVAILABLE_CPUS
+from m_gpux.core.modal_cli import modal_cmd
 
 
 @app.command("probe")
@@ -266,7 +267,7 @@ def load_probe(
     t0 = time.time()
     try:
         result = subprocess.run(
-            ["modal", "run", runner_file],
+            modal_cmd("run", runner_file),
             capture_output=True,
             text=True,
             timeout=300,

@@ -8,7 +8,8 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 
 | Command | Purpose |
 |---|---|
-| `m-gpux` | Show welcome screen with quick actions |
+| `m-gpux` | Interactive menu for every command (welcome screen when not in a terminal) |
+| `m-gpux menu` | Open the interactive menu explicitly |
 | `m-gpux info` | Print version and framework metadata |
 | `m-gpux dev` | Dev boxes: SSH / VS Code Remote, pause & resume, file sync |
 | `m-gpux hub` | Interactive GPU session launcher |
@@ -28,13 +29,24 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 
 ## Global
 
-### Welcome screen
+### Interactive menu
 
 ```bash
-m-gpux
+m-gpux          # in a terminal
+m-gpux menu     # same menu, explicitly
 ```
 
-Displays the ASCII logo and a Quick Actions table with the most common commands.
+Opens an arrow-key menu of every m-gpux command, grouped by workflow (GPU Hub,
+dev boxes, sessions, presets, hosting, serving, Compose, billing & budgets,
+images, accounts). Arguments a command needs are picked from lists: profiles,
+presets, tracked sessions, API keys and published images. Anything else is
+asked in a short prompt. The menu prints the command it runs (for example
+`$ m-gpux sessions logs s-1a2b`), so you can learn the direct form as you go,
+and it comes back when the command finishes. Press `Ctrl+C` or pick **Quit** to
+leave.
+
+When stdin or stdout is not a terminal (pipes, CI), `m-gpux` prints the logo
+and a Quick Actions table instead.
 
 ### info
 

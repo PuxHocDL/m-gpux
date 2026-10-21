@@ -14,7 +14,7 @@ import {
   sessionLogPath,
   appendSessionLog,
 } from "./sessionStore";
-import { extractWebEndpoint } from "./modalCli";
+import { extractWebEndpoint, modalCommand } from "./modalCli";
 import { startLiveSync } from "./liveSync";
 import { loadProfiles, fetchFunctionWebUrl } from "./config";
 
@@ -128,7 +128,8 @@ export async function launchModalScript(opts: LaunchOptions): Promise<void> {
   });
   if (driver) { sessionStore.update(sessionId, { liveSync: driver }); }
 
-  const proc = spawn("modal", args, {
+  const modal = await modalCommand(args);
+  const proc = spawn(modal.cmd, modal.args, {
     cwd: opts.cwd,
     shell: false,
     windowsHide: true,

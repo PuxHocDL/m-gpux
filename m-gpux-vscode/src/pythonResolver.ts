@@ -4,11 +4,13 @@ import * as os from "os";
 
 const TEST_CANDIDATES_WIN: { cmd: string; args: string[] }[] = [
   // Windows py launcher with explicit versions, newest-stable first
+  { cmd: "py", args: ["-3.14"] },
   { cmd: "py", args: ["-3.13"] },
   { cmd: "py", args: ["-3.12"] },
   { cmd: "py", args: ["-3.11"] },
   { cmd: "py", args: ["-3.10"] },
   { cmd: "py", args: [] },
+  { cmd: "python3.14", args: [] },
   { cmd: "python3.13", args: [] },
   { cmd: "python3.12", args: [] },
   { cmd: "python3.11", args: [] },
@@ -18,6 +20,7 @@ const TEST_CANDIDATES_WIN: { cmd: string; args: string[] }[] = [
 ];
 
 const TEST_CANDIDATES_UNIX: { cmd: string; args: string[] }[] = [
+  { cmd: "python3.14", args: [] },
   { cmd: "python3.13", args: [] },
   { cmd: "python3.12", args: [] },
   { cmd: "python3.11", args: [] },
@@ -36,6 +39,23 @@ export interface PythonInterpreter {
 let cachedInterpreter: PythonInterpreter | undefined;
 let cachePromise: Promise<PythonInterpreter | undefined> | undefined;
 let managedPythonPath: string | undefined;
+
+/** On macOS, try Homebrew / python.org installs by absolute path before the
+ *  bare names: `/usr/bin/python3` is Apple's 3.9 (too old for modal), and when
+ *  the Command Line Tools are missing merely running it pops an install dialog. */
+const DARWIN_CANDIDATES: { cmd: string; args: string[] }[] = [
+  "/opt/homebrew/bin/python3",
+  "/usr/local/bin/python3",
+  "/Library/Frameworks/Python.framework/Versions/Current/bin/python3",
+].map((cmd) => ({ cmd, args: [] }));
+
+function platformCandidates(): { cmd: string; args: string[] }[] {
+  switch (os.platform()) {
+    case "win32": return TEST_CANDIDATES_WIN;
+    case "darwin": return [...DARWIN_CANDIDATES, ...TEST_CANDIDATES_UNIX];
+    default: return TEST_CANDIDATES_UNIX;
+  }
+}
 
 function probeInterpreter(cmd: string, args: string[]): Promise<PythonInterpreter | undefined> {
   return new Promise((resolve) => {
@@ -90,7 +110,7 @@ export async function resolvePython(forceRefresh = false): Promise<PythonInterpr
     }
 
     // 3. Walk candidates
-    const candidates = os.platform() === "win32" ? TEST_CANDIDATES_WIN : TEST_CANDIDATES_UNIX;
+    const candidates = platformCandidates();
     let firstUsable: PythonInterpreter | undefined;
     for (const c of candidates) {
       const probed = await probeInterpreter(c.cmd, c.args);
@@ -122,7 +142,7 @@ export async function resolveBootstrapPython(): Promise<PythonInterpreter | unde
   const userPath = (cfg.get<string>("pythonPath") ?? "").trim();
   const candidates = [
     ...(userPath ? [{ cmd: userPath, args: [] as string[] }] : []),
-    ...(os.platform() === "win32" ? TEST_CANDIDATES_WIN : TEST_CANDIDATES_UNIX),
+    ...platformCandidates(),
   ];
   const seen = new Set<string>();
   for (const candidate of candidates) {

@@ -20,6 +20,7 @@ from typing import Optional
 import tomlkit
 
 from m_gpux.core.console import console
+from m_gpux.core.modal_cli import modal_cmd
 
 MODAL_CONFIG_PATH = os.path.expanduser("~/.modal.toml")
 MONTHLY_CREDIT = 30.0
@@ -240,7 +241,7 @@ def activate_profile(profile_name: str) -> bool:
     env.setdefault("PYTHONUTF8", "1")
     try:
         result = subprocess.run(
-            ["modal", "profile", "activate", profile_name],
+            modal_cmd("profile", "activate", profile_name),
             capture_output=True,
             text=True,
             encoding="utf-8",

@@ -31,11 +31,13 @@ export async function devManage(): Promise<void> {
       { label: "$(list-unordered) List boxes", command: "dev list", terminal: "dev list" },
       { label: "$(remote) Open in VS Code", command: "dev code", terminal: "dev code" },
       { label: "$(terminal) SSH", command: "dev ssh", terminal: "dev ssh" },
+      { label: "$(terminal-bash) Shell", command: "dev shell", terminal: "dev shell" },
       { label: "$(debug-pause) Pause", command: "dev pause", terminal: "dev pause" },
       { label: "$(debug-start) Resume", command: "dev resume", terminal: "dev resume" },
       { label: "$(cloud-upload) Push files", command: "dev sync push", terminal: "dev sync push" },
       { label: "$(cloud-download) Pull files", command: "dev sync pull", terminal: "dev sync pull" },
       { label: "$(trash) Delete box", command: "dev down", terminal: "dev down" },
+      { label: "$(browser) Web terminal (classic)", command: "dev web", terminal: "dev web" },
     ],
     {
       title: "M-GPUX Dev Box",

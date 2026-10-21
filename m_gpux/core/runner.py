@@ -15,6 +15,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from typing import Optional
@@ -27,7 +29,7 @@ from rich.table import Table
 from m_gpux.core.console import console
 from m_gpux.core.metrics import FUNCTIONS as _METRICS_FUNCTIONS
 from m_gpux.core.profiles import get_all_profiles
-from m_gpux.core.modal_cli import deploy_cmd, stop_app
+from m_gpux.core.modal_cli import deploy_cmd, modal_cmd, stop_app
 from m_gpux.core.state import save_session, update_session
 
 # States `modal app list --json` can report (see `APP_STATE_TO_MESSAGE` in the
@@ -83,6 +85,22 @@ def _summarize_runner(content: str, runner_file: str) -> Panel:
     return Panel(grid, title="Generated Modal Runner", border_style="cyan", expand=False)
 
 
+def _editor_command() -> list[str]:
+    """$VISUAL/$EDITOR (which may carry flags, e.g. ``code --wait``), else a sane per-OS default."""
+    configured = (os.environ.get("VISUAL") or os.environ.get("EDITOR") or "").strip()
+    if configured:
+        if os.name == "nt":
+            # Non-POSIX splitting keeps the quotes around e.g. "C:\\Program Files\\...".
+            return [part.strip('"') for part in shlex.split(configured, posix=False)]
+        return shlex.split(configured)
+    if os.name == "nt":
+        return ["notepad"]
+    for candidate in ("nano", "vim", "vi"):
+        if shutil.which(candidate):
+            return [candidate]
+    return ["vi"]
+
+
 def execute_modal_temp_script(
     content: str,
     description: str,
@@ -134,9 +152,9 @@ def execute_modal_temp_script(
             console.print(Syntax(content, "python", theme="monokai", line_numbers=True))
             continue
         if choice in ("e", "edit", "open"):
-            editor = os.environ.get("EDITOR") or ("notepad" if os.name == "nt" else "nano")
+            editor = _editor_command()
             try:
-                subprocess.run([editor, runner_file])
+                subprocess.run([*editor, runner_file])
             except Exception as exc:
                 console.print(f"[red]Could not launch editor ({editor}): {exc}[/red]")
             # Re-read possibly edited file
@@ -147,9 +165,9 @@ def execute_modal_temp_script(
     if deploy:
         cmd = deploy_cmd(runner_file, deploy_strategy)
     elif detach:
-        cmd = ["modal", "run", "--detach", runner_file]
+        cmd = modal_cmd("run", "--detach", runner_file)
     else:
-        cmd = ["modal", "run", runner_file]
+        cmd = modal_cmd("run", runner_file)
 
     console.print(f"[bold green]Starting {description}…[/bold green]")
     if deploy:
@@ -339,7 +357,7 @@ def _scan_profile_apps(profile: str) -> list[tuple[str, str, str, str]]:
     found: list[tuple[str, str, str, str]] = []
     try:
         result = subprocess.run(
-            ["modal", "app", "list", "--env", "main", "--json"],
+            modal_cmd("app", "list", "--env", "main", "--json"),
             capture_output=True,
             text=True,
             timeout=30,

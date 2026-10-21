@@ -11,7 +11,7 @@ import typer
 from rich.table import Table
 
 from m_gpux.core.console import console
-from m_gpux.core.modal_cli import app_logs_cmd, modal_env, stop_app
+from m_gpux.core.modal_cli import app_logs_cmd, modal_cmd, modal_env, stop_app
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.state import forget_session, get_session, list_sessions, update_session
 
@@ -114,7 +114,7 @@ def pull_command(
         raise typer.Exit(1)
     to.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        ["modal", "volume", "get", str(volume), "/", str(to)],
+        modal_cmd("volume", "get", str(volume), "/", str(to)),
         env=modal_env(session.get("profile")),
     )
     if result.returncode != 0:

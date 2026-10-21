@@ -42,7 +42,26 @@ export async function composeCheck(): Promise<void> {
     );
     return;
   }
-  await runInTerminal("compose check", "compose check", found.dir);
+  const mode = await vscode.window.showQuickPick(
+    [
+      { label: "$(rocket) Subprocess", description: "Check for the default one-app mode", value: "check" },
+      { label: "$(server) VM mode", description: "Check for a GPU container running the stack", value: "vm check" },
+      { label: "$(layers) Sandbox mode", description: "Check for one Sandbox per service", value: "sandbox check" },
+    ],
+    { title: "M-GPUX Compose — Check for which mode?" }
+  );
+  if (!mode) { return; }
+  await runInTerminal(`compose ${mode.value}`, `compose ${mode.value}`, found.dir);
+}
+
+export async function composeSync(): Promise<void> {
+  if (!(await ensureMgpuxCli("Compose sync"))) { return; }
+  const found = findComposeFile();
+  if (!found) {
+    vscode.window.showWarningMessage("No docker-compose.yml in the workspace root.");
+    return;
+  }
+  await runInTerminal("compose sync", "compose sync", found.dir);
 }
 
 export async function composeUp(): Promise<void> {

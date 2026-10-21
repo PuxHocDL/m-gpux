@@ -9,9 +9,10 @@ import { runHubWizard } from "./hubWizard";
 import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
-import { composeCheck, composeUp, composeSandbox } from "./composeActions";
+import { composeCheck, composeUp, composeSandbox, composeSync } from "./composeActions";
+import { billingReports, manageBudgets, manageImages, manageServeEndpoint, openCliMenu, showPreset } from "./cliActions";
 import { devUp, devManage } from "./devActions";
-import { listApps, activateProfile, runCommand, isAliveAppState } from "./modalCli";
+import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
 import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
 import { refreshFromModal } from "./sessionDiscovery";
 import { sessionStore, Session } from "./sessionStore";
@@ -349,15 +350,23 @@ export function activate(context: vscode.ExtensionContext) {
       out.appendLine(`  GPU: ${gpuPick.label}`);
       out.appendLine(`  CWD: ${workspaceFolder}\n`);
 
-      const proc = spawn("modal", ["run", ".mgpux-probe.py"], {
+      const modal = await modalCommand(["run", ".mgpux-probe.py"]);
+      const proc = spawn(modal.cmd, modal.args, {
         cwd: workspaceFolder,
         shell: false,
+        windowsHide: true,
         env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       });
       proc.stdout.on("data", (d: Buffer) => out.append(d.toString()));
       proc.stderr.on("data", (d: Buffer) => out.append(d.toString()));
       proc.on("close", (code: number | null) => {
         out.appendLine(`\nExit ${code}`);
+        try { require("fs").unlinkSync(probePath); } catch { /* ignore */ }
+      });
+      // Without a listener a spawn failure (e.g. modal not installed) would be
+      // an uncaught exception in the extension host.
+      proc.on("error", (err: Error) => {
+        out.appendLine(`\n✗ Failed to start modal: ${err.message}`);
         try { require("fs").unlinkSync(probePath); } catch { /* ignore */ }
       });
     })
@@ -675,10 +684,12 @@ export function activate(context: vscode.ExtensionContext) {
           title: `M-GPUX: stopping ${s.appId}...`,
         },
         async () => {
+          const modal = await modalCommand(["app", "stop", "--yes", s.appId!]);
           const result = await new Promise<{ code: number; out: string }>((resolve) => {
-            const p = spawn("modal", ["app", "stop", "--yes", s.appId!], {
+            const p = spawn(modal.cmd, modal.args, {
               cwd: s.cwd,
               shell: false,
+              windowsHide: true,
               env: {
                 ...process.env,
                 MODAL_PROFILE: s.profile,
@@ -856,7 +867,25 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.composeCheck",   () => composeCheck()),
     vscode.commands.registerCommand("mgpux.composeUp",      () => composeUp()),
-    vscode.commands.registerCommand("mgpux.composeSandbox", () => composeSandbox())
+    vscode.commands.registerCommand("mgpux.composeSandbox", () => composeSandbox()),
+    vscode.commands.registerCommand("mgpux.composeSync",    () => composeSync())
+  );
+
+  // CLI workflows without a dedicated wizard elsewhere.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("mgpux.openCliMenu",    () => openCliMenu()),
+    vscode.commands.registerCommand("mgpux.manageBudgets",  () => manageBudgets(() => accountTree.refreshWithBilling())),
+    vscode.commands.registerCommand("mgpux.billingReports", () => billingReports()),
+    vscode.commands.registerCommand("mgpux.manageImages",   () => manageImages()),
+    vscode.commands.registerCommand("mgpux.manageServe",    () => manageServeEndpoint()),
+    vscode.commands.registerCommand("mgpux.showPreset", async (item?: PresetItem) => {
+      const name = item?.presetName;
+      if (!name) {
+        vscode.window.showWarningMessage("Right-click a preset to show it.");
+        return;
+      }
+      await showPreset(name, loadPresets()[name] ?? {});
+    })
   );
 
   // Re-resolve python whenever the user changes the override setting.
@@ -918,8 +947,7 @@ async function stopAllAppsForProfiles(profiles: string[]): Promise<void> {
           message: `${entry.name} (${entry.profile})`,
           increment: 100 / plan.length,
         });
-        const res = await runCommand(
-          "modal",
+        const res = await runModal(
           ["app", "stop", "--yes", entry.appId],
           { env: { MODAL_PROFILE: entry.profile } }
         );

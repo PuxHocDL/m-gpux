@@ -10,7 +10,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 
 from m_gpux.core.console import console
-from m_gpux.core.modal_cli import stop_app
+from m_gpux.core.modal_cli import modal_cmd, stop_app
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.runner import ALIVE_APP_STATES, scan_apps_across_profiles
 
@@ -18,14 +18,14 @@ from m_gpux.core.runner import ALIVE_APP_STATES, scan_apps_across_profiles
 def _scan_current_profile() -> list[tuple[str, str, str, str]]:
     try:
         result = subprocess.run(
-            ["modal", "app", "list", "--json"],
+            modal_cmd("app", "list", "--json"),
             capture_output=True,
             text=True,
             timeout=15,
         )
         raw = json.loads(result.stdout) if result.stdout.strip() else []
         p_result = subprocess.run(
-            ["modal", "profile", "current"],
+            modal_cmd("profile", "current"),
             capture_output=True,
             text=True,
             timeout=5,

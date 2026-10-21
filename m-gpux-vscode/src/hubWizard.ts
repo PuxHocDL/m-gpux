@@ -5,7 +5,7 @@ import * as fs from "fs";
 import * as crypto from "crypto";
 import { loadProfiles, switchProfile, getActiveProfile, fetchFunctionWebUrl } from "./config";
 import { sessionStore, newSessionId, SessionKind, sessionLogPath, appendSessionLog } from "./sessionStore";
-import { extractWebEndpoint } from "./modalCli";
+import { extractWebEndpoint, modalCommand } from "./modalCli";
 import { startLiveSync } from "./liveSync";
 
 // ---------------------------------------------------------------------------
@@ -942,7 +942,8 @@ async function showAndExecuteScript(
   // `detached: true` (which spawns a visible console window on Windows even
   // with windowsHide). For `modal run` we let the local process die with
   // VS Code: the user explicitly chose foreground mode.
-  const proc = spawn("modal", args, {
+  const modal = await modalCommand(args);
+  const proc = spawn(modal.cmd, modal.args, {
     cwd: localDir,
     shell: false,
     windowsHide: true,

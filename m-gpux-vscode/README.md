@@ -9,7 +9,9 @@
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
 - **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
-- **Budget-Aware Billing** — See current-cycle usage and remaining m-gpux budget/credit per account
+- **Budget-Aware Billing** — See current-cycle usage and remaining budget/credit per account; set, check and enforce monthly budgets
+- **Images & Endpoint Ops** — Build prebuilt images, and warm up, restart, tail or stop your LLM endpoint without leaving the editor
+- **Every CLI Command** — Anything without a dedicated wizard is one click away in the interactive CLI menu
 - **Session Management** — Restore, discover, stop, and sync remote sessions without losing profile context
 - **Hardware Probing** — Inspect GPU/CPU/RAM metrics on any Modal container
 - **Native VS Code UI** — Output Channels for logs, progress notifications with cancel, clickable URL pop-ups when tunnels are ready
@@ -155,6 +157,13 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `M-GPUX`:
 | `M-GPUX: Show Billing Usage` | Aggregate billing report across accounts |
 | `M-GPUX: Open Billing Dashboard` | Open Modal usage page in browser |
 | `M-GPUX: Show Info` | Display extension version and profile count |
+| `M-GPUX: Budgets` | Show, set, check, watch, or clear monthly budgets per account |
+| `M-GPUX: Billing Reports` | Usage table, billing-cycle summary, and current GPU/CPU rates |
+| `M-GPUX: Images` | Build and publish prebuilt images, list them, or forget one |
+| `M-GPUX: Manage LLM Endpoint` | Warm up, live dashboard, logs, restart, or stop the served model |
+| `M-GPUX: Sync Compose Changes` | Watch the workspace and sync edits into a running Compose stack |
+| `M-GPUX: Show Preset` | Open a preset's settings (right-click a preset) |
+| `M-GPUX: Open Interactive CLI Menu` | Every m-gpux CLI command in an arrow-key menu, in a terminal |
 
 ---
 

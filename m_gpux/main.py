@@ -39,6 +39,7 @@ from rich.text import Text
 from m_gpux import __version__
 from m_gpux.core import PluginRegistry, discover_plugins
 from m_gpux.core.console import console
+from m_gpux.core.menu import run_menu
 
 app = typer.Typer(
     name="m-gpux",
@@ -97,8 +98,16 @@ def _render_intro_animation() -> None:
             time.sleep(0.12)
 
 
-def render_welcome() -> None:
+def _is_interactive() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def render_welcome(interactive: bool = False) -> None:
     _render_intro_animation()
+    console.print(Panel.fit(HERO_LOGO.strip(), border_style="bright_cyan", title="M-GPUX", subtitle=f"v{__version__}"))
+    if interactive:
+        console.print("[dim]Pick anything below — or run m-gpux --help for the full command reference.[/dim]")
+        return
     quick_actions = Table.grid(padding=(0, 2))
     quick_actions.add_row("[bold yellow]m-gpux account add[/bold yellow]", "Configure your Modal token profile")
     quick_actions.add_row(
@@ -115,9 +124,8 @@ def render_welcome() -> None:
         "[bold yellow]m-gpux billing usage --all[/bold yellow]", "See total spend across configured accounts"
     )
 
-    console.print(Panel.fit(HERO_LOGO.strip(), border_style="bright_cyan", title="M-GPUX", subtitle=f"v{__version__}"))
     console.print(Panel(quick_actions, title="Quick Actions", border_style="cyan"))
-    console.print("[dim]Tip: run m-gpux --help for full command reference.[/dim]\n")
+    console.print("[dim]Tip: run m-gpux menu for an interactive menu, or m-gpux --help for every command.[/dim]\n")
 
 
 def _version_callback(value: bool) -> None:
@@ -139,4 +147,13 @@ def main_callback(
     ),
 ):
     if ctx.invoked_subcommand is None:
-        render_welcome()
+        interactive = _is_interactive()
+        render_welcome(interactive)
+        if interactive:
+            run_menu(ctx.command)
+
+
+@app.command("menu", rich_help_panel="Start here")
+def menu_command(ctx: typer.Context) -> None:
+    """Interactive menu for every m-gpux command — no flags to remember."""
+    run_menu(ctx.find_root().command)

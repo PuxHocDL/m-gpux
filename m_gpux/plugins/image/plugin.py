@@ -18,7 +18,7 @@ from rich.table import Table
 
 from m_gpux.core.console import console
 from m_gpux.core.images import forget_image, list_images, record_image
-from m_gpux.core.modal_cli import modal_env
+from m_gpux.core.modal_cli import modal_cmd, modal_env
 from m_gpux.core.plugin import PluginBase
 from m_gpux.core.profiles import get_all_profiles, select_profile
 
@@ -152,7 +152,7 @@ def list_command(
             )
         console.print(table)
     if remote:
-        subprocess.run(["modal", "image", "names", "list"])
+        subprocess.run(modal_cmd("image", "names", "list"))
 
 
 @app.command("forget")

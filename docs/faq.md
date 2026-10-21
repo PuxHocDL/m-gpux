@@ -45,14 +45,16 @@ If the profile name has a typo, `account list` will show the correct names.
 
 ### `modal: command not found`
 
-The Modal CLI is not installed or not in your PATH:
+m-gpux does not need `modal` on your `PATH`: it launches the Modal CLI that was
+installed alongside it, using the same Python interpreter. That covers `pipx`,
+`pip install --user` on macOS (`~/Library/Python/3.x/bin`), and the Windows
+`Scripts` folder. The VS Code extension does the same with the interpreter it
+resolves, and also checks Homebrew, pyenv and python.org locations when VS Code
+was opened from the macOS Dock.
 
-```bash
-pip install modal
-modal --version
-```
-
-On Windows, ensure the Python Scripts folder is in your PATH.
+If you see this error when running `modal` yourself, add your Python's scripts
+folder to `PATH`, or run `python -m pip install modal` and then `modal --version`.
+To make m-gpux use a specific Modal CLI, set `MGPUX_MODAL_CLI` to its path.
 
 ---
 
