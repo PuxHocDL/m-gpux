@@ -192,7 +192,6 @@ def select_profile() -> Optional[str]:
         os.environ["MODAL_PROFILE"] = resolved
         return resolved
     env_profile = os.environ.get("MGPUX_PROFILE", "").strip()
-    from m_gpux.core.ui import arrow_select  # local import: avoid cycles
 
     profiles = load_profiles()
     if not profiles:
@@ -208,26 +207,20 @@ def select_profile() -> Optional[str]:
             return env_profile
         console.print(f"[yellow]MGPUX_PROFILE={env_profile!r} not found, falling back to picker.[/yellow]")
 
+    from m_gpux.core.cards import pick_profile  # local import: avoid cycles
+
     console.print("\n[bold cyan]Step 0: Select Workspace / Profile[/bold cyan]")
-    profile_options = [("AUTO", "Smart pick (most credit / budget remaining)")]
-    for name, is_active in profiles:
-        marker = " (active)" if is_active else ""
-        profile_options.append((name, f"Modal profile{marker}"))
-
-    choice_idx = arrow_select(profile_options, title="Select Workspace", default=0)
-
-    if choice_idx == 0:
-        console.print("  [cyan]Scanning all accounts for best balance...[/cyan]")
-        best_name, best_remaining = get_best_profile()
-        if best_name is None:
+    picked = pick_profile(include_auto=True, title="Select Workspace")
+    if picked is None:
+        return None
+    if picked.auto:
+        if not picked.name:
             console.print("[bold red]Could not determine best profile. Pick manually.[/bold red]")
             return None
-        console.print(f"  [bold green]Auto-selected: {best_name} (${best_remaining:.2f} remaining)[/bold green]")
-        return best_name
-
-    selected_name, _ = profiles[choice_idx - 1]
-    console.print(f"  Using profile: [bold cyan]{selected_name}[/bold cyan]")
-    return check_profile_credit(selected_name)
+        console.print(f"  [bold green]Auto-selected: {picked.name} (${picked.left:.2f} remaining)[/bold green]")
+        return picked.name
+    console.print(f"  Using profile: [bold cyan]{picked.name}[/bold cyan]")
+    return check_profile_credit(picked.name)
 
 
 def activate_profile(profile_name: str) -> bool:

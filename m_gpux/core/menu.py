@@ -37,14 +37,14 @@ def _choose(title: str, options: list[tuple[str, str]], values: Optional[list[st
 
 
 def _profile() -> Optional[list[str]]:
+    from m_gpux.core.cards import pick_profile
     from m_gpux.core.profiles import load_profiles
 
-    profiles = load_profiles()
-    if not profiles:
-        console.print("[yellow]No Modal profiles yet — add one with Accounts → Add account.[/yellow]")
+    if not load_profiles():
+        console.print("[yellow]No Modal profiles yet — add one with Accounts → Add.[/yellow]")
         return None
-    name = _choose("Profile", [(name, "active" if active else "") for name, active in profiles])
-    return [name] if name else None
+    picked = pick_profile(include_auto=False, title="Profile")
+    return [picked.name] if picked else None
 
 
 def _account_option() -> Optional[list[str]]:

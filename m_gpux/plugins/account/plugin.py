@@ -1,6 +1,5 @@
 import typer
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Prompt
 import os
 import re
@@ -41,42 +40,15 @@ def list_accounts():
         console.print("[yellow]No profiles found. Run `m-gpux account add` to configure.[/yellow]")
         return
 
-    from m_gpux.core.budget import budget_for, load_budgets
+    from m_gpux.core.cards import card_grid, load_usages, profile_card
 
-    console.print("[cyan]Fetching billing data...[/cyan]")
-    balances = {name: (used, left) for name, used, left in get_all_balances()}
-    budgets = load_budgets()
+    with console.status("[cyan]Fetching billing data...[/cyan]"):
+        usages = load_usages()
 
-    table = Table(title="Modal Workspaces (Profiles)")
-    table.add_column("Profile Name", style="cyan")
-    table.add_column("Status", style="green")
-    table.add_column("Used", style="red", justify="right")
-    table.add_column("Budget", style="magenta", justify="right")
-    table.add_column("Spendable", style="green", justify="right")
-
-    total_remaining = 0.0
-
-    for p in profiles:
-        status = "[bold green]Active[/bold green]" if doc[p].get("active", False) else ""
-        limit = budget_for(p, budgets)
-        budget_str = f"${limit:.2f}" if limit is not None else f"[dim]${MONTHLY_CREDIT:.0f} credit[/dim]"
-        if p not in balances:
-            table.add_row(p, status, "[dim]N/A[/dim]", budget_str, "[dim]N/A[/dim]")
-            continue
-        used, remaining = balances[p]
-        if used < 0:
-            table.add_row(p, status, "[yellow]Error[/yellow]", budget_str, "[yellow]?[/yellow]")
-            continue
-        total_remaining += remaining
-        if remaining < 5:
-            remaining_str = f"[bold red]${remaining:.2f}[/bold red]"
-        elif remaining < 15:
-            remaining_str = f"[yellow]${remaining:.2f}[/yellow]"
-        else:
-            remaining_str = f"[green]${remaining:.2f}[/green]"
-        table.add_row(p, status, f"${used:.2f}", budget_str, remaining_str)
-
-    console.print(table)
+    cards = [profile_card(p, bool(doc[p].get("active", False)), usages.get(p)) for p in profiles]
+    console.print()
+    console.print(card_grid(cards))
+    total_remaining = sum(u.left for u in usages.values() if u.used >= 0)
     console.print(f"\n[bold]Total remaining across all profiles: [green]${total_remaining:.2f}[/green][/bold]")
     now = datetime.now()
     console.print(

@@ -8,8 +8,12 @@ from rich.console import Console
 _console = Console()
 
 
-def _read_key() -> str:
-    """Read a single keypress. Returns 'up', 'down', 'enter', or the character."""
+def _read_key(cbreak: bool = False) -> str:
+    """Read a single keypress. Returns 'up', 'down', 'enter', or the character.
+
+    *cbreak* keeps output post-processing on while waiting (POSIX only), so
+    another thread can redraw the screen — raw mode would break newlines.
+    """
     if sys.platform == "win32":
         import msvcrt
 
@@ -39,7 +43,10 @@ def _read_key() -> str:
         fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
-            tty.setraw(fd)
+            if cbreak:
+                tty.setcbreak(fd)
+            else:
+                tty.setraw(fd)
             ch = sys.stdin.read(1)
             if ch == "\x1b":
                 ch2 = sys.stdin.read(1)
