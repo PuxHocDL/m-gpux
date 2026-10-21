@@ -283,6 +283,48 @@
         "title": "Discover Modal Apps",
         "category": "M-GPUX",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mgpux.openCliMenu",
+        "title": "Open Interactive CLI Menu",
+        "category": "M-GPUX",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "mgpux.manageBudgets",
+        "title": "Budgets",
+        "category": "M-GPUX",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "mgpux.billingReports",
+        "title": "Billing Reports",
+        "category": "M-GPUX",
+        "icon": "$(table)"
+      },
+      {
+        "command": "mgpux.manageImages",
+        "title": "Images",
+        "category": "M-GPUX",
+        "icon": "$(package)"
+      },
+      {
+        "command": "mgpux.manageServe",
+        "title": "Manage LLM Endpoint",
+        "category": "M-GPUX",
+        "icon": "$(server-process)"
+      },
+      {
+        "command": "mgpux.composeSync",
+        "title": "Sync Compose Changes",
+        "category": "M-GPUX",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "mgpux.showPreset",
+        "title": "Show Preset",
+        "category": "M-GPUX",
+        "icon": "$(json)"
       }
     ],
     "configuration": {
@@ -352,6 +394,11 @@
         {
           "command": "mgpux.refreshPresets",
           "when": "view == mgpux.presetsView",
+          "group": "navigation"
+        },
+        {
+          "command": "mgpux.manageBudgets",
+          "when": "view == mgpux.accountsView",
           "group": "navigation"
         }
       ],
@@ -427,6 +474,10 @@
         },
         {
           "command": "mgpux.deletePreset",
+          "when": "view == mgpux.presetsView && viewItem == preset"
+        },
+        {
+          "command": "mgpux.showPreset",
           "when": "view == mgpux.presetsView && viewItem == preset"
         }
       ]

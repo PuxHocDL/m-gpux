@@ -134,5 +134,46 @@ class DevboxSyncTests(unittest.TestCase):
             self.assertFalse((dest / "link").exists())
 
 
+class InteractiveMenuTests(unittest.TestCase):
+    @staticmethod
+    def _cli_commands() -> dict[tuple[str, ...], object]:
+        import typer.main
+
+        from m_gpux.main import app
+
+        found: dict[tuple[str, ...], object] = {}
+
+        def walk(cmd, path: tuple[str, ...]) -> None:
+            if hasattr(cmd, "commands"):
+                for name, sub in cmd.commands.items():
+                    walk(sub, (*path, name))
+            else:
+                found[path] = cmd
+
+        walk(typer.main.get_command(app), ())
+        return found
+
+    @staticmethod
+    def _menu_paths() -> list[tuple[str, ...]]:
+        from m_gpux.core.menu import MENU
+
+        paths = []
+        for _, _, items in MENU:
+            for _, _, steps in items:
+                paths.append(tuple(step for step in steps if isinstance(step, str)))
+        return paths
+
+    def test_every_cli_command_is_reachable_from_the_menu(self) -> None:
+        commands = self._cli_commands()
+        menu = self._menu_paths()
+        missing = [path for path in commands if path != ("menu",) and path not in menu]
+        self.assertEqual(missing, [])
+
+    def test_every_menu_entry_runs_a_real_command(self) -> None:
+        commands = self._cli_commands()
+        unknown = [path for path in self._menu_paths() if path not in commands]
+        self.assertEqual(unknown, [])
+
+
 if __name__ == "__main__":
     unittest.main()

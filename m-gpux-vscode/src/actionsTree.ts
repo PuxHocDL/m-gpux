@@ -25,6 +25,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("GPU Hub",         "Jupyter / script / bash / vLLM wizard", "rocket", "mgpux.openHub"),
           new ActionItem("Run Preset",      "Replay a saved workload",               "play-circle", "mgpux.runPreset"),
           new ActionItem("Probe Hardware",  "Check GPU/CPU/RAM metrics",             "pulse",  "mgpux.loadProbe"),
+          new ActionItem("CLI Menu",        "Every m-gpux command in an interactive menu", "terminal", "mgpux.openCliMenu"),
         ];
         case "dev": return [
           new ActionItem("Create / Start", "GPU/CPU Sandbox with SSH and persistent snapshots", "vm-running", "mgpux.devUp"),
@@ -35,6 +36,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
         ];
         case "serve": return [
           new ActionItem("Deploy LLM",      "Serve a HuggingFace model as OpenAI API", "rocket",  "mgpux.serveDeploy"),
+          new ActionItem("Manage Endpoint", "Warm up, dashboard, logs, restart, stop", "server-process", "mgpux.manageServe"),
           new ActionItem("API Keys",        "Create / revoke API keys",              "key",    "mgpux.serveKeysList"),
           new ActionItem("Modal Dashboard", "Open Modal apps page in browser",       "link-external", "mgpux.openServeDashboard"),
         ];
@@ -42,10 +44,14 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("Check Compose",   "Validate docker-compose.yml",           "checklist", "mgpux.composeCheck"),
           new ActionItem("Deploy Compose",  "Run docker-compose services on Modal",  "rocket",    "mgpux.composeUp"),
           new ActionItem("Sandbox Mode",    "Isolated Modal Sandboxes per service",  "layers",    "mgpux.composeSandbox"),
+          new ActionItem("Sync Changes",    "Watch and sync local edits to the stack", "sync",      "mgpux.composeSync"),
         ];
         case "manage": return [
           new ActionItem("Stop All Apps",   "Stop every running Modal app on the active profile", "debug-stop", "mgpux.stopAll"),
+          new ActionItem("Budgets",         "Monthly limits per account, check & enforce", "shield", "mgpux.manageBudgets"),
           new ActionItem("Billing Usage",   "Show cost across all accounts",         "graph",  "mgpux.billingUsage"),
+          new ActionItem("Billing Reports", "Usage table, cycle summary, GPU rates", "table",  "mgpux.billingReports"),
+          new ActionItem("Images",          "Build, publish and manage prebuilt images", "package", "mgpux.manageImages"),
           new ActionItem("Billing Dashboard", "Open Modal usage page in browser",    "link-external", "mgpux.openBillingDashboard"),
           new ActionItem("Info",            "Show M-GPUX info",                      "info",   "mgpux.showInfo"),
         ];
