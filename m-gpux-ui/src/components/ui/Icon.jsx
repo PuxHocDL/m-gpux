@@ -14,7 +14,6 @@ import {
   Zap,
   Box,
   PanelLeft,
-  Layers,
 } from "lucide-react";
 
 const MAP = {
@@ -33,7 +32,6 @@ const MAP = {
   Zap,
   Box,
   PanelLeft,
-  Layers,
 };
 
 /** Icon — resolve a lucide icon by name (used by data-driven sections). */

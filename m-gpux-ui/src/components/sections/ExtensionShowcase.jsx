@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -8,23 +7,17 @@ import {
   CircleDollarSign,
   Cloud,
   Code2,
-  Command,
   Cpu,
-  Globe,
   Layers3,
   Play,
   Plus,
   RefreshCw,
   Server,
   Settings,
-  SlidersHorizontal,
   TerminalSquare,
 } from "lucide-react";
 import { ScrollReveal, SplitText, Magnet } from "../reactbits";
-import Icon from "../ui/Icon";
-import { EXTENSION_HIGHLIGHTS, EXTENSION_SETTINGS, EXTENSION_SURFACES } from "../../data/extension";
-
-const ACTION_COUNT = EXTENSION_SURFACES.reduce((n, s) => n + s.actions.length, 0);
+import { EXTENSION_HIGHLIGHTS } from "../../data/extension";
 
 const MARKET = "https://marketplace.visualstudio.com/items?itemName=puxpux.m-gpux";
 
@@ -39,12 +32,10 @@ function SectionTitle({ children, action }) {
 
 function ExtensionWindow() {
   const quickActions = [
-    [Cpu, "Launch"],
+    [Cpu, "GPU Hub"],
     [Box, "Dev Box"],
-    [Globe, "Host"],
-    [Server, "Serve LLM"],
     [Layers3, "Compose"],
-    [Settings, "Manage"],
+    [Server, "Serve"],
   ];
   return (
     <div className="overflow-hidden rounded-[1.5rem] border border-black/30 bg-[#181818] shadow-term">
@@ -121,9 +112,9 @@ function ExtensionWindow() {
               </div>
               <div className="space-y-3 p-4 font-mono text-[10px]">
                 <div className="flex items-center justify-between text-[#ccc]"><span>m-gpux</span><span className="text-[#89d185]">3.0.0 ✓</span></div>
-                <div className="flex items-center justify-between text-[#ccc]"><span>modal</span><span className="text-[#89d185]">1.6.2 ✓</span></div>
+                <div className="flex items-center justify-between text-[#ccc]"><span>modal</span><span className="text-[#89d185]">1.5.5 ✓</span></div>
                 <div className="h-px bg-[#393939]" />
-                <p className="text-[#777]">scope: extension global storage · macOS / Windows / Linux</p>
+                <p className="text-[#777]">scope: extension global storage</p>
               </div>
             </div>
 
@@ -143,85 +134,6 @@ function ExtensionWindow() {
         <span className="flex items-center gap-1"><Cloud size={9} /> tool1</span>
         <span className="flex items-center gap-1"><Activity size={9} /> Modal ready</span>
         <span className="ml-auto flex items-center gap-1"><CircleDollarSign size={9} /> $5.18 used</span>
-      </div>
-    </div>
-  );
-}
-
-function ExtensionCatalog() {
-  const [active, setActive] = useState(EXTENSION_SURFACES[0].id);
-  const surface = EXTENSION_SURFACES.find((s) => s.id === active) ?? EXTENSION_SURFACES[0];
-
-  return (
-    <div className="mt-16 sm:mt-20">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="eyebrow">Everything in the extension</p>
-          <h3 className="mt-2 font-display text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-            {ACTION_COUNT} commands, each where you'd look for it.
-          </h3>
-        </div>
-        <p className="max-w-md text-sm text-ink-muted">
-          Run any of them from the sidebar or the Command Palette (<kbd className="font-mono text-xs">M-GPUX:</kbd>).
-          Each card shows the CLI command that does the same job.
-        </p>
-      </div>
-
-      <div className="mt-6 grid gap-5 lg:grid-cols-[260px_1fr]">
-        <div role="tablist" aria-label="Extension areas" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0">
-          {EXTENSION_SURFACES.map((s) => {
-            const selected = s.id === surface.id;
-            return (
-              <button
-                key={s.id}
-                role="tab"
-                aria-selected={selected}
-                onClick={() => setActive(s.id)}
-                className={`flex shrink-0 items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition-colors ${
-                  selected ? "border-brand-500 bg-brand-500 text-white shadow-soft" : "border-ink/10 bg-white/70 text-ink-soft hover:border-brand-300"
-                }`}
-              >
-                <Icon name={s.icon} size={16} />
-                <span className="text-sm font-semibold">{s.title}</span>
-                <span className={`ml-auto font-mono text-[11px] ${selected ? "text-white/75" : "text-ink-faint"}`}>{s.actions.length}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <div role="tabpanel" className="card p-5 sm:p-6">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h4 className="font-display text-xl font-bold text-ink">{surface.title}</h4>
-            <span className="pill">{surface.where}</span>
-          </div>
-          <p className="mt-2 text-sm text-ink-muted">{surface.blurb}</p>
-          <ul className="mt-5 grid gap-2 sm:grid-cols-2">
-            {surface.actions.map((a) => (
-              <li key={a.title} className="rounded-xl border border-ink/10 bg-white/70 px-4 py-3">
-                <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-                  <Command size={13} className="shrink-0 text-brand-500" /> {a.title}
-                </p>
-                <p className="mt-1 break-words font-mono text-[11px] text-ink-muted">
-                  {a.cli ? <>CLI: {a.cli}</> : <span className="text-ink-faint">Editor only</span>}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 rounded-2xl border border-ink/10 bg-white/55 p-5 sm:grid-cols-[auto_1fr] sm:items-start">
-        <p className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <SlidersHorizontal size={15} className="text-brand-500" /> Settings
-        </p>
-        <dl className="grid gap-3 sm:grid-cols-3">
-          {EXTENSION_SETTINGS.map((s) => (
-            <div key={s.key}>
-              <dt className="font-mono text-xs font-semibold text-ink">{s.key}</dt>
-              <dd className="mt-0.5 text-xs text-ink-muted">{s.desc}</dd>
-            </div>
-          ))}
-        </dl>
       </div>
     </div>
   );
@@ -265,11 +177,6 @@ export default function ExtensionShowcase() {
 
         <ScrollReveal delay={0.1}>
           <ExtensionWindow />
-        </ScrollReveal>
-      </div>
-      <div className="container-px">
-        <ScrollReveal>
-          <ExtensionCatalog />
         </ScrollReveal>
       </div>
     </section>
