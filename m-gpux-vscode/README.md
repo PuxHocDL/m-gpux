@@ -6,6 +6,7 @@
 
 ## Features
 
+- **GPU Notebooks** — Pick "M-GPUX — Modal GPU" in any notebook's kernel picker and your cells run on a Modal GPU; idle kernels shut down on their own
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
 - **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
@@ -118,6 +119,22 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 
 ---
 
+## GPU Notebooks
+
+Run a local `.ipynb` on a Modal GPU without leaving VS Code (requires Microsoft's **Jupyter** extension):
+
+1. Open a notebook and click **Select Kernel** (or the notebook toolbar's **Run Notebook on a Modal GPU** button).
+2. Choose **M-GPUX — Modal GPU → New Modal GPU server…**.
+3. Pick the account, a GPU (or CPU only), packages (your `requirements.txt`, Data science, PyTorch, Hugging Face, extras) and when to shut down if idle.
+4. The first start builds an image (a few minutes); later starts reuse it. Cells then run on the GPU.
+
+- Your workspace is copied to `/workspace` in the container (minus `.venv`, `node_modules`, `.git`, …), so relative paths in the notebook work. Files the notebook writes stay in the workspace Volume; use **Pull Workspace from Modal** on the session to bring them back.
+- The server is protected by a random token kept in VS Code's secret storage, and it shows up in **Active Sessions**, where **Stop Session** shuts it down.
+- With an idle timeout set, kernels that have not run anything for that long are shut down, then the server and the container stop, so nothing keeps billing. A cell that is still running is never interrupted. Each server stops after 24 hours at the latest.
+- Running servers stay in the kernel picker, so a second notebook can attach to the same GPU.
+
+---
+
 ## Account Management
 
 | Action | How |
@@ -163,6 +180,7 @@ Open the Command Palette (`Ctrl+Shift+P`) and type `M-GPUX`:
 | `M-GPUX: Manage LLM Endpoint` | Warm up, live dashboard, logs, restart, or stop the served model |
 | `M-GPUX: Sync Compose Changes` | Watch the workspace and sync edits into a running Compose stack |
 | `M-GPUX: Show Preset` | Open a preset's settings (right-click a preset) |
+| `M-GPUX: Run Notebook on a Modal GPU` | Open the kernel picker to start or attach a GPU notebook server |
 | `M-GPUX: Open Interactive CLI Menu` | Every m-gpux CLI command in an arrow-key menu, in a terminal |
 
 ---

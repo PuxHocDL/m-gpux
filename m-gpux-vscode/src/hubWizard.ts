@@ -480,7 +480,7 @@ def serve():
 `;
 }
 
-function workspaceVolumeName(localDir: string): string {
+export function workspaceVolumeName(localDir: string): string {
   const normalized = path.resolve(localDir);
   const base = path.basename(normalized) || "workspace";
   const slug = base

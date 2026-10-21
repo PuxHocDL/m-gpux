@@ -23,6 +23,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
       switch (element.groupId) {
         case "launch": return [
           new ActionItem("GPU Hub",         "Jupyter / script / bash / vLLM wizard", "rocket", "mgpux.openHub"),
+          new ActionItem("GPU Notebook",    "Run this notebook's cells on a Modal GPU", "notebook", "mgpux.notebookKernel"),
           new ActionItem("Run Preset",      "Replay a saved workload",               "play-circle", "mgpux.runPreset"),
           new ActionItem("Probe Hardware",  "Check GPU/CPU/RAM metrics",             "pulse",  "mgpux.loadProbe"),
           new ActionItem("CLI Menu",        "Every m-gpux command in an interactive menu", "terminal", "mgpux.openCliMenu"),

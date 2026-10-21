@@ -10,6 +10,7 @@ import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox, composeSync } from "./composeActions";
+import { registerNotebookKernels } from "./notebookKernel";
 import { billingReports, manageBudgets, manageImages, manageServeEndpoint, openCliMenu, showPreset } from "./cliActions";
 import { devUp, devManage } from "./devActions";
 import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
@@ -40,6 +41,7 @@ let statusBar: StatusBarManager;
 
 export function activate(context: vscode.ExtensionContext) {
   initializeCliBootstrap(context);
+  registerNotebookKernels(context);
 
   // --- Tree Views ---
   const accountTree = new AccountTreeProvider();

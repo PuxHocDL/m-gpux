@@ -28,7 +28,10 @@
     "vllm",
     "machine-learning"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onNotebook:jupyter-notebook",
+    "onNotebook:interactive"
+  ],
   "main": "./dist/extension.js",
   "icon": "resources/icon.png",
   "contributes": {
@@ -325,6 +328,12 @@
         "title": "Show Preset",
         "category": "M-GPUX",
         "icon": "$(json)"
+      },
+      {
+        "command": "mgpux.notebookKernel",
+        "title": "Run Notebook on a Modal GPU",
+        "category": "M-GPUX",
+        "icon": "$(notebook)"
       }
     ],
     "configuration": {
@@ -480,6 +489,13 @@
           "command": "mgpux.showPreset",
           "when": "view == mgpux.presetsView && viewItem == preset"
         }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "mgpux.notebookKernel",
+          "when": "notebookType == jupyter-notebook",
+          "group": "navigation/execute@20"
+        }
       ]
     }
   },
@@ -494,6 +510,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "1.85.0",
+    "@vscode/jupyter-extension": "^1.1.1",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
     "sharp": "^0.35.4",

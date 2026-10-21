@@ -54,6 +54,7 @@ The CLI works on its own, and each piece below plugs into the same accounts, pre
 m-gpux wraps Modal's primitives (Sandboxes, Functions, Servers, Volumes, named Images) into workflows that fit how you already develop.
 
 - **Dev boxes that survive the night** — Sandboxes running `sshd`, reachable with plain `ssh` or VS Code Remote-SSH. `pause` snapshots the whole filesystem and `resume` boots it back in seconds; `sync push/pull` moves files both ways
+- **Notebooks on a GPU, inside VS Code** — in the extension, pick "M-GPUX — Modal GPU" as a notebook's kernel and cells run on a Modal GPU, with idle shutdown so a forgotten kernel stops billing
 - **Every GPU, priced up front** — T4 through H100, H200, B200, and B300, including multi-GPU containers (`H100:8`), with $/hour in every picker and `m-gpux billing rates` for the live price table
 - **Many accounts, one budget** — per-account monthly limits, budget-aware AUTO selection, a warning before you launch on an account that's nearly empty, and `budget check --stop` to shut down apps on accounts that go over
 - **From localhost to a URL** — `m-gpux host` deploys FastAPI, Flask, Django, or a static folder with scale-to-zero; `--server` uses Modal's low-latency `@app.server()` primitive
