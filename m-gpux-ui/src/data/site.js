@@ -1,6 +1,11 @@
+import { ALL_COMMANDS } from "./commands";
+import { EXTENSION_SURFACES } from "./extension";
+
+const EXTENSION_ACTIONS = EXTENSION_SURFACES.reduce((n, s) => n + s.actions.length, 0);
+
 export const STATS = [
-  { value: 14, suffix: "", label: "Command groups", hint: "one coherent control surface" },
-  { value: 37, suffix: "", label: "VS Code actions", hint: "the CLI, translated to UI" },
+  { value: ALL_COMMANDS.length, suffix: "", label: "CLI commands", hint: "one coherent control surface" },
+  { value: EXTENSION_ACTIONS, suffix: "", label: "VS Code actions", hint: "the CLI, translated to UI" },
   { value: 3, suffix: "", label: "Compute modes", hint: "GPU · CPU · Sandbox" },
   { value: 0, suffix: "", label: "Idle compute", hint: "pause, snapshot, scale down" },
 ];
@@ -28,7 +33,7 @@ export const FEATURES = [
     eyebrow: "editor",
     title: "VS Code, zero CLI setup",
     body: "The extension carries a matching CLI wheel and can install it into a private environment on first use.",
-    metric: "37 actions",
+    metric: `${EXTENSION_ACTIONS} actions`,
     visual: "managed",
   },
   {

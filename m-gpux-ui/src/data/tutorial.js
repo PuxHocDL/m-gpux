@@ -20,7 +20,7 @@ export const TUTORIAL_STEPS = [
     output: [
       { tone: "dim", text: "Collecting m-gpux" },
       { tone: "dim", text: "Downloading m_gpux-3.0.0-py3-none-any.whl (146 kB)" },
-      { tone: "ok", text: "✔ Successfully installed m-gpux-3.0.0 modal-1.5.5" },
+      { tone: "ok", text: "✔ Successfully installed m-gpux-3.0.0 modal-1.6.2" },
     ],
   },
   {

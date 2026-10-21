@@ -292,7 +292,7 @@
           "type": "string",
           "default": "",
           "scope": "machine-overridable",
-          "description": "Path or command to a Python interpreter with `modal` installed (used for billing). Leave empty to auto-detect across py launcher / python3.13 / python3.12 / ... / python."
+          "description": "Path or command to a Python interpreter with `modal` installed (used to run the Modal CLI and fetch billing). Leave empty to auto-detect (py launcher on Windows, Homebrew / python.org on macOS, then python3.x / python on PATH)."
         },
         "mgpux.cliPath": {
           "type": "string",
