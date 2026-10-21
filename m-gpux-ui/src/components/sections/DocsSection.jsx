@@ -148,9 +148,9 @@ export default function DocsSection() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search documentation..."
-              className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none focus:ring-0"
+              className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-hidden focus:ring-0"
             />
-            <span className="hidden items-center gap-1 rounded border border-ink/10 bg-cream-100 px-1.5 py-0.5 font-mono text-[9px] text-ink-faint sm:inline-flex">
+            <span className="hidden items-center gap-1 rounded-sm border border-ink/10 bg-cream-100 px-1.5 py-0.5 font-mono text-[9px] text-ink-faint sm:inline-flex">
               <Command size={9} /> K
             </span>
           </label>

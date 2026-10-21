@@ -327,7 +327,7 @@ export default function TutorialSection() {
                         autoComplete="off"
                         autoCapitalize="off"
                         placeholder="type the command…"
-                        className="flex-1 bg-transparent font-mono text-[13px] text-term-text caret-brand-300 placeholder:text-term-dim/60 focus:outline-none"
+                        className="flex-1 bg-transparent font-mono text-[13px] text-term-text caret-brand-300 placeholder:text-term-dim/60 focus:outline-hidden"
                       />
                       <button
                         onClick={submit}
