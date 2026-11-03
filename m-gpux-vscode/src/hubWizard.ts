@@ -495,7 +495,8 @@ function workspaceVolumeName(localDir: string): string {
 // ---------------------------------------------------------------------------
 // Wizard
 // ---------------------------------------------------------------------------
-export async function runHubWizard(): Promise<void> {
+/** `presetAction` skips the "Choose Application" step (e.g. the notebook kernel picker asks for Jupyter). */
+export async function runHubWizard(presetAction?: "jupyter" | "python" | "bash" | "vllm"): Promise<void> {
   // Step 0: Select profile
   const profiles = loadProfiles();
   if (profiles.length === 0) {
@@ -551,7 +552,7 @@ export async function runHubWizard(): Promise<void> {
   switchProfile(selectedProfileName);
 
   // Step 2: Choose action FIRST so we know whether GPU is required (vLLM).
-  const actionPick = await vscode.window.showQuickPick(
+  const actionPick = presetAction ? { action: presetAction } : await vscode.window.showQuickPick(
     [
       {
         label: "$(notebook) Jupyter Lab",

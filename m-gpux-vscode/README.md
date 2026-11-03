@@ -7,6 +7,9 @@
 ## Features
 
 - **Overview Panel** — A modern home view at the top of the sidebar: active account with a credit meter, spend at a glance, one-click launch tiles, live session cards, accounts, presets and every tool
+- **Notebook Kernels on Modal** — Run a local `.ipynb` on a Modal GPU: Jupyter sessions appear in the notebook kernel picker under *M-GPUX · Modal GPUs*, or launch a new one from there
+- **Projects, Sweeps & Run Anywhere** — `mgpux.toml` tasks run or swept from the sidebar, recent runs with their best metric and cost, and *Run Script Anywhere* (free Kaggle quota → Colab → Modal credit) on any `.py` file
+- **Workspaces in Sync** — Secrets and images on every account, a Volume browser that downloads into your workspace, and Discord / Slack / Telegram / ntfy notifications
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
 - **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
@@ -122,6 +125,18 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 - Click **Launch** → the process runs in the background with a progress notification.
 - When a tunnel URL is detected, a notification pops up with **Open in Browser** and **Copy URL** buttons.
 - The temp script is cleaned up automatically when the process exits.
+
+---
+
+## Notebook Kernels on Modal GPUs
+
+Requires the Jupyter extension.
+
+1. Start a Jupyter session (GPU Hub → Jupyter Lab), or use **Launch a GPU Jupyter server on Modal…** inside the kernel picker.
+2. Open a notebook → kernel picker → **Select Another Kernel… → M-GPUX · Modal GPUs** → pick the session.
+3. Run cells on the GPU. The notebook toolbar's **Use Modal GPU as Notebook Kernel** button and the session's notebook icon open the same picker.
+
+Sessions that scaled to zero still appear; the first cell cold-starts them.
 
 ---
 

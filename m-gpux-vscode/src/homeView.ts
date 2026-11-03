@@ -7,6 +7,10 @@ import { AccountTreeProvider } from "./accountTree";
 import { PresetsTreeProvider, loadPresets } from "./presetsTree";
 import { sessionStore } from "./sessionStore";
 import { isAutoSyncEnabled } from "./liveSync";
+import { isKernelSession } from "./jupyterKernel";
+import { readProjectTasks, recentRuns } from "./workspaceTools";
+import * as os from "os";
+import * as path from "path";
 
 const ALLOWED_COMMANDS = new Set([
   "mgpux.openHub", "mgpux.devUp", "mgpux.devManage", "mgpux.serveDeploy", "mgpux.manageServe",
@@ -17,6 +21,8 @@ const ALLOWED_COMMANDS = new Set([
   "mgpux.createPreset", "mgpux.runPreset", "mgpux.discoverApps", "mgpux.openSession",
   "mgpux.viewSessionLogs", "mgpux.stopSession", "mgpux.removeSession", "mgpux.syncSession",
   "mgpux.pushSession", "mgpux.toggleAutoSync", "mgpux.setupCli", "mgpux.checkPython",
+  "mgpux.useAsKernel", "mgpux.projects", "mgpux.runAnywhere", "mgpux.syncWorkspaces",
+  "mgpux.notifications", "mgpux.browseVolumes", "mgpux.showRun",
 ]);
 
 const SESSION_COMMANDS = new Set([
@@ -29,6 +35,7 @@ function commandArgs(command: string, arg: unknown): unknown[] {
   if (typeof arg !== "string" || !arg) { return []; }
   if (command === "mgpux.switchAccount") { return [{ profileName: arg, isPlaceholder: false }]; }
   if (command === "mgpux.runPreset") { return [{ presetName: arg }]; }
+  if (command === "mgpux.showRun") { return [arg]; }
   if (SESSION_COMMANDS.has(command)) { return [{ sessionId: arg }]; }
   return [];
 }
@@ -56,6 +63,14 @@ export class HomeViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         if (e.affectsConfiguration("mgpux.autoSync")) { this.post(); }
       }),
     );
+    // Runs are written by the CLI (`m-gpux up / sweep`), mgpux.toml by the user.
+    const runs = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(vscode.Uri.file(path.join(os.homedir(), ".m-gpux", "runs")), "*.json")
+    );
+    const project = vscode.workspace.createFileSystemWatcher("**/mgpux.toml");
+    for (const w of [runs, project]) {
+      this.disposables.push(w, w.onDidCreate(() => this.post()), w.onDidChange(() => this.post()), w.onDidDelete(() => this.post()));
+    }
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -119,7 +134,10 @@ export class HomeViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       hasUrl: !!s.accessUrl,
       hasVolume: !!s.workspaceVolume,
       restored: !!s.restored,
+      kernel: isKernelSession(s),
     }));
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const project = root ? readProjectTasks(root) : undefined;
     return {
       version: this.version,
       loading: this.accountTree.loading,
@@ -128,6 +146,8 @@ export class HomeViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       accounts,
       sessions,
       presets,
+      runs: recentRuns(4),
+      project: project ? { tasks: project.tasks.map((t) => t.name), sweeps: project.sweeps } : null,
     };
   }
 

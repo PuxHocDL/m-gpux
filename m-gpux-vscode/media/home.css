@@ -168,6 +168,23 @@ button { font: inherit; color: inherit; }
   font-size: 11.5px; padding: 2px 0; text-align: left; }
 .more:hover { text-decoration: underline; }
 
+/* ── runs ──────────────────────────────────────────────── */
+.project { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted);
+  padding: 5px 8px; border: 1px dashed var(--line); border-radius: 6px; flex-wrap: wrap; }
+.project .ic { color: var(--accent-ink); }
+.project .spacer { flex: 1; }
+.mini { border: 1px solid var(--line); background: var(--card); border-radius: 4px; font-size: 11px;
+  padding: 0 6px; cursor: pointer; color: var(--fg); font-family: var(--mono); }
+.mini:hover { border-color: var(--accent); }
+.run-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 6px; border: 0; background: none; text-align: left; width: 100%; cursor: pointer; }
+.run-row:hover { background: var(--hover); }
+.run-row .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status, var(--muted)); }
+.run-row.st-starting .dot { animation: pulse 1.4s ease-in-out infinite; }
+.run-main { min-width: 0; }
+.run-main strong { font-size: 12.5px; font-weight: 550; }
+.run-main .kind { font-size: 10px; color: var(--muted); margin-left: 6px; text-transform: uppercase; letter-spacing: .05em; }
+
 /* ── accounts ──────────────────────────────────────────── */
 .acct { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 8px;
   padding: 6px 8px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;

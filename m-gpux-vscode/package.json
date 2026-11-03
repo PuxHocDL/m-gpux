@@ -351,6 +351,42 @@
         "title": "Show Preset",
         "category": "M-GPUX",
         "icon": "$(json)"
+      },
+      {
+        "command": "mgpux.useAsKernel",
+        "title": "Use Modal GPU as Notebook Kernel",
+        "category": "M-GPUX",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "mgpux.projects",
+        "title": "Projects (mgpux.toml)",
+        "category": "M-GPUX",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "mgpux.runAnywhere",
+        "title": "Run Script Anywhere (Kaggle / Colab / Modal)",
+        "category": "M-GPUX",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "mgpux.syncWorkspaces",
+        "title": "Secrets & Images Sync",
+        "category": "M-GPUX",
+        "icon": "$(key)"
+      },
+      {
+        "command": "mgpux.notifications",
+        "title": "Notifications",
+        "category": "M-GPUX",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "mgpux.browseVolumes",
+        "title": "Browse Volumes",
+        "category": "M-GPUX",
+        "icon": "$(database)"
       }
     ],
     "configuration": {
@@ -445,6 +481,16 @@
       ],
       "view/item/context": [
         {
+          "command": "mgpux.useAsKernel",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(ready|idle).*hasUrl.*jupyter/",
+          "group": "inline@0"
+        },
+        {
+          "command": "mgpux.useAsKernel",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(ready|idle).*hasUrl.*jupyter/",
+          "group": "actions@0"
+        },
+        {
           "command": "mgpux.switchAccount",
           "when": "view == mgpux.accountsView && viewItem == account",
           "group": "inline"
@@ -521,7 +567,22 @@
           "command": "mgpux.showPreset",
           "when": "view == mgpux.presetsView && viewItem == preset"
         }
-      ]
+      ],
+      "explorer/context": [
+        {
+          "command": "mgpux.runAnywhere",
+          "when": "resourceExtname == .py",
+          "group": "mgpux@1"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "mgpux.useAsKernel",
+          "when": "notebookType == jupyter-notebook",
+          "group": "navigation/execute@10"
+        }
+      ],
+      "commandPalette": []
     }
   },
   "scripts": {

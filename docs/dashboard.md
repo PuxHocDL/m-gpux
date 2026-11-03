@@ -25,7 +25,10 @@ Actions view. The terminal it opens keeps the server alive; close it to stop.
 | **Sandboxes** | Dev boxes tracked by m-gpux and every running Modal Sandbox | Terminate (with a reminder to `dev pause` instead) |
 | **Sessions** | Hub, dev and deploy launches from `sessions.json` | Inspect, forget |
 | **Endpoints** | The `serve` LLM API and the compute gateway, with recent gateway jobs | Open API docs; keys are never shown |
+| **Runs** | `m-gpux up` / `sweep` / `run` results: status, jobs, compute time, estimated cost, best metric | Open a run for per-job exit codes, metrics and the command to download its outputs |
 | **Presets & images** | Saved presets and published images | Copy the command that runs them |
+| **Volumes** | Every Volume on every account (run outputs and the shared HF cache are tagged) | Browse folders, see sizes, copy the download command |
+| **Sync & alerts** | Which workspace has which Secret and image; notification channels (targets masked) | Send a test notification |
 | **Usage & pricing** | Spend per account, budgets, GPU prices per hour | Edit budgets |
 
 The **account switcher** in the top bar scopes every page to one account, like

@@ -166,6 +166,40 @@ class UpCommandTests(unittest.TestCase):
         execute.assert_not_called()
         self.assertIn("echo 1", result.output)
 
+    def test_ci_uses_ambient_tokens_and_profiles_otherwise(self) -> None:
+        tokens = {"MODAL_TOKEN_ID": "ak-x", "MODAL_TOKEN_SECRET": "as-x"}
+        with mock.patch("m_gpux.core.profiles.get_all_profiles", return_value=[]), mock.patch.dict(os.environ, tokens):
+            self.assertIsNone(project_plugin.resolve_account(None, None))
+            self.assertIsNone(project_plugin.resolve_account("env", "auto"))
+        with (
+            mock.patch("m_gpux.core.profiles.get_all_profiles", return_value=["a", "b"]),
+            mock.patch("m_gpux.core.profiles.load_profiles", return_value=[("a", False), ("b", True)]),
+            mock.patch.dict(os.environ, {"MODAL_TOKEN_ID": "", "MODAL_TOKEN_SECRET": ""}),
+        ):
+            self.assertEqual(project_plugin.resolve_account(None, None), "b")
+            self.assertEqual(project_plugin.resolve_account(None, "a"), "a")
+            with self.assertRaises(typer.Exit):
+                project_plugin.resolve_account("missing", None)
+            with self.assertRaises(typer.Exit):
+                project_plugin.resolve_account("env", None)
+
+    def test_init_writes_a_valid_project_and_workflow(self) -> None:
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "train.py").write_text("print(1)\n")
+            with mock.patch.object(project_plugin.Path, "cwd", return_value=root):
+                result = runner.invoke(app, ["init", "--github-action", "--gpu", "T4"])
+            self.assertEqual(result.exit_code, 0, result.output)
+            loaded = project.load_project(root / project.PROJECT_FILE)
+            workflow = yaml.safe_load((root / ".github" / "workflows" / "m-gpux.yml").read_text())
+        self.assertEqual(loaded["tasks"]["train"]["command"], "python train.py")
+        self.assertEqual(loaded["tasks"]["train"]["gpus"], ["T4"])
+        step = workflow["jobs"]["run"]["steps"][1]
+        self.assertTrue(step["uses"].startswith("PuxHocDL/m-gpux@v"))
+        self.assertEqual(step["with"]["modal-token-id"], "${{ secrets.MODAL_TOKEN_ID }}")
+
 
 class NotifyTests(unittest.TestCase):
     def test_channels_are_validated(self) -> None:

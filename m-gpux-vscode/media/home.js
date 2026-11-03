@@ -43,6 +43,11 @@
     tools: '<path d="M14.5 6.5a4 4 0 0 0 5 5L12 19a2.1 2.1 0 0 1-3-3z"/><path d="M14.5 6.5 17 4l3 3-2.5 2.5"/>',
     user: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
     bolt: '<path d="M13 2.5 4.5 13.5H12l-1 8 8.5-11H12z"/>',
+    beaker: '<path d="M9 3h6"/><path d="M10 3v6.5L4.8 18.2A1.8 1.8 0 0 0 6.4 21h11.2a1.8 1.8 0 0 0 1.6-2.8L14 9.5V3"/><path d="M7.5 15h9"/>',
+    database: '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13"/><path d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/>',
+    bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    kernel: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v18"/><path d="m12.5 10 3 2-3 2"/>',
+    route: '<circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/>',
   };
 
   const KIND_ICON = { jupyter: "notebook", python: "play", bash: "terminal", vllm: "server",
@@ -53,13 +58,19 @@
 
   const LAUNCH = [
     ["GPU Hub", "rocket", "mgpux.openHub", "Jupyter, scripts, web bash or vLLM on any GPU", true],
+    ["Projects", "beaker", "mgpux.projects", "mgpux.toml tasks: run, sweep, history"],
+    ["Anywhere", "route", "mgpux.runAnywhere", "Free Kaggle quota, then Colab, then Modal credit"],
     ["Dev Box", "vm", "mgpux.devUp", "GPU sandbox with SSH and snapshots"],
     ["Serve LLM", "server", "mgpux.serveDeploy", "OpenAI-compatible endpoint from a HF model"],
-    ["Host App", "globe", "mgpux.hostApp", "Deploy ASGI / WSGI / static sites"],
-    ["Compose", "package", "mgpux.composeUp", "docker-compose services on Modal"],
     ["Dashboard", "dashboard", "mgpux.openDashboard", "Full web console in your browser"],
   ];
   const TOOLS = [
+    ["Notebook kernel", "Run a local .ipynb on a Modal GPU", "kernel", "mgpux.useAsKernel"],
+    ["Secrets & sync", "Same Secrets and images on every workspace", "key", "mgpux.syncWorkspaces"],
+    ["Volumes", "Browse and download Modal Volumes", "database", "mgpux.browseVolumes"],
+    ["Notifications", "Discord, Slack, Telegram, ntfy alerts", "bell", "mgpux.notifications"],
+    ["Host app", "Deploy ASGI / WSGI / static sites", "globe", "mgpux.hostApp"],
+    ["Compose", "docker-compose services on Modal", "package", "mgpux.composeUp"],
     ["Manage dev box", "Open, pause, resume, sync or delete", "remote", "mgpux.devManage"],
     ["LLM endpoints", "Warm up, logs, restart, stop", "server", "mgpux.manageServe"],
     ["API keys", "Create and revoke serve keys", "key", "mgpux.serveKeysList"],
@@ -198,6 +209,7 @@
     const live = ACTIVE.has(s.status);
     const since = Date.now() - s.startedAt;
     const actions = [];
+    if (s.kernel) actions.push(iconBtn("kernel", "Use as notebook kernel", () => run("mgpux.useAsKernel")));
     if (s.hasUrl) actions.push(iconBtn("external", "Open in browser", () => run("mgpux.openSession", s.id)));
     actions.push(iconBtn("logs", "View logs", () => run("mgpux.viewSessionLogs", s.id)));
     if (s.hasVolume) {
@@ -240,6 +252,38 @@
         ? h("button", { class: "more", on: { click: () => { ui.allSessions = !ui.allSessions; save(); render(); } } },
           ui.allSessions ? "Hide ended sessions" : "Show " + hidden + " ended session" + (hidden === 1 ? "" : "s"))
         : null);
+  }
+
+  const RUN_STATUS = { done: "ready", failed: "failed", running: "starting", cancelled: "stopped" };
+
+  function runsSection() {
+    const runs = state.runs || [];
+    const project = state.project;
+    if (!runs.length && !project) return null;
+    const head = sectionHead("Runs", null,
+      iconBtn("beaker", "Projects: run, sweep, history", () => run("mgpux.projects")),
+      iconBtn("table", "Full run history", () => run("mgpux.showRun")));
+    const hint = project
+      ? h("div", { class: "project" }, icon("beaker", "ic-sm"),
+        h("span", {}, "mgpux.toml · " + project.tasks.length + " task" + (project.tasks.length === 1 ? "" : "s")),
+        h("span", { class: "spacer" }),
+        project.tasks.slice(0, 3).map((t) => h("button", { class: "mini", title: "m-gpux up " + t, on: { click: () => run("mgpux.projects") } }, t)))
+      : null;
+    const rows = runs.map((r) => {
+      const st = RUN_STATUS[r.status] || "stopped";
+      const started = Date.parse(r.startedAt) || Date.now();
+      return h("button", { class: "run-row st-" + st, title: r.id, on: { click: () => run("mgpux.showRun", r.id) } },
+        h("span", { class: "dot", "aria-hidden": "true" }),
+        h("div", { class: "run-main" },
+          h("div", {}, h("strong", {}, r.project + "/" + r.task), h("span", { class: "kind" }, r.kind)),
+          h("div", { class: "s-meta" }, r.ok + "/" + r.jobs + " ok", r.best ? " · " + r.best : "", " · ",
+            h("span", { "data-since": started }, age(Date.now() - started)), " ago")),
+        h("span", { class: "acct-amt" }, typeof r.cost === "number" ? (r.cost < 0.001 ? "<$0.001" : money(r.cost)) : ""));
+    });
+    return h("section", { class: "section" }, head, hint,
+      rows.length ? h("div", { class: "list", style: "gap:2px" }, rows)
+        : h("div", { class: "empty" }, h("div", {}, "No runs yet."),
+          h("button", { class: "btn", on: { click: () => run("mgpux.projects") } }, "Run a task")));
   }
 
   function accounts() {
@@ -292,7 +336,7 @@
   function render() {
     if (!state) return;
     const scroll = window.scrollY;
-    const parts = [header(), hero(), stats(), launch(), sessions(), accounts(), presets(), tools(), footer()];
+    const parts = [header(), hero(), stats(), launch(), sessions(), runsSection(), accounts(), presets(), tools(), footer()];
     root.replaceChildren(...parts.filter(Boolean));
     root.setAttribute("aria-busy", String(!!(state.busy || state.loading)));
     window.scrollTo(0, scroll);

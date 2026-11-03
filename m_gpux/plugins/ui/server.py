@@ -277,6 +277,11 @@ class RequestHandler(BaseHTTPRequestHandler):
         if method in ("POST", "PUT", "DELETE"):
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY:
+                # Drain a moderately large body so the client reads the 413
+                # instead of a reset (Windows aborts a send to a closed socket).
+                if length <= 16 * MAX_BODY:
+                    self.rfile.read(length)
+                self.close_connection = True
                 self._json(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "request body too large"})
                 return
             raw = self.rfile.read(length) if length else b""

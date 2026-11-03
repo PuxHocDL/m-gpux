@@ -28,6 +28,11 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 | `m-gpux budget` | Monthly spending limits per account, with auto-stop |
 | `m-gpux image` | Prebuild & publish reusable images |
 | `m-gpux load` | GPU hardware metrics probe |
+| `m-gpux init` / `up` / `sweep` / `runs` | `mgpux.toml` projects: run tasks, parameter sweeps, run history |
+| `m-gpux run` | Run a script wherever there is capacity: Kaggle, Colab or Modal |
+| `m-gpux secrets` | Modal Secrets across every workspace |
+| `m-gpux volume` | Browse, upload, download and clean Volumes on any account |
+| `m-gpux notify` | Discord / Slack / Telegram / ntfy / webhook notifications |
 
 ---
 
@@ -763,6 +768,58 @@ Kaggle notebooks across the accounts in `~/.kaggle/zoo.json`. See
 | `m-gpux kaggle push [FOLDER] [--as NAME\|auto] [--wait] [--out DIR]` | Push a kernel folder, optionally as another account |
 | `m-gpux kaggle watch OWNER/SLUG [--as NAME] [--out DIR]` | Wait for a kernel, then download its output |
 | `m-gpux kaggle run NAME\|auto -- ARGS…` | Any `kaggle` command as an account (`no_submit` enforced) |
+
+---
+
+## Projects: init, up, sweep, run, runs
+
+Declarative tasks in `mgpux.toml`. See [Projects, Sweeps & Run Anywhere](projects.md).
+
+| Command | Purpose |
+|---|---|
+| `m-gpux init [--command CMD] [--gpu L4] [--github-action]` | Write `mgpux.toml` (and a workflow) for this folder |
+| `m-gpux up [TASK] [--account NAME\|auto\|env] [--download] [--yes] [--dry-run] [-- ARGS…]` | Run a task on Modal and record the result |
+| `m-gpux sweep NAME [--grid k=v1,v2]… [--max-parallel N] [--metric M --mode min\|max]` | Run a task over a grid with `Function.map` |
+| `m-gpux run SCRIPT [--gpu T4] [--hours 1] [--where auto\|kaggle\|colab\|modal] [--plan]` | Pick Kaggle, Colab or Modal by free capacity |
+| `m-gpux runs list` / `runs show ID [--json]` | Run history with metrics, failures and cost |
+
+---
+
+## secrets
+
+Modal Secrets on every workspace. See [Workspaces](workspaces.md#secrets).
+
+| Command | Purpose |
+|---|---|
+| `m-gpux secrets status [NAMES…] [--to all]` | Which workspace has which Secret |
+| `m-gpux secrets sync NAME KEY… [--from-dotenv FILE] [--to all] [--replace]` | Create or merge a Secret everywhere (values from .env, env vars or a hidden prompt) |
+| `m-gpux secrets delete NAME [--to …] [--yes]` | Delete it from one or more workspaces |
+
+`m-gpux image status` and `m-gpux image sync NAME --to all` do the same for published images.
+
+---
+
+## volume
+
+| Command | Purpose |
+|---|---|
+| `m-gpux volume list [--all \| --account NAME]` | Volumes per account |
+| `m-gpux volume ls NAME [PATH]` / `du NAME` | Browse a folder / size per top-level entry |
+| `m-gpux volume get NAME REMOTE [LOCAL]` / `put NAME LOCAL [REMOTE]` | Download / upload |
+| `m-gpux volume rm NAME PATH [-r]` / `delete NAME` | Delete a file or a whole volume |
+
+---
+
+## notify
+
+See [Workspaces](workspaces.md#notifications) for events and channel types.
+
+| Command | Purpose |
+|---|---|
+| `m-gpux notify add [TYPE] [--name] [--events a,b]` | Add a channel (credential asked hidden) and send a test |
+| `m-gpux notify list` / `events` / `test [CHANNEL]` / `remove NAME` | Manage channels |
+| `m-gpux notify send TITLE [MESSAGE] [--event E] [--level L]` | Send a custom message |
+| `m-gpux notify watch [--long-running 4h] [--low-credit 5] [--once]` | Watch apps, credit and gateway jobs |
 
 ---
 
