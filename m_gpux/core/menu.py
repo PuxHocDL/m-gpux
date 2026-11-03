@@ -141,6 +141,60 @@ def _gateway_job() -> Optional[list[str]]:
     return [job_id] if job_id else None
 
 
+def _kaggle_account(allow_auto: bool = False) -> Callable[[], Optional[list[str]]]:
+    def ask() -> Optional[list[str]]:
+        from m_gpux.core.kaggle import accounts
+
+        found = accounts()
+        if not found:
+            console.print("[yellow]No Kaggle accounts yet — use Kaggle & Colab → Add Kaggle account.[/yellow]")
+            return None
+        options = [("auto", "most GPU hours left with a free slot")] if allow_auto else []
+        options += [(a.name, " · ".join(v for v in (a.team, a.note) if v)) for a in found]
+        name = _choose("Kaggle account", options)
+        return [name] if name else None
+
+    return ask
+
+
+def _colab_account(allow_auto: bool = False) -> Callable[[], Optional[list[str]]]:
+    def ask() -> Optional[list[str]]:
+        from m_gpux.core.colab import accounts
+
+        options = [("auto", "most compute units left")] if allow_auto else []
+        options += [(a["name"], "logged in" if a["logged_in"] else "not logged in") for a in accounts()]
+        name = _choose("Colab account", options)
+        return [name] if name else None
+
+    return ask
+
+
+def _opt(flag: str, picker: Callable[[], Optional[list[str]]]) -> Callable[[], Optional[list[str]]]:
+    """Turn a picker's value into ``flag value``."""
+
+    def ask() -> Optional[list[str]]:
+        picked = picker()
+        return [flag, picked[0]] if picked else None
+
+    return ask
+
+
+def _words(question: str) -> Callable[[], Optional[list[str]]]:
+    """Free-form arguments, split like a shell would."""
+
+    def ask() -> Optional[list[str]]:
+        import shlex
+
+        value = (Prompt.ask(f"[bold cyan]{question}[/bold cyan]") or "").strip()
+        try:
+            return shlex.split(value, posix=True) or None
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            return None
+
+    return ask
+
+
 def _text(question: str, default: str = "") -> Callable[[], Optional[list[str]]]:
     def ask() -> Optional[list[str]]:
         value = Prompt.ask(f"[bold cyan]{question}[/bold cyan]", default=default or None) or ""
@@ -187,6 +241,11 @@ def _flag(question: str, flag: str) -> Callable[[], Optional[list[str]]]:
 Item = tuple[str, str, list[Step]]
 
 MENU: list[tuple[str, str, list[Item]]] = [
+    (
+        "Dashboard",
+        "Local web console for accounts, compute and costs",
+        [("Open dashboard", "Opens in your browser; Ctrl+C here stops it", ["ui"])],
+    ),
     (
         "GPU Hub",
         "Jupyter, scripts, browser shell or vLLM on any GPU",
@@ -299,6 +358,69 @@ MENU: list[tuple[str, str, list[Item]]] = [
             ("Show", "Endpoint details (key masked)", ["gateway", "show"]),
             ("Reveal key", "Print the full API key", ["gateway", "key"]),
             ("Open API docs", "Interactive /docs in the browser", ["gateway", "open"]),
+        ],
+    ),
+    (
+        "Kaggle & Colab",
+        "GPU quota, kernels and runtimes on other clouds",
+        [
+            ("Kaggle accounts", "GPU / TPU hours left on every account", ["kaggle", "accounts"]),
+            ("Kaggle status", "Running and queued kernels, free slots", ["kaggle", "status"]),
+            ("Kaggle free slots", "Accounts that can start a GPU kernel now", ["kaggle", "free"]),
+            (
+                "Push kernel",
+                "Push a kernel folder, optionally as another account",
+                [
+                    "kaggle",
+                    "push",
+                    _text("Kernel folder", "."),
+                    _opt("--as", _kaggle_account(allow_auto=True)),
+                    _flag("Wait and download the output?", "--wait"),
+                ],
+            ),
+            (
+                "Watch kernel",
+                "Wait for a kernel, then download its output",
+                ["kaggle", "watch", _text("Kernel (owner/slug)")],
+            ),
+            (
+                "Run a kaggle command",
+                "As any account",
+                ["kaggle", "run", _kaggle_account(True), _words("kaggle arguments")],
+            ),
+            ("Add Kaggle account", "Register an API token", ["kaggle", "add", _text("API token (KGAT_…)")]),
+            ("Remove Kaggle account", "Forget a token", ["kaggle", "remove", _kaggle_account()]),
+            ("Colab accounts", "Compute units and runtimes per Google account", ["colab", "accounts"]),
+            ("Colab sessions", "Live runtimes on every account", ["colab", "sessions"]),
+            (
+                "Colab run",
+                "Run a script on a fresh VM, then release it",
+                [
+                    "colab",
+                    "run",
+                    _text("Script"),
+                    _opt("--gpu", _pick("GPU", [(g, "") for g in ("T4", "L4", "G4", "A100", "H100")])),
+                    _opt("--as", _colab_account(allow_auto=True)),
+                ],
+            ),
+            (
+                "Colab new runtime",
+                "A named runtime to exec / upload against",
+                [
+                    "colab",
+                    "new",
+                    _opt("--session", _text("Runtime name")),
+                    _opt("--as", _colab_account(allow_auto=True)),
+                ],
+            ),
+            (
+                "Colab stop",
+                "Release a runtime",
+                ["colab", "stop", _text("Runtime name"), _opt("--as", _colab_account())],
+            ),
+            ("Run a colab command", "As any account", ["colab", "as", _colab_account(True), _words("colab arguments")]),
+            ("Colab login", "Add or re-login a Google account", ["colab", "login", _text("Account name", "main")]),
+            ("Remove Colab account", "Delete an extra account's login", ["colab", "remove", _colab_account()]),
         ],
     ),
     (

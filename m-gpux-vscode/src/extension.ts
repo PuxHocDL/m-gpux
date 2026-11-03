@@ -10,7 +10,7 @@ import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox, composeSync } from "./composeActions";
-import { billingReports, manageBudgets, manageGateway, manageImages, manageServeEndpoint, openCliMenu, showPreset } from "./cliActions";
+import { billingReports, manageBudgets, manageGateway, manageImages, manageOtherClouds, manageServeEndpoint, openCliMenu, openDashboard, showPreset } from "./cliActions";
 import { devUp, devManage } from "./devActions";
 import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
 import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
@@ -874,6 +874,8 @@ export function activate(context: vscode.ExtensionContext) {
   // CLI workflows without a dedicated wizard elsewhere.
   context.subscriptions.push(
     vscode.commands.registerCommand("mgpux.openCliMenu",    () => openCliMenu()),
+    vscode.commands.registerCommand("mgpux.openDashboard",  () => openDashboard()),
+    vscode.commands.registerCommand("mgpux.otherClouds",    () => manageOtherClouds()),
     vscode.commands.registerCommand("mgpux.manageBudgets",  () => manageBudgets(() => accountTree.refreshWithBilling())),
     vscode.commands.registerCommand("mgpux.billingReports", () => billingReports()),
     vscode.commands.registerCommand("mgpux.manageImages",   () => manageImages()),

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>m-gpux Console</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <div class="shell" id="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <img class="brand-mark" src="favicon.svg" alt="" width="22" height="22">
+        <span class="brand-name">m-gpux</span>
+        <span class="brand-tag">console</span>
+      </div>
+      <button class="search-trigger" id="open-palette" type="button">
+        <span class="icon" data-icon="search"></span>
+        <span>Search or jump to…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="runtime" id="runtime">
+          <span class="dot dot-good" aria-hidden="true"></span>
+          <span class="runtime-text">Local runtime</span>
+          <span class="runtime-addr mono" id="runtime-addr"></span>
+        </div>
+        <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">
+          <span class="icon" data-icon="sun"></span>
+        </button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu-toggle" type="button" aria-label="Open navigation">
+          <span class="icon" data-icon="menu"></span>
+        </button>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="topbar-actions">
+          <label class="scope" for="scope-select">
+            <span class="icon" data-icon="layers"></span>
+            <select id="scope-select" aria-label="Account scope"></select>
+          </label>
+          <span class="updated" id="updated" aria-live="polite"></span>
+          <button class="btn btn-ghost" id="refresh" type="button" title="Refresh (R)">
+            <span class="icon" data-icon="refresh"></span><span class="btn-label">Refresh</span>
+          </button>
+        </div>
+      </header>
+      <main class="view" id="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
+    <header class="drawer-head">
+      <div>
+        <div class="drawer-kicker" id="drawer-kicker"></div>
+        <h2 class="drawer-title" id="drawer-title"></h2>
+      </div>
+      <button class="icon-btn" id="drawer-close" type="button" aria-label="Close panel">
+        <span class="icon" data-icon="x"></span>
+      </button>
+    </header>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <dialog class="dialog" id="dialog"></dialog>
+  <div class="palette" id="palette" hidden>
+    <div class="palette-box" role="dialog" aria-label="Command palette">
+      <div class="palette-input">
+        <span class="icon" data-icon="search"></span>
+        <input id="palette-input" type="text" placeholder="Type a page, account or action…" autocomplete="off" spellcheck="false">
+        <kbd>Esc</kbd>
+      </div>
+      <ul class="palette-list" id="palette-list" role="listbox"></ul>
+    </div>
+  </div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+</body>
+</html>

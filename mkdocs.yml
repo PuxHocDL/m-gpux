@@ -34,6 +34,7 @@ nav:
   - Guide:
       - Getting Started: getting-started.md
       - Command Reference: commands.md
+      - Web Dashboard: dashboard.md
       - Dev Boxes: dev-container.md
       - Costs, Budgets & Images: costs.md
       - Session Manager: sessions.md
@@ -42,6 +43,7 @@ nav:
       - Web Hosting: web-hosting.md
       - Docker Compose: compose.md
       - Compute Gateway: gateway.md
+      - Kaggle & Colab: other-clouds.md
       - Architecture: architecture.md
   - Support:
       - FAQ and Troubleshooting: faq.md

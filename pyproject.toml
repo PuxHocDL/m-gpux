@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "m-gpux"
-version = "3.1.0"
+version = "3.1.1"
 description = "Professional CLI toolkit for Modal GPU workflows, account management, and billing visibility"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -45,6 +45,10 @@ m-gpux = "m_gpux.main:app"
 [tool.setuptools.packages.find]
 include = ["m_gpux*"]
 
+[tool.setuptools.package-data]
+"m_gpux.plugins.ui" = ["static/*"]
+"m_gpux.core" = ["colab_shim/*.py"]
+
 # Built-in plugins are listed here so that they are discoverable as
 # m_gpux.plugins entry-points after installation, alongside any third-party
 # plugins users may install. See m_gpux.core.plugin.discover_plugins.
@@ -52,18 +56,21 @@ include = ["m_gpux*"]
 account = "m_gpux.plugins.account.plugin:AccountPlugin"
 billing = "m_gpux.plugins.billing.plugin:BillingPlugin"
 budget = "m_gpux.plugins.budget.plugin:BudgetPlugin"
+colab = "m_gpux.plugins.colab.plugin:ColabPlugin"
 compose = "m_gpux.plugins.compose.plugin:ComposePlugin"
 dev = "m_gpux.plugins.dev.plugin:DevPlugin"
 gateway = "m_gpux.plugins.gateway.plugin:GatewayPlugin"
 hub = "m_gpux.plugins.hub.plugin:HubPlugin"
 image = "m_gpux.plugins.image.plugin:ImagePlugin"
 host = "m_gpux.plugins.host.plugin:HostPlugin"
+kaggle = "m_gpux.plugins.kaggle.plugin:KagglePlugin"
 load = "m_gpux.plugins.load.plugin:LoadPlugin"
 preset = "m_gpux.plugins.preset.plugin:PresetPlugin"
 serve = "m_gpux.plugins.serve.plugin:ServePlugin"
 sessions = "m_gpux.plugins.sessions.plugin:SessionsPlugin"
 info = "m_gpux.plugins.info.plugin:InfoPlugin"
 stop = "m_gpux.plugins.stop.plugin:StopPlugin"
+ui = "m_gpux.plugins.ui.plugin:UIPlugin"
 
 [project.optional-dependencies]
 dev = [

@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -291,6 +291,18 @@
         "icon": "$(terminal)"
       },
       {
+        "command": "mgpux.otherClouds",
+        "title": "Kaggle & Colab",
+        "category": "M-GPUX",
+        "icon": "$(cloud)"
+      },
+      {
+        "command": "mgpux.openDashboard",
+        "title": "Open Web Dashboard",
+        "category": "M-GPUX",
+        "icon": "$(dashboard)"
+      },
+      {
         "command": "mgpux.manageBudgets",
         "title": "Budgets",
         "category": "M-GPUX",
@@ -357,6 +369,11 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "mgpux.openDashboard",
+          "when": "view == mgpux.accountsView",
+          "group": "navigation"
+        },
         {
           "command": "mgpux.addAccount",
           "when": "view == mgpux.accountsView",
