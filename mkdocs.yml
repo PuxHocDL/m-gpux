@@ -41,6 +41,7 @@ nav:
       - Recipes: recipes.md
       - Web Hosting: web-hosting.md
       - Docker Compose: compose.md
+      - Compute Gateway: gateway.md
       - Architecture: architecture.md
   - Support:
       - FAQ and Troubleshooting: faq.md

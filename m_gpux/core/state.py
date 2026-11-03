@@ -14,6 +14,7 @@ STATE_DIR = Path.home() / ".m-gpux"
 SESSIONS_PATH = STATE_DIR / "sessions.json"
 PRESETS_PATH = STATE_DIR / "presets.json"
 SERVE_PATH = STATE_DIR / "serve.json"
+GATEWAY_PATH = STATE_DIR / "gateway.json"
 
 
 def utc_now() -> str:
@@ -149,3 +150,40 @@ def get_serve_endpoint() -> dict[str, Any] | None:
 
 def save_serve_endpoint(url: str, **extra: Any) -> None:
     _write_json(SERVE_PATH, {"url": url, **extra, "updated_at": utc_now()})
+
+
+def get_gateway_endpoint() -> dict[str, Any] | None:
+    """Return the last successfully deployed Compute Gateway."""
+    data = _read_json(GATEWAY_PATH, None)
+    return data if isinstance(data, dict) and data.get("url") and data.get("api_key") else None
+
+
+def save_gateway_endpoint(url: str, api_key: str, **extra: Any) -> None:
+    """Atomically persist the gateway endpoint and its local client credential."""
+    _write_json(
+        GATEWAY_PATH,
+        {"url": url.rstrip("/"), "api_key": api_key, **extra, "updated_at": utc_now()},
+    )
+
+
+def save_gateway_job(job: dict[str, Any]) -> None:
+    """Add or update one locally known Compute Gateway job."""
+    state = get_gateway_endpoint()
+    if state is None or not job.get("id"):
+        return
+    jobs = state.get("jobs", [])
+    if not isinstance(jobs, list):
+        jobs = []
+    jobs = [item for item in jobs if isinstance(item, dict) and item.get("id") != job["id"]]
+    jobs.insert(0, job)
+    # Keep state bounded; remote job output still remains queryable by ID.
+    state["jobs"] = jobs[:100]
+    state["updated_at"] = utc_now()
+    _write_json(GATEWAY_PATH, state)
+
+
+def list_gateway_jobs() -> list[dict[str, Any]]:
+    state = get_gateway_endpoint()
+    if state is None or not isinstance(state.get("jobs"), list):
+        return []
+    return [item for item in state["jobs"] if isinstance(item, dict) and item.get("id")]

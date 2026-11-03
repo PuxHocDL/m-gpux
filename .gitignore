@@ -60,6 +60,7 @@ Thumbs.db
 
 # Modal Manager Specific
 modal_runner.py
+modal_gateway.py
 _regen.py
 _test_*.py
 test_modal.py

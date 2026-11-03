@@ -114,6 +114,33 @@ def _image() -> Optional[list[str]]:
     return [name] if name else None
 
 
+def _gateway_task() -> Optional[list[str]]:
+    from m_gpux.core.state import get_gateway_endpoint
+
+    state = get_gateway_endpoint()
+    tasks = state.get("tasks", []) if state else []
+    if not tasks:
+        console.print("[yellow]No gateway deployed yet — use Compute gateway → Deploy first.[/yellow]")
+        return None
+    name = _choose("Task", [(str(task), "") for task in tasks])
+    return [name] if name else None
+
+
+def _gateway_job() -> Optional[list[str]]:
+    from m_gpux.core.state import list_gateway_jobs
+
+    jobs = list_gateway_jobs()
+    if not jobs:
+        console.print("[yellow]No gateway jobs submitted from this machine yet.[/yellow]")
+        return None
+    options = [
+        (str(j["id"]), " · ".join(str(v) for v in (j.get("task"), j.get("status"), j.get("submitted_at")) if v))
+        for j in jobs
+    ]
+    job_id = _choose("Job", options)
+    return [job_id] if job_id else None
+
+
 def _text(question: str, default: str = "") -> Callable[[], Optional[list[str]]]:
     def ask() -> Optional[list[str]]:
         value = Prompt.ask(f"[bold cyan]{question}[/bold cyan]", default=default or None) or ""
@@ -240,6 +267,38 @@ MENU: list[tuple[str, str, list[Item]]] = [
             ("Create API key", "", ["serve", "keys", "create"]),
             ("Show API key", "Reveal a full key", ["serve", "keys", "show", _api_key]),
             ("Revoke API key", "", ["serve", "keys", "revoke", _api_key]),
+        ],
+    ),
+    (
+        "Compute gateway",
+        "Authenticated async API for predeclared jobs",
+        [
+            ("Init", "Starter manifest and worker in this folder", ["gateway", "init"]),
+            ("Validate", "Check mgpux.gateway.toml offline", ["gateway", "validate"]),
+            ("Deploy", "Deploy the gateway and save its URL and key", ["gateway", "deploy"]),
+            (
+                "Submit job",
+                "Run a declared task",
+                [
+                    "gateway",
+                    "submit",
+                    _gateway_task,
+                    _optional_text("--input", "JSON input object"),
+                    _flag("Wait for the result?", "--wait"),
+                ],
+            ),
+            (
+                "Jobs",
+                "Jobs submitted from this machine",
+                ["gateway", "jobs", _flag("Refresh statuses from the gateway?", "--refresh")],
+            ),
+            ("Result", "A job's status or result", ["gateway", "result", _gateway_job]),
+            ("Logs", "A job's recent logs", ["gateway", "logs", _gateway_job]),
+            ("Cancel", "Cancel a running job", ["gateway", "cancel", _gateway_job]),
+            ("Tasks", "Tasks the gateway exposes", ["gateway", "tasks"]),
+            ("Show", "Endpoint details (key masked)", ["gateway", "show"]),
+            ("Reveal key", "Print the full API key", ["gateway", "key"]),
+            ("Open API docs", "Interactive /docs in the browser", ["gateway", "open"]),
         ],
     ),
     (

@@ -38,6 +38,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("Deploy LLM",      "Serve a HuggingFace model as OpenAI API", "rocket",  "mgpux.serveDeploy"),
           new ActionItem("Manage Endpoint", "Warm up, dashboard, logs, restart, stop", "server-process", "mgpux.manageServe"),
           new ActionItem("API Keys",        "Create / revoke API keys",              "key",    "mgpux.serveKeysList"),
+          new ActionItem("Compute Gateway", "Async API for predeclared CPU/GPU jobs", "server-environment", "mgpux.manageGateway"),
           new ActionItem("Modal Dashboard", "Open Modal apps page in browser",       "link-external", "mgpux.openServeDashboard"),
         ];
         case "compose": return [

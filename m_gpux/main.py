@@ -157,3 +157,7 @@ def main_callback(
 def menu_command(ctx: typer.Context) -> None:
     """Interactive menu for every m-gpux command — no flags to remember."""
     run_menu(ctx.find_root().command)
+
+
+if __name__ == "__main__":  # `python -m m_gpux.main`
+    app(prog_name="m-gpux")

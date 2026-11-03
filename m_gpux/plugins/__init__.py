@@ -14,6 +14,7 @@ BUILTIN_PLUGINS: list[str] = [
     "m_gpux.plugins.budget.plugin:BudgetPlugin",
     "m_gpux.plugins.compose.plugin:ComposePlugin",
     "m_gpux.plugins.dev.plugin:DevPlugin",
+    "m_gpux.plugins.gateway.plugin:GatewayPlugin",
     "m_gpux.plugins.hub.plugin:HubPlugin",
     "m_gpux.plugins.image.plugin:ImagePlugin",
     "m_gpux.plugins.host.plugin:HostPlugin",

@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -313,6 +313,12 @@
         "title": "Manage LLM Endpoint",
         "category": "M-GPUX",
         "icon": "$(server-process)"
+      },
+      {
+        "command": "mgpux.manageGateway",
+        "title": "Compute Gateway",
+        "category": "M-GPUX",
+        "icon": "$(server-environment)"
       },
       {
         "command": "mgpux.composeSync",
