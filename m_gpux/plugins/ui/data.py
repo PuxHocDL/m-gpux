@@ -602,6 +602,125 @@ def library() -> dict[str, Any]:
     }
 
 
+# ─── Volumes, secrets, runs, notifications ────────────────────
+
+VOLUME_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+async def _fetch_volumes(profile: str) -> list[dict[str, Any]]:
+    import modal
+
+    volumes = await modal.Volume.objects.list.aio(client=await _aclient(profile))
+    return [{"profile": profile, "name": v.name} for v in volumes if v.name]
+
+
+def volumes(profile: Optional[str] = None, refresh: bool = False) -> dict[str, Any]:
+    _sdk_ready.wait(SDK_WARMUP_WAIT)
+    found = _batch("_volumes", _scope(profile), _fetch_volumes, 120, refresh)
+    return {
+        "volumes": sorted(
+            (row for rows in found.values() if not isinstance(rows, BaseException) for row in rows),
+            key=lambda r: (r["profile"], r["name"]),
+        ),
+        "errors": [{"profile": p, "error": _error_text(r)} for p, r in found.items() if isinstance(r, BaseException)],
+    }
+
+
+def volume_files(profile: str, name: str, path: str = "/") -> dict[str, Any]:
+    """One directory of a volume. The path stays inside the volume (no '..')."""
+    _require_profile(profile)
+    if not VOLUME_NAME.match(name):
+        raise ActionError("invalid volume name")
+    path = "/" + "/".join(part for part in (path or "/").split("/") if part)
+    if any(part in ("..", ".") for part in path.split("/")):
+        raise ActionError("invalid path")
+
+    async def listing() -> list[dict[str, Any]]:
+        import modal
+
+        volume = modal.Volume.from_name(name, client=await _aclient(profile))
+        entries = await volume.listdir.aio(path)
+        return [
+            {
+                "path": e.path,
+                "dir": getattr(e.type, "name", "") == "DIRECTORY",
+                "size": int(e.size or 0),
+                "mtime": int(e.mtime or 0),
+            }
+            for e in entries
+        ]
+
+    try:
+        files = _run_async(listing())
+    except Exception as exc:
+        raise ActionError(_error_text(exc), 404 if "not found" in str(exc).lower() else 502) from None
+    files.sort(key=lambda e: (not e["dir"], e["path"]))
+    return {"profile": profile, "volume": name, "path": path, "entries": files}
+
+
+async def _fetch_secret_names(profile: str) -> list[str]:
+    import modal
+
+    return sorted(s.name for s in await modal.Secret.objects.list.aio(client=await _aclient(profile)) if s.name)
+
+
+def secrets_matrix(refresh: bool = False) -> dict[str, Any]:
+    """Which workspace has which Secret: names only, Modal never returns values."""
+    _sdk_ready.wait(SDK_WARMUP_WAIT)
+    names = [name for name, _ in profiles()]
+    found = _batch("_secrets", names, _fetch_secret_names, 120, refresh)
+    ok = {p: r for p, r in found.items() if not isinstance(r, BaseException)}
+    all_names = sorted({n for rows in ok.values() for n in rows})
+    return {
+        "profiles": names,
+        "secrets": [{"name": n, "present": [p for p, rows in ok.items() if n in rows]} for n in all_names],
+        "errors": [{"profile": p, "error": _error_text(r)} for p, r in found.items() if isinstance(r, BaseException)],
+    }
+
+
+def runs() -> dict[str, Any]:
+    from m_gpux.core.state import STATE_DIR, _read_json
+
+    records = []
+    for path in sorted((STATE_DIR / "runs").glob("*.json"), reverse=True)[:100]:
+        r = _read_json(path, None)
+        if not isinstance(r, dict) or not r.get("id"):
+            continue
+        results = r.get("results") or []
+        records.append(
+            {
+                **{k: r.get(k) for k in ("id", "kind", "project", "task", "account", "gpu", "status", "jobs")},
+                **{k: r.get(k) for k in ("started_at", "finished_at", "compute_seconds", "cost_estimate", "metric")},
+                "output_volume": r.get("output_volume"),
+                "best": r.get("best"),
+                "ok": sum(1 for x in results if x.get("exit_code") == 0),
+                "results": [
+                    {k: x.get(k) for k in ("index", "params", "exit_code", "seconds", "result")} for x in results
+                ],
+            }
+        )
+    return {"runs": records}
+
+
+def notifications() -> dict[str, Any]:
+    from m_gpux.core.notify import EVENTS, load_channels, masked
+
+    return {
+        "channels": [
+            {"name": c["name"], "type": c["type"], "target": masked(c), "events": c.get("events") or ["*"]}
+            for c in load_channels()
+        ],
+        "events": EVENTS,
+    }
+
+
+def test_notifications() -> dict[str, Any]:
+    from m_gpux.core.notify import send
+
+    results = send("test", "m-gpux test notification", "Sent from the m-gpux dashboard.")
+    return {"results": [{"channel": n, "ok": ok, "error": err} for n, ok, err in results]}
+
+
 def billing() -> dict[str, Any]:
     from m_gpux.core.pricing import load_rates, rates_age_seconds
 

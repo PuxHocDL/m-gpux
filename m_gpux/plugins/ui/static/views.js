@@ -713,6 +713,210 @@ function colabView() {
   ];
 }
 
+// ─── Volumes ─────────────────────────────────────────────────
+
+function bytes(n) {
+  if (!n) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+  return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
+}
+
+const quoteArg = (s) => (/[\s"']/.test(s) ? `"${s}"` : s);
+
+function browseVolume(v, path = "/") {
+  const listing = h("div", {}, skeletonRows(6));
+  const parts = path.split("/").filter(Boolean);
+  const crumbs = h("div", { class: "chips" },
+    h("button", { class: "chip", type: "button", onclick: () => browseVolume(v, "/") }, v.name),
+    parts.map((part, i) => [h("span", { class: "muted" }, "/"),
+      h("button", { class: "chip", type: "button", onclick: () => browseVolume(v, "/" + parts.slice(0, i + 1).join("/")) }, part)]));
+  openDrawer({
+    kicker: `${v.profile} · volume`, title: v.name,
+    body: [crumbs, listing, h("div", { class: "stack", style: { gap: "6px" } },
+      cliHint(`m-gpux volume get ${v.name} ${path} ./${v.name} --account ${quoteArg(v.profile)}`),
+      cliHint(`m-gpux volume du ${v.name} --account ${quoteArg(v.profile)}`))],
+  });
+  api(`/api/volumes/${seg(v.profile)}/${seg(v.name)}/files?path=${encodeURIComponent(path)}`).then((res) => {
+    const name = (e) => e.path.replace(/\/$/, "").split("/").pop();
+    listing.replaceChildren(table([
+      { label: "Name", render: (e) => h("div", { class: "cell-main" }, icon(e.dir ? "folder" : "file"), h("span", { class: e.dir ? "" : "mono" }, name(e) + (e.dir ? "/" : ""))) },
+      { label: "Size", className: "num", render: (e) => (e.dir ? "" : bytes(e.size)) },
+      { label: "Modified", render: (e) => (e.mtime ? when(new Date(e.mtime * 1000).toISOString()) : "—") },
+    ], res.entries, {
+      onRow: (e) => { if (e.dir) browseVolume(v, "/" + e.path.replace(/^\/|\/$/g, "")); },
+      empty: empty({ glyph: "folder", title: "Empty folder" }),
+    }));
+  }).catch((err) => listing.replaceChildren(failure(err, () => browseVolume(v, path))));
+}
+
+function volumesView(ctx) {
+  const st = stateFor("volumes", { query: "" });
+  const { node, raw } = resolve("volumes", null, { lines: 6 });
+  const all = raw?.volumes || [];
+  const rows = all.filter((v) => matches(v, st.query, ["name", "profile"]));
+  const accounts = new Set(all.map((v) => v.profile));
+  const cache = all.filter((v) => v.name === "m-gpux-hf-cache").length;
+  return [
+    pageHead("Volumes", "Persistent storage on every account: workspaces, run outputs, model caches. Click one to browse it.", [
+      cliHint("m-gpux volume list --all"),
+    ]),
+    errorBanner(raw?.errors),
+    h("div", { class: "kpis" },
+      kpi({ label: "Volumes", glyph: "volumes", value: raw ? fmt.count(all.length) : "…", sub: `on ${accounts.size} account(s)` }),
+      kpi({ label: "Run outputs", glyph: "runs", value: raw ? fmt.count(all.filter((v) => /-outputs$/.test(v.name)).length) : "…", sub: "from m-gpux up / sweep" }),
+      kpi({ label: "Shared HF cache", glyph: "layers", value: raw ? `${cache}/${accounts.size}` : "…", sub: "accounts with m-gpux-hf-cache" })),
+    card({
+      title: "Volumes", flush: true,
+      body: node || [
+        h("div", { class: "toolbar" }, searchBox("Filter volumes", st.query, (v) => { st.query = v; ctx.rerender(); }, "volumes-q")),
+        table([
+          { label: "Volume", render: (v) => h("div", { class: "cell-main" }, icon("volumes"), h("strong", { class: "mono" }, v.name),
+            v.name === "m-gpux-hf-cache" && h("span", { class: "badge" }, "HF cache"), /-outputs$/.test(v.name) && h("span", { class: "badge neutral" }, "outputs")) },
+          { label: "Account", render: (v) => accountCell(v.profile) },
+          { label: "", className: "actions", render: () => h("span", { class: "muted" }, "Browse →") },
+        ], rows, { onRow: (v) => browseVolume(v), empty: empty({ glyph: "volumes", title: "No volumes", hint: "Upload data once, mount it in any task.", code: "m-gpux volume put my-data ./data" }) }),
+      ],
+    }),
+  ];
+}
+
+// ─── Runs ────────────────────────────────────────────────────
+
+const costText = (v) => (v === null || v === undefined ? "—" : v > 0 && v < 0.001 ? "<$0.001" : fmt.money(v, v < 1 ? 3 : 2));
+
+const runState = (r) => ({ done: "succeeded", failed: "failed", running: "running", cancelled: "cancelled" }[r.status] || r.status);
+
+function metricsText(result) {
+  if (!result || typeof result !== "object") return "";
+  return Object.entries(result).slice(0, 4).map(([k, v]) => `${k}=${typeof v === "number" ? +v.toPrecision(4) : v}`).join(", ");
+}
+
+const paramsText = (p) => Object.entries(p || {}).map(([k, v]) => `${k}=${v}`).join(", ") || "—";
+
+function runDrawer(r) {
+  const account = r.account && r.account !== "env" ? ` --account ${quoteArg(r.account)}` : "";
+  openDrawer({
+    kicker: `${r.kind} · ${r.id}`, title: `${r.project}/${r.task}`,
+    body: [
+      kv([["Status", statusPill(runState(r))], ["Jobs", `${r.ok}/${r.jobs} succeeded`], ["Compute", r.gpu || "—"], ["Account", r.account || "—"],
+        ["Compute time", `${Math.round(r.compute_seconds || 0)} s`], ["Estimated cost", costText(r.cost_estimate)],
+        ["Started", fmt.date(r.started_at)], ["Finished", fmt.date(r.finished_at)]]),
+      r.best && h("div", { class: "banner" }, icon("ok"), h("div", {}, h("strong", {}, "Best: "), `${paramsText(r.best.params)} → ${metricsText(r.best.result)}`)),
+      table([
+        { label: "#", className: "num", render: (x) => String(x.index ?? "") },
+        { label: "Params", render: (x) => h("span", { class: "mono" }, paramsText(x.params)) },
+        { label: "Exit", render: (x) => statusPill(x.exit_code === 0 ? "succeeded" : "failed", String(x.exit_code)) },
+        { label: "Time", className: "num", render: (x) => `${x.seconds ?? "?"} s` },
+        { label: r.metric ? `Result (${r.metric})` : "Result", render: (x) => h("span", { class: "mono" }, metricsText(x.result) || "—") },
+      ], r.results, { empty: empty({ glyph: "runs", title: "No results recorded" }) }),
+      h("div", { class: "stack", style: { gap: "6px" } },
+        cliHint(`m-gpux runs show ${r.id}`),
+        r.output_volume && cliHint(`m-gpux volume get ${r.output_volume} /${r.id} ./outputs${account}`)),
+    ],
+  });
+}
+
+function runsView(ctx) {
+  const st = stateFor("runs", { filter: "all" });
+  const { node, raw } = resolve("runs", null, { lines: 5 });
+  const all = raw?.runs || [];
+  const groups = { all, sweep: all.filter((r) => r.kind === "sweep"), up: all.filter((r) => r.kind !== "sweep"), failed: all.filter((r) => r.status === "failed") };
+  const rows = groups[st.filter] || all;
+  const cost = all.reduce((t, r) => t + (r.cost_estimate || 0), 0);
+  const seconds = all.reduce((t, r) => t + (r.compute_seconds || 0), 0);
+  const finished = all.filter((r) => r.status === "done" || r.status === "failed");
+  return [
+    pageHead("Runs", "Results of m-gpux up, sweep and run: per-job exit codes, timings, reported metrics and cost.", [
+      cliHint("m-gpux sweep train --grid lr=1e-4,3e-4"),
+    ]),
+    h("div", { class: "kpis" },
+      kpi({ label: "Runs", glyph: "runs", value: raw ? fmt.count(all.length) : "…", sub: `${groups.sweep.length} sweeps` }),
+      kpi({ label: "Success rate", glyph: "ok", value: finished.length ? fmt.pct(finished.filter((r) => r.status === "done").length / finished.length) : "—", sub: `${finished.length} finished` }),
+      kpi({ label: "Compute", glyph: "gauge", value: raw ? `${(seconds / 3600).toFixed(2)} h` : "…", sub: "across all jobs" }),
+      kpi({ label: "Estimated cost", glyph: "wallet", value: raw ? costText(cost) : "…", sub: "from cached rates" })),
+    card({
+      title: "Runs", flush: true,
+      body: node || [
+        h("div", { class: "toolbar" }, segmented([
+          { value: "all", label: "All", count: all.length }, { value: "sweep", label: "Sweeps", count: groups.sweep.length },
+          { value: "up", label: "Single", count: groups.up.length }, { value: "failed", label: "Failed", count: groups.failed.length },
+        ], st.filter, (v) => { st.filter = v; ctx.rerender(); })),
+        table([
+          { label: "Run", render: (r) => h("div", {}, h("strong", {}, `${r.project}/${r.task}`), h("div", { class: "cell-sub mono" }, r.id)) },
+          { label: "Kind", render: (r) => h("span", { class: "chip" }, r.kind) },
+          { label: "Status", render: (r) => statusPill(runState(r)) },
+          { label: "Jobs", className: "num", render: (r) => `${r.ok}/${r.jobs}` },
+          { label: "Compute", render: (r) => r.gpu || "—" },
+          { label: "Best", render: (r) => (r.best ? h("span", { class: "mono" }, metricsText(r.best.result)) : h("span", { class: "muted" }, "—")) },
+          { label: "Cost", className: "num", render: (r) => costText(r.cost_estimate) },
+          { label: "Started", render: (r) => when(r.started_at) },
+        ], rows, { onRow: runDrawer, empty: empty({ glyph: "runs", title: "No runs yet", hint: "Declare tasks in mgpux.toml, then run or sweep them.", code: "m-gpux init" }) }),
+      ],
+    }),
+  ];
+}
+
+// ─── Sync & alerts ───────────────────────────────────────────
+
+function coverage(rows, profiles, has, label) {
+  const tick = (ok) => (ok ? h("span", { class: "pill pill-good" }, icon("check"), "yes") : h("span", { class: "muted" }, "—"));
+  return h("div", { class: "table-wrap" }, h("table", { class: "table" },
+    h("thead", {}, h("tr", {}, h("th", { scope: "col" }, label), profiles.map((p) => h("th", { scope: "col" }, p)))),
+    h("tbody", {}, rows.map((row) => h("tr", {}, h("td", {}, h("strong", { class: "mono" }, row.name)),
+      profiles.map((p) => h("td", {}, tick(has(row, p)))))))));
+}
+
+async function testAlerts(btn) {
+  await act(btn, async () => {
+    const res = await api("/api/notify/test", { method: "POST" });
+    if (!res.results.length) throw new Error("No channel is configured");
+    const bad = res.results.filter((r) => !r.ok);
+    if (bad.length) throw new Error(`Failed: ${bad.map((r) => `${r.channel} (${r.error})`).join(", ")}`);
+  }, { success: "Test notification sent" });
+}
+
+function syncView() {
+  const secrets = resolve("secrets", null, { lines: 4 });
+  const library = resolve("library", null, { lines: 2 });
+  const alerts = resolve("notify", null, { lines: 2 });
+  const profiles = secrets.raw?.profiles || [];
+  const rows = secrets.raw?.secrets || [];
+  const missing = rows.reduce((t, s) => t + profiles.length - s.present.length, 0);
+  const channels = alerts.raw?.channels || [];
+  return [
+    pageHead("Sync & alerts", "Keep Secrets and images on every workspace, and get pinged when runs finish or credit runs low."),
+    errorBanner(secrets.raw?.errors),
+    card({
+      title: "Secrets per workspace", hint: secrets.raw ? (missing ? `${missing} missing` : "in sync") : "", flush: true,
+      actions: [cliHint("m-gpux secrets sync hf HF_TOKEN --to all")],
+      body: secrets.node || (rows.length
+        ? coverage(rows, profiles, (s, p) => s.present.includes(p), "Secret")
+        : empty({ glyph: "key", title: "No Secrets yet", hint: "Values come from your environment or a .env file and are never shown here.", code: "m-gpux secrets sync hf HF_TOKEN --to all" })),
+    }),
+    card({
+      title: "Images per workspace", hint: "as recorded by m-gpux", flush: true,
+      actions: [cliHint("m-gpux image status")],
+      body: library.node || ((library.raw.images || []).length && profiles.length
+        ? coverage(library.raw.images, profiles, (i, p) => (i.profiles || []).includes(p), "Image")
+        : empty({ glyph: "library", title: "No published images", code: "m-gpux image build torch --pip torch --all" })),
+    }),
+    card({
+      title: "Notifications", hint: channels.length ? `${channels.length} channel(s)` : "",
+      actions: channels.length ? [button("Send test", { glyph: "bell", size: "btn-sm", onClick: (e) => testAlerts(e.currentTarget) })] : [],
+      flush: channels.length > 0,
+      body: alerts.node || (channels.length
+        ? table([
+          { label: "Channel", render: (c) => h("div", { class: "cell-main" }, icon("bell"), h("strong", {}, c.name)) },
+          { label: "Type", render: (c) => h("span", { class: "chip" }, c.type) },
+          { label: "Target", render: (c) => h("span", { class: "mono muted" }, c.target) },
+          { label: "Events", render: (c) => h("div", { class: "chips" }, c.events.map((e) => h("span", { class: "chip" }, e === "*" ? "all events" : e))) },
+        ], channels)
+        : empty({ glyph: "bell", title: "No notification channels", hint: "Discord, Slack, Telegram, ntfy or any webhook; then run m-gpux notify watch.", code: "m-gpux notify add discord" })),
+    }),
+  ];
+}
+
 // ─── Route table ─────────────────────────────────────────────
 
 const aliveApps = () => store.peek("apps")?.data?.apps?.filter((a) => a.alive).length;
@@ -729,7 +933,12 @@ export const ROUTES = [
   { id: "sessions", label: "Sessions", glyph: "sessions", group: "Workloads", refresh: ["sessions"], render: sessionsView,
     count: () => store.peek("sessions")?.data?.sessions?.filter((s) => s.state === "running").length },
   { id: "endpoints", label: "Endpoints", glyph: "endpoints", group: "Workloads", refresh: ["endpoints"], render: endpointsView },
+  { id: "runs", label: "Runs", glyph: "runs", group: "Workloads", refresh: ["runs"], render: runsView,
+    count: () => store.peek("runs")?.data?.runs?.filter((r) => r.status === "running").length },
   { id: "library", label: "Presets & images", glyph: "library", group: "Workloads", refresh: ["library"], render: libraryView },
+  { id: "volumes", label: "Volumes", glyph: "volumes", group: "Storage & sync", refresh: ["volumes"], render: volumesView,
+    count: () => store.peek("volumes")?.data?.volumes?.length },
+  { id: "sync", label: "Sync & alerts", glyph: "sync", group: "Storage & sync", refresh: ["secrets", "library", "notify"], render: syncView },
   { id: "billing", label: "Usage & pricing", glyph: "billing", group: "Cost", refresh: ["accounts", "billing"], render: billingView },
   { id: "kaggle", label: "Kaggle", glyph: "gauge", group: "Other clouds", refresh: ["kaggle"], render: kaggleView,
     count: () => store.peek("kaggle")?.data?.accounts?.reduce((t, r) => t + (r.live || []).length, 0) },

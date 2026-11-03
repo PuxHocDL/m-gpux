@@ -112,7 +112,7 @@ export async function api(path, { method = "GET", body } = {}) {
 
 // ─── Store: one cached entry per resource+scope, refreshed in the background ──
 
-const SCOPED = new Set(["apps", "containers", "sandboxes", "sessions"]);
+const SCOPED = new Set(["apps", "containers", "sandboxes", "sessions", "volumes"]);
 const entries = new Map();
 const listeners = new Set();
 

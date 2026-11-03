@@ -118,6 +118,14 @@ def check_command(
         console.print("[green]All accounts within budget.[/green]")
         return
     console.print(f"[bold red]{len(over)} account(s) over budget:[/bold red] {', '.join(over)}")
+    from m_gpux.core.notify import notify
+
+    notify(
+        "budget.over",
+        f"{len(over)} account(s) over budget",
+        ", ".join(over) + (" — stopping their m-gpux apps." if stop else ""),
+        level="error",
+    )
     if stop:
         _stop_over_budget(over)
     raise typer.Exit(2)

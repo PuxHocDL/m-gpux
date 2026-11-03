@@ -166,6 +166,36 @@ def _library(m, q, b):
     return data.library()
 
 
+@route("GET", r"/api/volumes")
+def _volumes(m, q, b):
+    return data.volumes(q.get("profile") or None, refresh=_flag(q, "refresh"))
+
+
+@route("GET", rf"/api/volumes/(?P<profile>{SEG})/(?P<name>{SEG})/files")
+def _volume_files(m, q, b):
+    return data.volume_files(_seg(m, "profile"), _seg(m, "name"), q.get("path") or "/")
+
+
+@route("GET", r"/api/secrets")
+def _secrets(m, q, b):
+    return data.secrets_matrix(refresh=_flag(q, "refresh"))
+
+
+@route("GET", r"/api/runs")
+def _runs(m, q, b):
+    return data.runs()
+
+
+@route("GET", r"/api/notify")
+def _notify(m, q, b):
+    return data.notifications()
+
+
+@route("POST", r"/api/notify/test")
+def _notify_test(m, q, b):
+    return data.test_notifications()
+
+
 @route("GET", r"/api/billing")
 def _billing(m, q, b):
     return data.billing()

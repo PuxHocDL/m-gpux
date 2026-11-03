@@ -141,6 +141,48 @@ def _gateway_job() -> Optional[list[str]]:
     return [job_id] if job_id else None
 
 
+def _project_task() -> Optional[list[str]]:
+    from pathlib import Path
+
+    from m_gpux.core.project import ProjectError, find_project, load_project
+
+    path = find_project(Path.cwd())
+    if path is None:
+        console.print("[yellow]No mgpux.toml here — use Projects → Init first.[/yellow]")
+        return None
+    try:
+        tasks = load_project(path)["tasks"]
+    except ProjectError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return None
+    name = _choose("Task", [(n, t["command"]) for n, t in tasks.items()])
+    return [name] if name else None
+
+
+def _run_id() -> Optional[list[str]]:
+    from m_gpux.core.state import STATE_DIR, _read_json
+
+    paths = sorted((STATE_DIR / "runs").glob("*.json"), reverse=True)[:30]
+    rows = [r for r in (_read_json(p, None) for p in paths) if isinstance(r, dict) and r.get("id")]
+    if not rows:
+        console.print("[yellow]No runs yet — use Projects → Up first.[/yellow]")
+        return None
+    options = [(r["id"], f"{r.get('kind')} {r.get('project')}/{r.get('task')} · {r.get('status')}") for r in rows]
+    run_id = _choose("Run", options)
+    return [run_id] if run_id else None
+
+
+def _notify_channel() -> Optional[list[str]]:
+    from m_gpux.core.notify import load_channels, masked
+
+    channels = load_channels()
+    if not channels:
+        console.print("[yellow]No notification channels yet — use Notifications → Add channel.[/yellow]")
+        return None
+    name = _choose("Channel", [(c["name"], f"{c['type']} · {masked(c)}") for c in channels])
+    return [name] if name else None
+
+
 def _kaggle_account(allow_auto: bool = False) -> Callable[[], Optional[list[str]]]:
     def ask() -> Optional[list[str]]:
         from m_gpux.core.kaggle import accounts
@@ -358,6 +400,75 @@ MENU: list[tuple[str, str, list[Item]]] = [
             ("Show", "Endpoint details (key masked)", ["gateway", "show"]),
             ("Reveal key", "Print the full API key", ["gateway", "key"]),
             ("Open API docs", "Interactive /docs in the browser", ["gateway", "open"]),
+        ],
+    ),
+    (
+        "Projects & sweeps",
+        "mgpux.toml tasks, parameter sweeps, run anywhere",
+        [
+            ("Init", "Create mgpux.toml in this folder", ["init"]),
+            ("Up", "Run a task on Modal", ["up", _project_task]),
+            (
+                "Sweep",
+                "Run a task over a parameter grid",
+                ["sweep", _project_task, _opt("--grid", _text("Grid (e.g. lr=1e-4,3e-4)"))],
+            ),
+            (
+                "Run anywhere",
+                "Free Kaggle quota, then Colab, then Modal credit",
+                ["run", _text("Script", "main.py"), _flag("Only show the plan?", "--plan")],
+            ),
+            ("Runs", "Recent up / sweep results", ["runs", "list"]),
+            ("Run details", "Jobs, metrics and failures of one run", ["runs", "show", _run_id]),
+        ],
+    ),
+    (
+        "Secrets & sync",
+        "Same Secrets and images on every workspace",
+        [
+            ("Secret status", "Which workspace has which Secret", ["secrets", "status"]),
+            (
+                "Sync secret",
+                "Values from env / .env / hidden prompt to every workspace",
+                ["secrets", "sync", _text("Secret name (e.g. hf)"), _words("Variable names (e.g. HF_TOKEN)")],
+            ),
+            (
+                "Delete secret",
+                "From one or more workspaces",
+                ["secrets", "delete", _text("Secret name"), _optional_text("--to", "Profiles ('all' or a,b)")],
+            ),
+            ("Image status", "Which workspace has which published image", ["image", "status"]),
+            ("Sync image", "Build an image where it is missing", ["image", "sync", _image]),
+        ],
+    ),
+    (
+        "Volumes",
+        "Browse and move data in Modal Volumes",
+        [
+            ("List", "Volumes on every account", ["volume", "list", _flag("Every account?", "--all")]),
+            ("Browse", "List a folder", ["volume", "ls", _text("Volume"), _text("Path", "/")]),
+            ("Disk usage", "Size per top-level folder", ["volume", "du", _text("Volume")]),
+            (
+                "Download",
+                "Volume → local",
+                ["volume", "get", _text("Volume"), _text("Remote path"), _text("Local", ".")],
+            ),
+            ("Upload", "Local → volume", ["volume", "put", _text("Volume"), _text("Local path"), _text("Remote", "/")]),
+            ("Delete file", "Inside a volume", ["volume", "rm", _text("Volume"), _text("Remote path")]),
+            ("Delete volume", "A whole volume and its data", ["volume", "delete", _text("Volume")]),
+        ],
+    ),
+    (
+        "Notifications",
+        "Discord, Slack, Telegram, ntfy or webhook alerts",
+        [
+            ("Add channel", "Webhook / bot, then a test message", ["notify", "add"]),
+            ("Channels", "Configured channels (masked)", ["notify", "list"]),
+            ("Test", "Send a test message", ["notify", "test"]),
+            ("Events", "What a channel can subscribe to", ["notify", "events"]),
+            ("Send", "A custom message", ["notify", "send", _text("Title")]),
+            ("Watch", "Apps, credit and jobs until Ctrl+C", ["notify", "watch"]),
+            ("Remove channel", "", ["notify", "remove", _notify_channel]),
         ],
     ),
     (

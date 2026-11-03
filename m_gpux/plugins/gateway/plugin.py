@@ -26,6 +26,7 @@ from m_gpux.core.state import (
     save_gateway_job,
 )
 from m_gpux.plugins.gateway.client import TERMINAL_STATES, GatewayHTTPError, gateway_request, wait_for_job
+from m_gpux.core.notify import notify
 from m_gpux.plugins.gateway.config import DEFAULT_MANIFEST, GatewayConfig, GatewayConfigError, load_gateway_config
 from m_gpux.plugins.gateway.renderer import render_gateway_app
 
@@ -322,6 +323,18 @@ def list_gateway_tasks() -> None:
         _fail(str(exc))
 
 
+def _notify_finished(job: object) -> None:
+    if not isinstance(job, dict) or job.get("status") not in TERMINAL_STATES:
+        return
+    ok = job["status"] == "succeeded"
+    notify(
+        "job.done" if ok else "job.failed",
+        f"Gateway job {job.get('task', '')} {job['status']}".replace("  ", " "),
+        f"Job {job.get('id')}. Details: m-gpux gateway result {job.get('id')}",
+        level="success" if ok else "error",
+    )
+
+
 @app.command("submit")
 def submit_job(
     task: str = typer.Argument(..., help="Declared task name."),
@@ -350,6 +363,7 @@ def submit_job(
         if wait:
             submitted = wait_for_job(state["url"], state["api_key"], submitted["id"], timeout=timeout)
             save_gateway_job(submitted)
+            _notify_finished(submitted)
         _print_json(submitted)
     except (GatewayHTTPError, TimeoutError, KeyError) as exc:
         _fail(str(exc))
@@ -371,6 +385,8 @@ def job_result(
         )
         if isinstance(result, dict):
             save_gateway_job(result)
+        if wait:
+            _notify_finished(result)
         _print_json(result)
     except (GatewayHTTPError, TimeoutError) as exc:
         _fail(str(exc))
