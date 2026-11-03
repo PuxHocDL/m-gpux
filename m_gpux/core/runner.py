@@ -108,13 +108,17 @@ def execute_modal_temp_script(
     session_metadata: dict | None = None,
     deploy: bool = False,
     deploy_strategy: Optional[str] = None,
+    profile: Optional[str] = None,
+    assume_yes: bool = False,
 ) -> None:
     """Materialise *content* as ``modal_runner.py``, summarise it, then execute.
 
     The string ``# __METRICS__`` inside *content* is replaced with the metrics
     helper functions (so generated scripts can call ``_print_metrics`` and
     ``_monitor_metrics``). *deploy_strategy* (``rolling``/``recreate``) is passed
-    to ``modal deploy --strategy`` when deploying.
+    to ``modal deploy --strategy`` when deploying. *profile* runs the Modal CLI
+    as that profile (``MODAL_PROFILE``) without changing the active one, and
+    *assume_yes* skips every prompt (CI, scripted runs).
     """
     content = content.replace("# __METRICS__", _METRICS_FUNCTIONS)
     runner_file = "modal_runner.py"
@@ -134,7 +138,7 @@ def execute_modal_temp_script(
         f"(change GPU/CPU, deps, timeout…). Set MGPUX_VERBOSE=1 to always print the full code.[/dim]"
     )
 
-    while True:
+    while not assume_yes:
         choice = (
             Prompt.ask(
                 "[bold cyan][Enter][/bold cyan] run  •  [bold cyan]v[/bold cyan] view code  •  [bold cyan]e[/bold cyan] open in editor  •  [bold cyan]c[/bold cyan] cancel",
@@ -186,6 +190,8 @@ def execute_modal_temp_script(
     dashboard_url: Optional[str] = None
     try:
         env = os.environ.copy()
+        if profile:
+            env["MODAL_PROFILE"] = profile
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.setdefault("PYTHONUTF8", "1")
 
@@ -312,16 +318,22 @@ def execute_modal_temp_script(
             f"([cyan]{saved.get('app_name', 'unknown')}[/cyan])"
         )
 
-    stop_choice = Prompt.ask(
-        "[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
-        choices=["y", "n"],
-        default="n" if (detach or deploy) else "y",
+    # A foreground `modal run` app is ephemeral and already gone, so scripted
+    # runs skip the question; detached/deployed apps keep running on purpose.
+    stop_choice = (
+        "n"
+        if assume_yes
+        else Prompt.ask(
+            "[bold cyan]Stop the Modal app to release GPU?[/bold cyan]",
+            choices=["y", "n"],
+            default="n" if (detach or deploy) else "y",
+        )
     )
     if stop_choice.lower() == "y":
         app_name = _read_app_name()
         if app_name:
-            profile = str(session_metadata.get("profile") or "") if session_metadata else None
-            result = stop_app(app_name, profile=profile or None)
+            stop_profile = profile or (str(session_metadata.get("profile") or "") if session_metadata else None)
+            result = stop_app(app_name, profile=stop_profile or None)
             if result.returncode == 0:
                 console.print(f"[green]App '{app_name}' stopped. GPU released.[/green]")
                 if tracked_session_id:
@@ -336,10 +348,14 @@ def execute_modal_temp_script(
         else:
             console.print("[yellow]Could not determine app name. Stop manually: modal app stop <name>[/yellow]")
 
-    del_choice = Prompt.ask(
-        f"[bold cyan]Delete {runner_file}?[/bold cyan]",
-        choices=["y", "n"],
-        default="n" if failed else "y",
+    del_choice = (
+        ("n" if failed else "y")
+        if assume_yes
+        else Prompt.ask(
+            f"[bold cyan]Delete {runner_file}?[/bold cyan]",
+            choices=["y", "n"],
+            default="n" if failed else "y",
+        )
     )
     if del_choice.lower() == "y":
         try:

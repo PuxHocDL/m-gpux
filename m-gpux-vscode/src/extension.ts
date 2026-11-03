@@ -5,12 +5,15 @@ import { ActionsTreeProvider } from "./actionsTree";
 import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
 import { PresetsTreeProvider, PresetItem, loadPresets } from "./presetsTree";
 import { StatusBarManager } from "./statusBar";
+import { HomeViewProvider } from "./homeView";
+import { ModalKernelProvider } from "./jupyterKernel";
+import { browseVolumes, manageNotifications, manageProject, manageSync, runAnywhere } from "./workspaceTools";
 import { runHubWizard } from "./hubWizard";
 import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox, composeSync } from "./composeActions";
-import { billingReports, manageBudgets, manageGateway, manageImages, manageOtherClouds, manageServeEndpoint, openCliMenu, openDashboard, showPreset } from "./cliActions";
+import { billingReports, manageBudgets, manageGateway, manageImages, manageOtherClouds, manageServeEndpoint, openCliMenu, openDashboard, runCliInTerminal, showPreset } from "./cliActions";
 import { devUp, devManage } from "./devActions";
 import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
 import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
@@ -76,8 +79,63 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push({ dispose: () => clearInterval(discoveryTicker) });
 
   // --- Status Bar ---
-  statusBar = new StatusBarManager();
+  statusBar = new StatusBarManager((name) => accountTree.billingCache.get(name));
   context.subscriptions.push({ dispose: () => statusBar.dispose() });
+  context.subscriptions.push(accountTree.onDidChangeTreeData(() => statusBar.refresh()));
+
+  // --- Modal Jupyter sessions as notebook kernels ---
+  const kernels = new ModalKernelProvider();
+  context.subscriptions.push(
+    kernels,
+    vscode.commands.registerCommand("mgpux.useAsKernel", () => kernels.useForNotebook()),
+    vscode.commands.registerCommand("mgpux.projects", () => manageProject()),
+    vscode.commands.registerCommand("mgpux.runAnywhere", (uri?: vscode.Uri) => runAnywhere(uri)),
+    vscode.commands.registerCommand("mgpux.syncWorkspaces", () => manageSync()),
+    vscode.commands.registerCommand("mgpux.notifications", () => manageNotifications()),
+    vscode.commands.registerCommand("mgpux.browseVolumes", () => browseVolumes()),
+    vscode.commands.registerCommand("mgpux.showRun", (id?: string) => {
+      if (typeof id === "string" && /^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$/.test(id)) {
+        return runCliInTerminal("Run", `runs show ${id}`);
+      }
+      return runCliInTerminal("Runs", "runs list");
+    }),
+  );
+
+  // Warn once a day when the active account is nearly out of credit or budget.
+  context.subscriptions.push(accountTree.onDidChangeTreeData(() => {
+    if (accountTree.loading) { return; }
+    const active = getActiveProfile();
+    const b = active ? accountTree.billingCache.get(active.name) : undefined;
+    if (!active || !b || b.used < 0 || b.limit <= 0 || b.remaining / b.limit > 0.1) { return; }
+    const key = `${active.name}:${new Date().toISOString().slice(0, 10)}`;
+    if (context.globalState.get("mgpux.lowCreditWarned") === key) { return; }
+    void context.globalState.update("mgpux.lowCreditWarned", key);
+    vscode.window.showWarningMessage(
+      `M-GPUX: '${active.name}' has $${b.remaining.toFixed(2)} ${b.hasCustomBudget ? "budget" : "credit"} left this month.`,
+      "Switch account", "Budgets"
+    ).then((choice) => {
+      if (choice === "Switch account") { vscode.commands.executeCommand("mgpux.switchAccount"); }
+      if (choice === "Budgets") { vscode.commands.executeCommand("mgpux.manageBudgets"); }
+    });
+  }));
+
+  // --- Overview webview (top of the sidebar) ---
+  const homeView = new HomeViewProvider(
+    context.extensionUri,
+    accountTree,
+    presetsTree,
+    context.extension.packageJSON.version,
+    async () => {
+      await Promise.all([
+        accountTree.refreshWithBilling(),
+        refreshFromModal().catch(() => { /* best-effort */ }),
+      ]);
+    },
+  );
+  context.subscriptions.push(
+    homeView,
+    vscode.window.registerWebviewViewProvider(HomeViewProvider.viewId, homeView),
+  );
 
   // Helper to refresh all UI
   function refreshAll() {

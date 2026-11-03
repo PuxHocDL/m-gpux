@@ -12,6 +12,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
     if (!element) {
       return [
         new ActionGroup("Launch",   "rocket",   "launch"),
+        new ActionGroup("Projects", "beaker",   "projects"),
         new ActionGroup("Dev Box",  "remote-explorer", "dev"),
         new ActionGroup("Host",     "globe",    "host"),
         new ActionGroup("Serve LLM", "server",  "serve"),
@@ -27,6 +28,11 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("Run Preset",      "Replay a saved workload",               "play-circle", "mgpux.runPreset"),
           new ActionItem("Probe Hardware",  "Check GPU/CPU/RAM metrics",             "pulse",  "mgpux.loadProbe"),
           new ActionItem("CLI Menu",        "Every m-gpux command in an interactive menu", "terminal", "mgpux.openCliMenu"),
+        ];
+        case "projects": return [
+          new ActionItem("Projects",        "mgpux.toml: run, sweep, history",          "beaker", "mgpux.projects"),
+          new ActionItem("Run Anywhere",    "Free Kaggle quota → Colab → Modal credit", "globe", "mgpux.runAnywhere"),
+          new ActionItem("Notebook Kernel", "Run a local .ipynb on a Modal GPU",       "notebook", "mgpux.useAsKernel"),
         ];
         case "dev": return [
           new ActionItem("Create / Start", "GPU/CPU Sandbox with SSH and persistent snapshots", "vm-running", "mgpux.devUp"),
@@ -54,6 +60,9 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("Billing Usage",   "Show cost across all accounts",         "graph",  "mgpux.billingUsage"),
           new ActionItem("Billing Reports", "Usage table, cycle summary, GPU rates", "table",  "mgpux.billingReports"),
           new ActionItem("Images",          "Build, publish and manage prebuilt images", "package", "mgpux.manageImages"),
+          new ActionItem("Secrets & Sync",  "Same Secrets and images on every workspace", "key", "mgpux.syncWorkspaces"),
+          new ActionItem("Volumes",         "Browse and download Modal Volumes",        "database", "mgpux.browseVolumes"),
+          new ActionItem("Notifications",   "Discord / Slack / Telegram / ntfy alerts",  "bell", "mgpux.notifications"),
           new ActionItem("Kaggle & Colab",  "GPU quota, kernels and runtimes on other clouds", "cloud", "mgpux.otherClouds"),
           new ActionItem("Billing Dashboard", "Open Modal usage page in browser",    "link-external", "mgpux.openBillingDashboard"),
           new ActionItem("Info",            "Show M-GPUX info",                      "info",   "mgpux.showInfo"),

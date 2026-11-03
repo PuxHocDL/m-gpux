@@ -12,6 +12,11 @@ from __future__ import annotations
 import os
 import sys
 import time
+import warnings
+
+# Closing several Modal clients at exit (one per account) can trip this
+# harmless internal warning in the SDK's connection cleanup.
+warnings.filterwarnings("ignore", message="Internal warning: Tasks did not cancel")
 
 
 def _configure_windows_utf8() -> None:

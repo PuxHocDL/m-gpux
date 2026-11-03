@@ -45,7 +45,7 @@ For the same workflows inside your editor, install the [m-gpux VS Code extension
 The CLI works on its own, and each piece below plugs into the same accounts, presets, and budgets.
 
 - **[CLI](https://pypi.org/project/m-gpux/)** — dev boxes, Hub, hosting, serving, Compose, budgets, and billing from one command
-- **[VS Code extension](https://marketplace.visualstudio.com/items?itemName=puxpux.m-gpux)** — accounts, sessions, presets, and the Hub / host / serve wizards in a sidebar
+- **[VS Code extension](https://marketplace.visualstudio.com/items?itemName=puxpux.m-gpux)** — an Overview panel for accounts, credit, sessions and runs, Modal GPUs as notebook kernels, and every wizard in the sidebar
 - **[Documentation](https://puxhocdl.github.io/m-gpux/)** — guides for every workflow, plus the full command reference
 - **[Examples](examples/)** — ready-to-deploy FastAPI, Flask, and static-site projects for `m-gpux host`
 
@@ -62,6 +62,10 @@ m-gpux wraps Modal's primitives (Sandboxes, Functions, Servers, Volumes, named I
 - **A local control plane** — `m-gpux ui` opens a web dashboard on localhost: every account's credit and workspace, live apps, containers and sandboxes across accounts, sessions, endpoints and GPU prices, with stop / logs / budget actions
 - **Scripts as an async API** — `m-gpux gateway deploy` exposes the tasks you declare in `mgpux.gateway.toml` as an authenticated job API: submit JSON, poll for results, each task autoscaling on its own CPU or GPU
 - **Docker Compose, lifted as-is** — run a `docker-compose.yml` as one container, a full VM-style image (Triton, gRPC), or one Sandbox per service with readiness probes and working service-to-service addresses
+- **A project file for your repo** — `mgpux.toml` declares tasks (GPU fallback lists, images, secrets, volumes); `m-gpux up train` runs one, `m-gpux sweep train --grid lr=1e-4,3e-4` fans it out in parallel and ranks the results, and a GitHub Action runs them from CI
+- **Run where there is capacity** — `m-gpux run train.py` uses free Kaggle GPU hours first, then Colab, then the Modal account with the most credit
+- **Workspaces in sync** — `m-gpux secrets sync hf HF_TOKEN --to all` and `m-gpux image sync` put the same Secrets and images on every account; `m-gpux volume` browses and moves data on any of them
+- **Pinged, not polling** — Discord, Slack, Telegram, ntfy or webhook notifications when runs finish, apps run too long or credit runs low
 - **Starts in seconds, not minutes** — `m-gpux image build` bakes your dependencies once and publishes them to every account; Hub and dev boxes offer them as the base image
 - **Nothing hidden** — every workflow generates a plain Modal script you can read and edit before it runs
 

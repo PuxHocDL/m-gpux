@@ -38,6 +38,12 @@ const PATHS = {
   command: '<path d="M9 6.5A2.5 2.5 0 1 0 6.5 9H9zM9 9h6v6H9zM15 6.5V9h2.5A2.5 2.5 0 1 0 15 6.5zM9 17.5V15H6.5A2.5 2.5 0 1 0 9 17.5zM15 15v2.5a2.5 2.5 0 1 0 2.5-2.5z"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   terminal: '<path d="m5 7.5 4.5 4.5L5 16.5"/><path d="M12 17h7"/>',
+  volumes: '<ellipse cx="12" cy="5.5" rx="7.5" ry="2.5"/><path d="M4.5 5.5v13c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-13"/><path d="M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5"/>',
+  runs: '<path d="M9 3h6"/><path d="M10 3v6.5L4.8 18.2A1.8 1.8 0 0 0 6.4 21h11.2a1.8 1.8 0 0 0 1.6-2.8L14 9.5V3"/><path d="M7.5 15h9"/>',
+  sync: '<path d="M4 9a8 8 0 0 1 14.3-3.3L20.5 8"/><path d="M20.5 3.5V8H16"/><path d="M20 15a8 8 0 0 1-14.3 3.3L3.5 16"/><path d="M3.5 20.5V16H8"/>',
+  bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  folder: '<path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
 };
 
 export function icon(name, className = "icon") {

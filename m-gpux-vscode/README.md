@@ -6,6 +6,10 @@
 
 ## Features
 
+- **Overview Panel** — A modern home view at the top of the sidebar: active account with a credit meter, spend at a glance, one-click launch tiles, live session cards, accounts, presets and every tool
+- **Notebook Kernels on Modal** — Run a local `.ipynb` on a Modal GPU: Jupyter sessions appear in the notebook kernel picker under *M-GPUX · Modal GPUs*, or launch a new one from there
+- **Projects, Sweeps & Run Anywhere** — `mgpux.toml` tasks run or swept from the sidebar, recent runs with their best metric and cost, and *Run Script Anywhere* (free Kaggle quota → Colab → Modal credit) on any `.py` file
+- **Workspaces in Sync** — Secrets and images on every account, a Volume browser that downloads into your workspace, and Discord / Slack / Telegram / ntfy notifications
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
 - **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
@@ -51,10 +55,16 @@ After installing, run **Reload Window** (`Ctrl+Shift+P` → `Reload Window`).
 
 ### 1. Open the Sidebar
 
-Click the **GPU chip icon** on the Activity Bar (left edge). Four panels appear:
+Click the **GPU chip icon** on the Activity Bar (left edge). The **Overview** panel
+on top covers the day-to-day: the active account and how much credit is left, spend
+across accounts, launch tiles (GPU Hub, Dev Box, Serve LLM, Host, Compose, Dashboard),
+session cards with open / logs / pull / push / stop buttons, accounts with spend bars
+(click one to switch), presets, and a **More tools** list. The classic tree panels sit
+below it, collapsed by default:
 
 | Panel | Description |
 |-------|-------------|
+| **Overview** | Home view: account, credit, launch tiles, sessions, accounts, presets, tools |
 | **Accounts** | Lists all configured Modal profiles with active status and remaining credit |
 | **Active Sessions** | Live/restored workloads with logs, stop, and workspace sync actions |
 | **Presets** | Shared CLI/extension workload presets |
@@ -118,6 +128,18 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 
 ---
 
+## Notebook Kernels on Modal GPUs
+
+Requires the Jupyter extension.
+
+1. Start a Jupyter session (GPU Hub → Jupyter Lab), or use **Launch a GPU Jupyter server on Modal…** inside the kernel picker.
+2. Open a notebook → kernel picker → **Select Another Kernel… → M-GPUX · Modal GPUs** → pick the session.
+3. Run cells on the GPU. The notebook toolbar's **Use Modal GPU as Notebook Kernel** button and the session's notebook icon open the same picker.
+
+Sessions that scaled to zero still appear; the first cell cold-starts them.
+
+---
+
 ## Account Management
 
 | Action | How |
@@ -129,7 +151,9 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 
 ### Status Bar
 
-The bottom-left of VS Code shows `☁ M-GPUX: <profile-name>`. Click it to switch profiles.
+The bottom-left of VS Code shows the active profile and, once billing has loaded, its
+remaining credit (`☁ <profile> · $18.40`). It turns amber when 90% of the month's
+credit or budget is used. Click it to switch profiles.
 
 ### Billing
 

@@ -1,0 +1,100 @@
+name: m-gpux up
+description: Run a task (or a sweep) from mgpux.toml on Modal GPUs, straight from a workflow.
+author: PuxHocDL
+branding:
+  icon: cpu
+  color: green
+
+inputs:
+  task:
+    description: Task name from mgpux.toml (empty = the only task).
+    required: false
+    default: ""
+  sweep:
+    description: Run `m-gpux sweep` instead of `up`; set to a [sweeps.*] name or a task name.
+    required: false
+    default: ""
+  grid:
+    description: Extra sweep grid, space separated (e.g. "lr=1e-4,3e-4 batch=16,32").
+    required: false
+    default: ""
+  args:
+    description: Extra arguments appended to the task's command (up only).
+    required: false
+    default: ""
+  working-directory:
+    description: Folder that holds mgpux.toml.
+    required: false
+    default: "."
+  modal-token-id:
+    description: Modal token id (store it as a repository secret).
+    required: true
+  modal-token-secret:
+    description: Modal token secret (store it as a repository secret).
+    required: true
+  python-version:
+    description: Python used to install and run m-gpux.
+    required: false
+    default: "3.12"
+  mgpux-version:
+    description: m-gpux version to install (empty = latest).
+    required: false
+    default: ""
+
+outputs:
+  run-id:
+    description: The run ID recorded by m-gpux.
+    value: ${{ steps.run.outputs.run-id }}
+  status:
+    description: done, failed or cancelled.
+    value: ${{ steps.run.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install m-gpux
+      shell: bash
+      env:
+        MGPUX_VERSION: ${{ inputs.mgpux-version }}
+      run: python -m pip install --quiet "m-gpux${MGPUX_VERSION:+==$MGPUX_VERSION}"
+
+    - name: Run on Modal
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        MODAL_TOKEN_ID: ${{ inputs.modal-token-id }}
+        MODAL_TOKEN_SECRET: ${{ inputs.modal-token-secret }}
+        TASK: ${{ inputs.task }}
+        SWEEP: ${{ inputs.sweep }}
+        GRID: ${{ inputs.grid }}
+        ARGS: ${{ inputs.args }}
+        PYTHONIOENCODING: utf-8
+        COLUMNS: "160"
+      run: |
+        set +e
+        if [ -n "$SWEEP" ]; then
+          flags=()
+          for g in $GRID; do flags+=(--grid "$g"); done
+          m-gpux sweep "$SWEEP" "${flags[@]}" --account env --yes
+        else
+          # ARGS is split like a shell would split it, on purpose.
+          # shellcheck disable=SC2086
+          m-gpux up ${TASK:+"$TASK"} --account env --yes ${ARGS:+-- $ARGS}
+        fi
+        code=$?
+        latest=$(ls -1t ~/.m-gpux/runs/*.json 2>/dev/null | head -n1)
+        if [ -n "$latest" ]; then
+          python - "$latest" >> "$GITHUB_OUTPUT" <<'PY'
+        import json, sys
+        record = json.load(open(sys.argv[1], encoding="utf-8"))
+        print(f"run-id={record.get('id', '')}")
+        print(f"status={record.get('status', '')}")
+        PY
+          m-gpux runs show "$(basename "$latest" .json)" || true
+        fi
+        exit $code

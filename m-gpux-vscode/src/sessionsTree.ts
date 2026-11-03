@@ -20,6 +20,19 @@ const STATUS_ICON: Record<SessionStatus, string> = {
   failed: "error",
 };
 
+const STATUS_COLOR: Partial<Record<SessionStatus, string>> = {
+  starting: "charts.blue",
+  ready: "charts.green",
+  idle: "charts.yellow",
+  stopping: "charts.blue",
+  failed: "charts.red",
+};
+
+function statusColor(status: SessionStatus): vscode.ThemeColor | undefined {
+  const id = STATUS_COLOR[status];
+  return id ? new vscode.ThemeColor(id) : undefined;
+}
+
 export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionTreeNode> {
   private _onDidChangeTreeData = new vscode.EventEmitter<SessionTreeNode | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
@@ -56,15 +69,15 @@ export class SessionsTreeProvider implements vscode.TreeDataProvider<SessionTree
 }
 
 function buildSessionNode(s: Session): SessionTreeNode {
-  const icon = new vscode.ThemeIcon(KIND_ICON[s.kind] ?? "circle-large-outline");
-  const statusIcon = new vscode.ThemeIcon(STATUS_ICON[s.status] ?? "circle-outline");
+  const icon = new vscode.ThemeIcon(KIND_ICON[s.kind] ?? "circle-large-outline", statusColor(s.status));
+  const statusIcon = new vscode.ThemeIcon(STATUS_ICON[s.status] ?? "circle-outline", statusColor(s.status));
   const age = formatAge(Date.now() - s.startedAt);
   const label = `${s.kind} • ${s.gpu}`;
   const description = describeStatus(s, age);
 
   const node = new SessionTreeNode(label, description, icon, vscode.TreeItemCollapsibleState.Collapsed);
   node.tooltip = buildTooltip(s);
-  node.contextValue = `session.${s.status}${s.accessUrl ? ".hasUrl" : ""}${s.appId ? ".hasApp" : ""}${s.workspaceVolume ? ".hasVolume" : ""}`;
+  node.contextValue = `session.${s.status}${s.accessUrl ? ".hasUrl" : ""}${s.appId ? ".hasApp" : ""}${s.workspaceVolume ? ".hasVolume" : ""}${s.kind === "jupyter" ? ".jupyter" : ""}`;
   node.sessionId = s.id;
 
   const children: SessionTreeNode[] = [];

@@ -290,7 +290,8 @@ table.table { width: 100%; border-collapse: collapse; }
 }
 .copy:hover { background: var(--hover); color: var(--text); }
 /* Commands in headers and action cells are meant to be read whole. */
-.page-head .actions .copy, td.actions .copy { max-width: none; }
+.page-head .actions .copy, td.actions .copy, .card-head .actions .copy { max-width: none; }
+.card-head .actions { min-width: 0; flex-shrink: 0; }
 .copy .icon { width: 12px; height: 12px; opacity: 0; transition: opacity .12s; }
 .copy:hover .icon { opacity: 1; }
 .copy span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -166,6 +166,24 @@ class DashboardDataTests(unittest.TestCase):
             states = {s["id"]: s["state"] for s in data.sessions()["sessions"]}
         self.assertEqual(states, {"s1": "orphaned", "s2": "ended", "s3": "running", "s4": "stopped"})
 
+    def test_volume_browsing_stays_inside_the_volume(self) -> None:
+        with mock.patch.object(data, "load_config", return_value={"p": {"token_id": "ak-1", "token_secret": "as-1"}}):
+            for name, path in (("v", "/a/../b"), ("v", "../etc"), ("bad name", "/"), ("../v", "/")):
+                with self.subTest(name=name, path=path), self.assertRaises(data.ActionError):
+                    data.volume_files("p", name, path)
+
+    def test_notification_channels_are_masked(self) -> None:
+        channel = {
+            "name": "d",
+            "type": "discord",
+            "url": "https://discord.com/api/webhooks/1/SECRETTOKEN",
+            "events": ["*"],
+        }
+        with mock.patch("m_gpux.core.notify.load_channels", return_value=[channel]):
+            payload = json.dumps(data.notifications())
+        self.assertNotIn("SECRET", payload)
+        self.assertIn("discord.com", payload)
+
     def test_ids_and_names_are_validated_before_reaching_modal(self) -> None:
         with mock.patch.object(data, "load_config", return_value={"p": {"token_id": "ak-1", "token_secret": "as-1"}}):
             with self.assertRaises(data.ActionError):

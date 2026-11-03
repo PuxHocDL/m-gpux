@@ -2,7 +2,7 @@
   "name": "m-gpux",
   "displayName": "M-GPUX — Modal GPU Orchestrator",
   "description": "Manage Modal GPU workloads, multi-profile accounts, and cloud billing directly from VS Code.",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "publisher": "puxpux",
   "license": "MIT",
   "repository": {
@@ -44,8 +44,14 @@
     "views": {
       "m-gpux-sidebar": [
         {
+          "type": "webview",
+          "id": "mgpux.homeView",
+          "name": "Overview"
+        },
+        {
           "id": "mgpux.accountsView",
-          "name": "Accounts"
+          "name": "Accounts",
+          "visibility": "collapsed"
         },
         {
           "id": "mgpux.sessionsView",
@@ -53,11 +59,13 @@
         },
         {
           "id": "mgpux.presetsView",
-          "name": "Presets"
+          "name": "Presets",
+          "visibility": "collapsed"
         },
         {
           "id": "mgpux.actionsView",
-          "name": "Quick Actions"
+          "name": "Quick Actions",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -343,6 +351,42 @@
         "title": "Show Preset",
         "category": "M-GPUX",
         "icon": "$(json)"
+      },
+      {
+        "command": "mgpux.useAsKernel",
+        "title": "Use Modal GPU as Notebook Kernel",
+        "category": "M-GPUX",
+        "icon": "$(notebook)"
+      },
+      {
+        "command": "mgpux.projects",
+        "title": "Projects (mgpux.toml)",
+        "category": "M-GPUX",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "mgpux.runAnywhere",
+        "title": "Run Script Anywhere (Kaggle / Colab / Modal)",
+        "category": "M-GPUX",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "mgpux.syncWorkspaces",
+        "title": "Secrets & Images Sync",
+        "category": "M-GPUX",
+        "icon": "$(key)"
+      },
+      {
+        "command": "mgpux.notifications",
+        "title": "Notifications",
+        "category": "M-GPUX",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "mgpux.browseVolumes",
+        "title": "Browse Volumes",
+        "category": "M-GPUX",
+        "icon": "$(database)"
       }
     ],
     "configuration": {
@@ -369,6 +413,16 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "mgpux.openHub",
+          "when": "view == mgpux.homeView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mgpux.openDashboard",
+          "when": "view == mgpux.homeView",
+          "group": "navigation@2"
+        },
         {
           "command": "mgpux.openDashboard",
           "when": "view == mgpux.accountsView",
@@ -426,6 +480,16 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "mgpux.useAsKernel",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(ready|idle).*hasUrl.*jupyter/",
+          "group": "inline@0"
+        },
+        {
+          "command": "mgpux.useAsKernel",
+          "when": "view == mgpux.sessionsView && viewItem =~ /^session\\.(ready|idle).*hasUrl.*jupyter/",
+          "group": "actions@0"
+        },
         {
           "command": "mgpux.switchAccount",
           "when": "view == mgpux.accountsView && viewItem == account",
@@ -503,7 +567,22 @@
           "command": "mgpux.showPreset",
           "when": "view == mgpux.presetsView && viewItem == preset"
         }
-      ]
+      ],
+      "explorer/context": [
+        {
+          "command": "mgpux.runAnywhere",
+          "when": "resourceExtname == .py",
+          "group": "mgpux@1"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "mgpux.useAsKernel",
+          "when": "notebookType == jupyter-notebook",
+          "group": "navigation/execute@10"
+        }
+      ],
+      "commandPalette": []
     }
   },
   "scripts": {
