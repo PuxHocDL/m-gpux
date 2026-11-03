@@ -243,6 +243,105 @@ export async function manageServeEndpoint(): Promise<void> {
   await runCliInTerminal(`serve ${action}`, `serve ${action}`);
 }
 
+// ─── Compute Gateway ──────────────────────────────────────────
+
+const GATEWAY_PATH = path.join(os.homedir(), ".m-gpux", "gateway.json");
+const GATEWAY_TASK = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
+const GATEWAY_JOB = /^fc-[A-Za-z0-9]{1,64}$/;
+
+interface GatewayJob { id: string; task?: string; status?: string; submitted_at?: string }
+interface GatewayState { url: string; api_key: string; tasks?: string[]; jobs?: GatewayJob[] }
+
+function loadGateway(): GatewayState | undefined {
+  try {
+    const data = JSON.parse(fs.readFileSync(GATEWAY_PATH, "utf-8"));
+    return data && typeof data.url === "string" && typeof data.api_key === "string" ? data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function pickGatewayJob(state: GatewayState): Promise<string | undefined> {
+  const jobs = (state.jobs ?? []).filter((j) => typeof j.id === "string" && GATEWAY_JOB.test(j.id));
+  if (!jobs.length) {
+    vscode.window.showInformationMessage("M-GPUX: no gateway jobs submitted from this machine yet.");
+    return undefined;
+  }
+  return pick("Gateway job", jobs.map((j) => ({
+    label: j.id,
+    description: [j.task, j.status].filter(Boolean).join(" · "),
+    detail: j.submitted_at,
+    value: j.id,
+  })));
+}
+
+export async function manageGateway(): Promise<void> {
+  const state = loadGateway();
+  const deployedOnly = state ? [
+    { label: "$(play) Submit job…", description: "Run a declared task with a JSON input", value: "submit" },
+    { label: "$(list-unordered) Jobs", description: "Jobs submitted from this machine, refreshed", value: "jobs" },
+    { label: "$(output) Job result…", description: "Status, or the result once finished", value: "result" },
+    { label: "$(note) Job logs…", description: "Recent stdout, stderr and system logs", value: "logs" },
+    { label: "$(debug-stop) Cancel job…", description: "Stop a running job", value: "cancel" },
+    { label: "$(checklist) Tasks", description: "Tasks the deployed gateway exposes", value: "tasks" },
+    { label: "$(info) Show endpoint", description: state.url, value: "show" },
+    { label: "$(key) Copy API key", description: "To the clipboard", value: "copy-key" },
+    { label: "$(link-external) Open API docs", description: "Interactive OpenAPI page", value: "open" },
+  ] : [];
+  const action = await pick("M-GPUX Compute Gateway", [
+    ...deployedOnly,
+    { label: "$(new-file) Init", description: "Starter mgpux.gateway.toml and worker in this workspace", value: "init" },
+    { label: "$(pass) Validate", description: "Check mgpux.gateway.toml without contacting Modal", value: "validate" },
+    { label: "$(rocket) Deploy", description: "Deploy the gateway and save its URL and key", value: "deploy" },
+  ]);
+  if (!action) { return; }
+
+  if (state && action === "copy-key") {
+    await vscode.env.clipboard.writeText(state.api_key);
+    vscode.window.showInformationMessage("M-GPUX: gateway API key copied to the clipboard.");
+    return;
+  }
+  if (state && action === "open") {
+    await vscode.env.openExternal(vscode.Uri.parse(`${state.url.replace(/\/+$/, "")}/docs`));
+    return;
+  }
+  if (state && action === "submit") {
+    const tasks = (state.tasks ?? []).filter((t) => GATEWAY_TASK.test(t));
+    const task = await pick("Task", tasks.map((t) => ({ label: t, value: t })));
+    if (!task) { return; }
+    const input = await vscode.window.showInputBox({
+      title: `Input for '${task}'`,
+      prompt: "A JSON object, passed to the task on stdin",
+      value: "{}",
+      validateInput: (v) => {
+        try {
+          const parsed = JSON.parse(v);
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? undefined : "Must be a JSON object";
+        } catch {
+          return "Not valid JSON";
+        }
+      },
+    });
+    if (input === undefined) { return; }
+    // A file avoids quoting JSON for bash, zsh, PowerShell and cmd.
+    const inputFile = path.join(os.tmpdir(), `mgpux-gateway-input-${Date.now()}.json`);
+    fs.writeFileSync(inputFile, input, "utf-8");
+    await runCliInTerminal(`gateway submit ${task}`, `gateway submit ${task} --input-file "${inputFile}" --wait`);
+    return;
+  }
+  if (state && (action === "result" || action === "logs" || action === "cancel")) {
+    const jobId = await pickGatewayJob(state);
+    if (!jobId) { return; }
+    if (action === "cancel") {
+      const confirm = await vscode.window.showWarningMessage(`Cancel gateway job ${jobId}?`, { modal: true }, "Cancel job");
+      if (confirm !== "Cancel job") { return; }
+    }
+    await runCliInTerminal(`gateway ${action}`, `gateway ${action} ${jobId}`);
+    return;
+  }
+  await runCliInTerminal(`gateway ${action}`, action === "jobs" ? "gateway jobs --refresh" : `gateway ${action}`);
+}
+
 // ─── Presets ──────────────────────────────────────────────────
 
 /** Show a preset's settings in a read-only JSON editor. */

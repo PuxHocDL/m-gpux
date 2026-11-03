@@ -58,6 +58,7 @@ m-gpux wraps Modal's primitives (Sandboxes, Functions, Servers, Volumes, named I
 - **Many accounts, one budget** — per-account monthly limits, budget-aware AUTO selection, a warning before you launch on an account that's nearly empty, and `budget check --stop` to shut down apps on accounts that go over
 - **From localhost to a URL** — `m-gpux host` deploys FastAPI, Flask, Django, or a static folder with scale-to-zero; `--server` uses Modal's low-latency `@app.server()` primitive
 - **Your own OpenAI-compatible endpoint** — `m-gpux serve deploy` puts any Hugging Face model behind vLLM with API keys, streaming, warmup, logs, and a live metrics dashboard
+- **Scripts as an async API** — `m-gpux gateway deploy` exposes the tasks you declare in `mgpux.gateway.toml` as an authenticated job API: submit JSON, poll for results, each task autoscaling on its own CPU or GPU
 - **Docker Compose, lifted as-is** — run a `docker-compose.yml` as one container, a full VM-style image (Triton, gRPC), or one Sandbox per service with readiness probes and working service-to-service addresses
 - **Starts in seconds, not minutes** — `m-gpux image build` bakes your dependencies once and publishes them to every account; Hub and dev boxes offer them as the base image
 - **Nothing hidden** — every workflow generates a plain Modal script you can read and edit before it runs

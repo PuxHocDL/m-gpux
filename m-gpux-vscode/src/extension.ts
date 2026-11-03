@@ -10,7 +10,7 @@ import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
 import { createPreset, runPresetByName, deletePresetCommand } from "./presetWizard";
 import { composeCheck, composeUp, composeSandbox, composeSync } from "./composeActions";
-import { billingReports, manageBudgets, manageImages, manageServeEndpoint, openCliMenu, showPreset } from "./cliActions";
+import { billingReports, manageBudgets, manageGateway, manageImages, manageServeEndpoint, openCliMenu, showPreset } from "./cliActions";
 import { devUp, devManage } from "./devActions";
 import { listApps, activateProfile, runModal, modalCommand, isAliveAppState } from "./modalCli";
 import { initializeCliBootstrap, offerCliSetupIfMissing, setupMgpuxCli } from "./cliBootstrap";
@@ -878,6 +878,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("mgpux.billingReports", () => billingReports()),
     vscode.commands.registerCommand("mgpux.manageImages",   () => manageImages()),
     vscode.commands.registerCommand("mgpux.manageServe",    () => manageServeEndpoint()),
+    vscode.commands.registerCommand("mgpux.manageGateway",  () => manageGateway()),
     vscode.commands.registerCommand("mgpux.showPreset", async (item?: PresetItem) => {
       const name = item?.presetName;
       if (!name) {

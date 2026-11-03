@@ -18,6 +18,7 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 | `m-gpux host` | Deploy ASGI, WSGI, or static web apps |
 | `m-gpux compose` | Analyze and deploy Docker Compose stacks on Modal |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
+| `m-gpux gateway` | Authenticated async API for predeclared CPU/GPU jobs |
 | `m-gpux stop` | Stop running m-gpux apps |
 | `m-gpux account` | Manage Modal profiles |
 | `m-gpux billing` | Track compute costs and prices |
@@ -37,8 +38,8 @@ m-gpux menu     # same menu, explicitly
 ```
 
 Opens an arrow-key menu of every m-gpux command, grouped by workflow (GPU Hub,
-dev boxes, sessions, presets, hosting, serving, Compose, billing & budgets,
-images, accounts). Arguments a command needs are picked from lists: profiles,
+dev boxes, sessions, presets, hosting, serving, compute gateway, Compose,
+billing & budgets, images, accounts). Arguments a command needs are picked from lists: profiles,
 presets, tracked sessions, API keys and published images. Anything else is
 asked in a short prompt. The menu prints the command it runs (for example
 `$ m-gpux sessions logs s-1a2b`), so you can learn the direct form as you go,
@@ -644,6 +645,88 @@ Marks a key as revoked locally.
 
 !!! warning "Redeploy required"
     Revoking a key only updates the local store. Run `m-gpux serve deploy` again to propagate the change to the running server.
+
+---
+
+## gateway
+
+Expose predeclared CPU/GPU tasks as an authenticated asynchronous HTTP API. See
+the [Compute Gateway guide](gateway.md) for the manifest format, HTTP API and job
+states.
+
+```bash
+m-gpux gateway --help
+```
+
+### init
+
+```bash
+m-gpux gateway init [DIRECTORY] [--force]
+```
+
+Writes `mgpux.gateway.toml` and a starter `mgpux_worker.py` (a CPU JSON echo
+task). Refuses to overwrite existing files unless `--force` is given.
+
+### validate
+
+```bash
+m-gpux gateway validate [-f mgpux.gateway.toml]
+```
+
+Checks the manifest offline and prints each task's compute, command and timeout.
+
+### deploy
+
+```bash
+m-gpux gateway deploy [-f mgpux.gateway.toml] [-p PROFILE] [--strategy rolling|recreate]
+```
+
+Creates a fresh API key in a new Modal Secret, generates `modal_gateway.py`
+next to the manifest, runs `modal deploy`, and saves the URL and key to
+`~/.m-gpux/gateway.json`. Without `--profile` it shows the usual profile picker
+(including AUTO). On failure, the new Secret is removed and the previous local
+config is kept.
+
+### submit
+
+```bash
+m-gpux gateway submit TASK [--input JSON | --input-file FILE] [--wait] [--timeout 900] [--idempotency-key KEY]
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `--input` | JSON object passed to the task on stdin | `{}` |
+| `--input-file` | Read the JSON object from a file | |
+| `--wait` | Poll until the job finishes and print the result | off |
+| `--timeout` | Client-side wait limit in seconds | `900` |
+| `--idempotency-key` | Retrying with the same key returns the original job | |
+
+### result, logs, cancel
+
+```bash
+m-gpux gateway result JOB_ID [--wait] [--timeout 900]
+m-gpux gateway logs JOB_ID [--limit 100]
+m-gpux gateway cancel JOB_ID
+```
+
+### jobs
+
+```bash
+m-gpux gateway jobs [--refresh]
+```
+
+Lists up to 100 jobs submitted from this machine. `--refresh` re-reads every
+unfinished job from the gateway; jobs the gateway no longer knows (idle for
+7+ days) are marked `expired`.
+
+### tasks, show, key, open
+
+```bash
+m-gpux gateway tasks   # tasks advertised by the deployed gateway
+m-gpux gateway show    # URL, app, profile, manifest; key masked
+m-gpux gateway key     # print the full API key
+m-gpux gateway open    # open <url>/docs in the browser
+```
 
 ---
 
