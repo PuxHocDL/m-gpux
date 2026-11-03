@@ -5,6 +5,7 @@ import { ActionsTreeProvider } from "./actionsTree";
 import { SessionsTreeProvider, SessionTreeNode } from "./sessionsTree";
 import { PresetsTreeProvider, PresetItem, loadPresets } from "./presetsTree";
 import { StatusBarManager } from "./statusBar";
+import { HomeViewProvider } from "./homeView";
 import { runHubWizard } from "./hubWizard";
 import { runHostWizard } from "./hostWizard";
 import { runServeDeploy, runServeKeyCreate, runServeKeysList, openServeDashboard } from "./serveWizard";
@@ -76,8 +77,27 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push({ dispose: () => clearInterval(discoveryTicker) });
 
   // --- Status Bar ---
-  statusBar = new StatusBarManager();
+  statusBar = new StatusBarManager((name) => accountTree.billingCache.get(name));
   context.subscriptions.push({ dispose: () => statusBar.dispose() });
+  context.subscriptions.push(accountTree.onDidChangeTreeData(() => statusBar.refresh()));
+
+  // --- Overview webview (top of the sidebar) ---
+  const homeView = new HomeViewProvider(
+    context.extensionUri,
+    accountTree,
+    presetsTree,
+    context.extension.packageJSON.version,
+    async () => {
+      await Promise.all([
+        accountTree.refreshWithBilling(),
+        refreshFromModal().catch(() => { /* best-effort */ }),
+      ]);
+    },
+  );
+  context.subscriptions.push(
+    homeView,
+    vscode.window.registerWebviewViewProvider(HomeViewProvider.viewId, homeView),
+  );
 
   // Helper to refresh all UI
   function refreshAll() {

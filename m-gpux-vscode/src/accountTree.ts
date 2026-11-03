@@ -10,12 +10,15 @@ export class AccountTreeProvider
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   readonly billingCache: Map<string, BillingInfo> = new Map();
+  loading = false;
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
 
   async refreshWithBilling(): Promise<void> {
+    this.loading = true;
+    this._onDidChangeTreeData.fire();
     try {
       const billing = await fetchAllBilling();
       this.billingCache.clear();
@@ -24,6 +27,8 @@ export class AccountTreeProvider
       }
     } catch {
       // billing fetch failed, show accounts without billing
+    } finally {
+      this.loading = false;
     }
     this._onDidChangeTreeData.fire();
   }
@@ -66,18 +71,17 @@ export class AccountItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon("info");
       this.contextValue = "placeholder";
     } else {
-      // Build description: active marker + billing
+      // Build description: active marker + credit bar + balance
       let desc = active ? "● Active" : "";
       if (billing && billing.used >= 0) {
-        const balanceStr = `$${billing.remaining.toFixed(2)} ${billing.hasCustomBudget ? "budget" : "credit"} left`;
+        const balanceStr = `${creditBar(billing)} $${billing.remaining.toFixed(2)} ${billing.hasCustomBudget ? "budget" : "credit"} left`;
         desc = desc ? `${desc} · ${balanceStr}` : balanceStr;
       }
       this.description = desc;
       this.iconPath = new vscode.ThemeIcon(
         active ? "account" : "person",
-        active
-          ? new vscode.ThemeColor("charts.green")
-          : undefined
+        billing && billing.used >= 0 ? new vscode.ThemeColor(creditColor(billing))
+          : active ? new vscode.ThemeColor("charts.green") : undefined
       );
       this.contextValue = "account";
 
@@ -99,4 +103,16 @@ export class AccountItem extends vscode.TreeItem {
       };
     }
   }
+}
+
+/** Five-cell bar of the credit still left, e.g. ▰▰▰▱▱. */
+function creditBar(b: BillingInfo): string {
+  const left = b.limit > 0 ? Math.max(0, Math.min(1, b.remaining / b.limit)) : 0;
+  const cells = Math.round(left * 5);
+  return "▰".repeat(cells) + "▱".repeat(5 - cells);
+}
+
+function creditColor(b: BillingInfo): string {
+  const used = b.limit > 0 ? b.used / b.limit : 1;
+  return used >= 0.9 ? "charts.red" : used >= 0.7 ? "charts.yellow" : "charts.green";
 }

@@ -6,6 +6,7 @@
 
 ## Features
 
+- **Overview Panel** — A modern home view at the top of the sidebar: active account with a credit meter, spend at a glance, one-click launch tiles, live session cards, accounts, presets and every tool
 - **GPU Hub Wizard** — Guided multi-step flow to launch Jupyter, Python scripts, web shells, or vLLM inference servers on any NVIDIA GPU
 - **Persistent Dev Boxes** — Create, open, pause, resume, and sync Modal Sandboxes from Quick Actions
 - **Multi-Account Management** — Add, switch, and remove Modal profiles from the sidebar
@@ -51,10 +52,16 @@ After installing, run **Reload Window** (`Ctrl+Shift+P` → `Reload Window`).
 
 ### 1. Open the Sidebar
 
-Click the **GPU chip icon** on the Activity Bar (left edge). Four panels appear:
+Click the **GPU chip icon** on the Activity Bar (left edge). The **Overview** panel
+on top covers the day-to-day: the active account and how much credit is left, spend
+across accounts, launch tiles (GPU Hub, Dev Box, Serve LLM, Host, Compose, Dashboard),
+session cards with open / logs / pull / push / stop buttons, accounts with spend bars
+(click one to switch), presets, and a **More tools** list. The classic tree panels sit
+below it, collapsed by default:
 
 | Panel | Description |
 |-------|-------------|
+| **Overview** | Home view: account, credit, launch tiles, sessions, accounts, presets, tools |
 | **Accounts** | Lists all configured Modal profiles with active status and remaining credit |
 | **Active Sessions** | Live/restored workloads with logs, stop, and workspace sync actions |
 | **Presets** | Shared CLI/extension workload presets |
@@ -129,7 +136,9 @@ Choose a Modal account. **AUTO** uses the currently active profile.
 
 ### Status Bar
 
-The bottom-left of VS Code shows `☁ M-GPUX: <profile-name>`. Click it to switch profiles.
+The bottom-left of VS Code shows the active profile and, once billing has loaded, its
+remaining credit (`☁ <profile> · $18.40`). It turns amber when 90% of the month's
+credit or budget is used. Click it to switch profiles.
 
 ### Billing
 

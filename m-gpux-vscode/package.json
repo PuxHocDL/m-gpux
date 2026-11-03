@@ -44,8 +44,14 @@
     "views": {
       "m-gpux-sidebar": [
         {
+          "type": "webview",
+          "id": "mgpux.homeView",
+          "name": "Overview"
+        },
+        {
           "id": "mgpux.accountsView",
-          "name": "Accounts"
+          "name": "Accounts",
+          "visibility": "collapsed"
         },
         {
           "id": "mgpux.sessionsView",
@@ -53,11 +59,13 @@
         },
         {
           "id": "mgpux.presetsView",
-          "name": "Presets"
+          "name": "Presets",
+          "visibility": "collapsed"
         },
         {
           "id": "mgpux.actionsView",
-          "name": "Quick Actions"
+          "name": "Quick Actions",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -369,6 +377,16 @@
     },
     "menus": {
       "view/title": [
+        {
+          "command": "mgpux.openHub",
+          "when": "view == mgpux.homeView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "mgpux.openDashboard",
+          "when": "view == mgpux.homeView",
+          "group": "navigation@2"
+        },
         {
           "command": "mgpux.openDashboard",
           "when": "view == mgpux.accountsView",
