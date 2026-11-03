@@ -35,7 +35,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-MANIFEST_TEMPLATE = '''[gateway]
+MANIFEST_TEMPLATE = """[gateway]
 name = "m-gpux-compute-gateway"
 source = "."
 python_version = "3.12"
@@ -62,7 +62,7 @@ scaledown_window = 30
 # gpu = ["L4", "A10G"]
 # timeout = 900
 # max_containers = 5
-'''
+"""
 
 WORKER_TEMPLATE = '''"""Starter Compute Gateway task: read a JSON object from stdin and emit JSON."""
 
@@ -254,7 +254,9 @@ def deploy_gateway(
             endpoint = None
     if not endpoint:
         _delete_secret(secret_name, client)
-        _fail("Deployment succeeded, but the gateway URL could not be resolved. The previous local config was preserved.")
+        _fail(
+            "Deployment succeeded, but the gateway URL could not be resolved. The previous local config was preserved."
+        )
 
     previous = get_gateway_endpoint()
     save_gateway_endpoint(
@@ -275,7 +277,7 @@ def deploy_gateway(
             f"URL: [cyan]{endpoint}[/cyan]\n"
             f"Docs: [cyan]{endpoint}/docs[/cyan]\n"
             f"API key: [yellow]{masked}[/yellow] (saved locally)\n\n"
-            "Try: [bold]m-gpux gateway submit echo --input '{\"hello\": \"Modal\"}' --wait[/bold]",
+            'Try: [bold]m-gpux gateway submit echo --input \'{"hello": "Modal"}\' --wait[/bold]',
             border_style="green",
         )
     )

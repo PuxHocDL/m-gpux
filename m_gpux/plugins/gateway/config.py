@@ -170,7 +170,9 @@ def load_gateway_config(path: str | Path = DEFAULT_MANIFEST) -> GatewayConfig:
         source=source,
         python_version=python_version,
         max_input_bytes=_integer(gateway.get("max_input_bytes", 1_048_576), "gateway.max_input_bytes", 1, 10_485_760),
-        max_output_bytes=_integer(gateway.get("max_output_bytes", 1_048_576), "gateway.max_output_bytes", 1_024, 10_485_760),
+        max_output_bytes=_integer(
+            gateway.get("max_output_bytes", 1_048_576), "gateway.max_output_bytes", 1_024, 10_485_760
+        ),
         excludes=excludes,
         tasks=tasks,
     )

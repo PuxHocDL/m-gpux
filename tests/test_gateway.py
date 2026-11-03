@@ -9,7 +9,7 @@ from m_gpux.plugins.gateway.config import GatewayConfigError, load_gateway_confi
 from m_gpux.plugins.gateway.renderer import render_gateway_app
 
 
-VALID_MANIFEST = '''[gateway]
+VALID_MANIFEST = """[gateway]
 name = "m-gpux-test-gateway"
 source = "."
 max_input_bytes = 2048
@@ -22,7 +22,7 @@ packages = []
 cpu = 0.25
 memory = 256
 timeout = 30
-'''
+"""
 
 
 class GatewayConfigTests(unittest.TestCase):
@@ -70,7 +70,7 @@ class GatewayRendererTests(unittest.TestCase):
             self.assertIn("gateway-secret-name", source)
             self.assertNotIn("MGPUX_TEST_SECRET_VALUE", source)
             self.assertIn("shell=False", source)
-            self.assertIn('command=[\'python\', \'worker.py\']', source)
+            self.assertIn("command=['python', 'worker.py']", source)
             self.assertIn("hmac.compare_digest", source)
             self.assertIn("skip_if_exists=True", source)
 
@@ -82,9 +82,25 @@ class GatewayRendererTests(unittest.TestCase):
 
     def test_async_handlers_only_use_aio_modal_calls(self) -> None:
         handlers = self.render().split("def gateway():", 1)[1]
-        for blocking in ("jobs.get(", "jobs.put(", "jobs.pop(", "jobs[", ".spawn(", ".get(timeout", ".cancel(", ".tail("):
+        for blocking in (
+            "jobs.get(",
+            "jobs.put(",
+            "jobs.pop(",
+            "jobs[",
+            ".spawn(",
+            ".get(timeout",
+            ".cancel(",
+            ".tail(",
+        ):
             self.assertNotIn(blocking, handlers)
-        for async_call in ("jobs.get.aio(", "jobs.put.aio(", ".spawn.aio(", ".get.aio(timeout=0)", ".cancel.aio(", ".tail.aio("):
+        for async_call in (
+            "jobs.get.aio(",
+            "jobs.put.aio(",
+            ".spawn.aio(",
+            ".get.aio(timeout=0)",
+            ".cancel.aio(",
+            ".tail.aio(",
+        ):
             self.assertIn(async_call, handlers)
 
     def test_expired_and_timed_out_jobs_are_not_reported_as_running(self) -> None:
