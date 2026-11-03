@@ -22,6 +22,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
     if (element instanceof ActionGroup) {
       switch (element.groupId) {
         case "launch": return [
+          new ActionItem("Dashboard",       "Web console: accounts, apps, containers, sandboxes, costs", "dashboard", "mgpux.openDashboard"),
           new ActionItem("GPU Hub",         "Jupyter / script / bash / vLLM wizard", "rocket", "mgpux.openHub"),
           new ActionItem("Run Preset",      "Replay a saved workload",               "play-circle", "mgpux.runPreset"),
           new ActionItem("Probe Hardware",  "Check GPU/CPU/RAM metrics",             "pulse",  "mgpux.loadProbe"),
@@ -53,6 +54,7 @@ export class ActionsTreeProvider implements vscode.TreeDataProvider<ActionItem |
           new ActionItem("Billing Usage",   "Show cost across all accounts",         "graph",  "mgpux.billingUsage"),
           new ActionItem("Billing Reports", "Usage table, cycle summary, GPU rates", "table",  "mgpux.billingReports"),
           new ActionItem("Images",          "Build, publish and manage prebuilt images", "package", "mgpux.manageImages"),
+          new ActionItem("Kaggle & Colab",  "GPU quota, kernels and runtimes on other clouds", "cloud", "mgpux.otherClouds"),
           new ActionItem("Billing Dashboard", "Open Modal usage page in browser",    "link-external", "mgpux.openBillingDashboard"),
           new ActionItem("Info",            "Show M-GPUX info",                      "info",   "mgpux.showInfo"),
         ];

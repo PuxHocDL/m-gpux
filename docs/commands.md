@@ -10,6 +10,7 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 |---|---|
 | `m-gpux` | Interactive menu for every command (welcome screen when not in a terminal) |
 | `m-gpux menu` | Open the interactive menu explicitly |
+| `m-gpux ui` | Local web dashboard for accounts, compute, workloads and costs |
 | `m-gpux info` | Print version and framework metadata |
 | `m-gpux dev` | Dev boxes: SSH / VS Code Remote, pause & resume, file sync |
 | `m-gpux hub` | Interactive GPU session launcher |
@@ -19,6 +20,8 @@ Use `m-gpux --help` or `m-gpux <command> --help` for inline help at any time.
 | `m-gpux compose` | Analyze and deploy Docker Compose stacks on Modal |
 | `m-gpux serve` | Deploy LLMs as OpenAI-compatible APIs |
 | `m-gpux gateway` | Authenticated async API for predeclared CPU/GPU jobs |
+| `m-gpux kaggle` | Kaggle CLI across accounts: GPU quota, live kernels, AUTO pushes |
+| `m-gpux colab` | Colab CLI across Google accounts: compute units, runtimes, AUTO runs |
 | `m-gpux stop` | Stop running m-gpux apps |
 | `m-gpux account` | Manage Modal profiles |
 | `m-gpux billing` | Track compute costs and prices |
@@ -48,6 +51,21 @@ leave.
 
 When stdin or stdout is not a terminal (pipes, CI), `m-gpux` prints the logo
 and a Quick Actions table instead.
+
+### ui
+
+```bash
+m-gpux ui [--port 7878] [--host 127.0.0.1] [--no-browser]
+```
+
+Serves the [web dashboard](dashboard.md) on localhost and opens it in your
+browser. The printed link carries a private token that changes on every start.
+
+| Option | Description | Default |
+|---|---|---|
+| `--port`, `-p` | Port to listen on; the next free one is used if taken | `7878` |
+| `--host` | Interface to bind; anything but loopback exposes your accounts | `127.0.0.1` |
+| `--no-browser` | Print the link instead of opening a browser | off |
 
 ### info
 
@@ -727,6 +745,41 @@ m-gpux gateway show    # URL, app, profile, manifest; key masked
 m-gpux gateway key     # print the full API key
 m-gpux gateway open    # open <url>/docs in the browser
 ```
+
+---
+
+## kaggle
+
+Kaggle notebooks across the accounts in `~/.kaggle/zoo.json`. See
+[Kaggle & Colab](other-clouds.md) for the account file and workflows.
+
+| Command | Purpose |
+|---|---|
+| `m-gpux kaggle accounts` | GPU / TPU hours left and reset time per account |
+| `m-gpux kaggle add TOKEN [--user] [--team] [--note]` | Register an API token (username detected) |
+| `m-gpux kaggle remove NAME` | Forget an account |
+| `m-gpux kaggle status [--comp SLUG] [--hours 14]` | Running / queued kernels, free GPU slots, submissions today per team |
+| `m-gpux kaggle free` | Accounts that can start a GPU kernel now |
+| `m-gpux kaggle push [FOLDER] [--as NAME\|auto] [--wait] [--out DIR]` | Push a kernel folder, optionally as another account |
+| `m-gpux kaggle watch OWNER/SLUG [--as NAME] [--out DIR]` | Wait for a kernel, then download its output |
+| `m-gpux kaggle run NAME\|auto -- ARGS…` | Any `kaggle` command as an account (`no_submit` enforced) |
+
+---
+
+## colab
+
+Google Colab runtimes across Google accounts. See [Kaggle & Colab](other-clouds.md).
+
+| Command | Purpose |
+|---|---|
+| `m-gpux colab accounts` | Compute units, burn rate and runtimes per account |
+| `m-gpux colab login NAME` | Add or re-login a Google account (OAuth in the terminal) |
+| `m-gpux colab remove NAME` | Delete an extra account's login |
+| `m-gpux colab run SCRIPT [--gpu G] [--tpu T] [--high-mem] [--keep] [--as NAME\|auto] [-- ARGS…]` | Run a script on a fresh VM, then release it |
+| `m-gpux colab new -s NAME [--gpu G] [--as NAME\|auto]` | Start a named runtime |
+| `m-gpux colab sessions [--as NAME]` | Live runtimes |
+| `m-gpux colab stop NAME [--as ACCOUNT]` | Release a runtime |
+| `m-gpux colab as NAME\|auto -- ARGS…` | Any `colab` command as an account |
 
 ---
 

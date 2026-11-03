@@ -73,6 +73,13 @@ export async function openCliMenu(): Promise<void> {
   await runCliInTerminal("menu", "menu");
 }
 
+// ─── Web dashboard ─────────────────────────────────────────────
+
+/** `m-gpux ui` serves the dashboard on localhost and opens it in the browser; closing the terminal stops it. */
+export async function openDashboard(): Promise<void> {
+  await runCliInTerminal("Dashboard", "ui");
+}
+
 // ─── Budgets ───────────────────────────────────────────────────
 
 export async function manageBudgets(onChanged: () => void): Promise<void> {
@@ -340,6 +347,110 @@ export async function manageGateway(): Promise<void> {
     return;
   }
   await runCliInTerminal(`gateway ${action}`, action === "jobs" ? "gateway jobs --refresh" : `gateway ${action}`);
+}
+
+// ─── Kaggle & Colab ───────────────────────────────────────────
+
+const ACCOUNT_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._'-]{0,63}$/;
+
+/** Account names only — tokens in zoo.json are never read into the extension. */
+function kaggleAccounts(): string[] {
+  try {
+    const zoo = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".kaggle", "zoo.json"), "utf-8"));
+    return Object.keys(zoo?.accounts ?? {}).filter((n) => ACCOUNT_NAME.test(n));
+  } catch {
+    return [];
+  }
+}
+
+function colabAccounts(): string[] {
+  const dir = path.join(os.homedir(), ".colab_accounts");
+  let extra: string[] = [];
+  try {
+    extra = fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  } catch { /* no extra accounts */ }
+  return ["main", ...extra.filter((n) => ACCOUNT_NAME.test(n)).sort()];
+}
+
+async function pickCloudAccount(title: string, names: string[], autoHint: string): Promise<string | undefined> {
+  return pick(title, [
+    { label: "$(sparkle) auto", description: autoHint, value: "auto" },
+    ...names.map((n) => ({ label: `$(account) ${n}`, value: n })),
+  ]);
+}
+
+export async function manageOtherClouds(): Promise<void> {
+  const action = await pick("M-GPUX Kaggle & Colab", [
+    { label: "$(dashboard) Kaggle accounts", description: "GPU / TPU hours left on every account", value: "kaggle accounts" },
+    { label: "$(pulse) Kaggle status", description: "Running and queued kernels, free GPU slots", value: "kaggle status" },
+    { label: "$(cloud-upload) Push Kaggle kernel…", description: "A folder with kernel-metadata.json, as any account", value: "push" },
+    { label: "$(watch) Watch Kaggle kernel…", description: "Wait for it, then download the output", value: "watch" },
+    { label: "$(dashboard) Colab accounts", description: "Compute units and runtimes per Google account", value: "colab accounts" },
+    { label: "$(vm) Colab sessions", description: "Live runtimes on every account", value: "colab sessions" },
+    { label: "$(play) Run script on Colab…", description: "Fresh VM, released when the script ends", value: "run" },
+    { label: "$(sign-in) Colab login…", description: "Add or re-login a Google account", value: "login" },
+  ]);
+  if (!action) { return; }
+
+  if (action === "push") {
+    const folder = await vscode.window.showOpenDialog({
+      canSelectFolders: true, canSelectFiles: false, openLabel: "Push this kernel",
+      defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
+    });
+    if (!folder?.[0]) { return; }
+    if (!fs.existsSync(path.join(folder[0].fsPath, "kernel-metadata.json"))) {
+      vscode.window.showErrorMessage("M-GPUX: that folder has no kernel-metadata.json.");
+      return;
+    }
+    const account = await pick("Push as…", [
+      { label: "$(file-code) Owner in kernel-metadata.json", value: "" },
+      { label: "$(sparkle) auto", description: "Most GPU hours left with a free slot", value: "auto" },
+      ...kaggleAccounts().map((n) => ({ label: `$(account) ${n}`, value: n })),
+    ]);
+    if (account === undefined) { return; }
+    const wait = await pick("After pushing…", [
+      { label: "$(watch) Wait and download the output", value: " --wait" },
+      { label: "$(check) Just push", value: "" },
+    ]);
+    if (wait === undefined) { return; }
+    await runCliInTerminal("kaggle push", `kaggle push "${folder[0].fsPath}"${account ? ` --as "${account}"` : ""}${wait}`);
+    return;
+  }
+  if (action === "watch") {
+    const ref = await vscode.window.showInputBox({
+      title: "Kernel to watch", prompt: "owner/slug, as in kaggle.com/code/owner/slug",
+      validateInput: (v) => (/^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(v.trim()) ? undefined : "Use owner/slug"),
+    });
+    if (!ref) { return; }
+    await runCliInTerminal("kaggle watch", `kaggle watch ${ref.trim()}`);
+    return;
+  }
+  if (action === "run") {
+    const script = await vscode.window.showOpenDialog({
+      canSelectMany: false, openLabel: "Run on Colab", filters: { "Python or notebook": ["py", "ipynb"] },
+      defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
+    });
+    if (!script?.[0]) { return; }
+    const gpu = await pick("Accelerator", [
+      { label: "CPU only", value: "" },
+      ...["T4", "L4", "G4", "A100", "H100"].map((g) => ({ label: `$(chip) ${g}`, value: g })),
+    ]);
+    if (gpu === undefined) { return; }
+    const account = await pickCloudAccount("Run as…", colabAccounts(), "Most compute units left");
+    if (!account) { return; }
+    await runCliInTerminal("colab run", `colab run "${script[0].fsPath}"${gpu ? ` --gpu ${gpu}` : ""} --as ${account}`);
+    return;
+  }
+  if (action === "login") {
+    const name = await vscode.window.showInputBox({
+      title: "Colab account", prompt: "A short name for the Google account ('main' = your normal one)", value: "main",
+      validateInput: (v) => (/^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/.test(v.trim()) ? undefined : "Letters, digits, . _ - (max 40)"),
+    });
+    if (!name) { return; }
+    await runCliInTerminal(`colab login ${name.trim()}`, `colab login ${name.trim()}`);
+    return;
+  }
+  await runCliInTerminal(action, action);
 }
 
 // ─── Presets ──────────────────────────────────────────────────
